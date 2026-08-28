@@ -9,11 +9,26 @@ class Survey(models.Model):
         ACTIVE = "active", "Active"
         ARCHIVED = "archived", "Archived"
 
+    class IdentityCapturePlacement(models.TextChoices):
+        NONE = "none", "No identity capture"
+        START = "start", "At the start of the survey"
+        END = "end", "At the end of the survey"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.SlugField(unique=True)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    allow_anonymous_participation = models.BooleanField(default=False)
+    identity_capture_placement = models.CharField(
+        max_length=8,
+        choices=IdentityCapturePlacement.choices,
+        default=IdentityCapturePlacement.NONE,
+        help_text=(
+            "Optional, consented email step for anonymous respondents. The email is "
+            "sent to PRomop's patient-record service and is never a survey answer."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -38,6 +53,11 @@ class SurveyResponse(models.Model):
     survey_version = models.ForeignKey(SurveyVersion, on_delete=models.PROTECT, related_name="responses")
     person = models.ForeignKey("omop_core.Person", null=True, blank=True, on_delete=models.PROTECT,
                                related_name="prolog_survey_responses")
+    identity_linked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When an optional identity-capture action created and linked a PRomop patient record.",
+    )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
     language = models.CharField(max_length=12)
     started_at = models.DateTimeField(auto_now_add=True)

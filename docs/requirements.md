@@ -21,8 +21,10 @@ deployed with, or installed as an app in, PRomop.
 ### FLF Global Patient Survey 2026, confidential draft v0.6
 
 The supplied document is the first content reference, not a final approved
-instrument. It proposes an anonymous Follicular Lymphoma survey in English,
-Spanish, and Portuguese with six sections:
+instrument. It proposes a Follicular Lymphoma survey in English, Spanish, and
+Portuguese with six sections. When a survey is configured to allow anonymous
+participation, a participant may complete and submit it without an existing
+PRomop identity:
 
 1. Participant and FL journey.
 2. Treatment history and access.
@@ -37,8 +39,13 @@ ranking, free text, conditional branching, and a conditional matrix for selected
 symptoms. Examples include access-delay causes after `Yes`, and watch-and-wait
 symptom questions after `Yes`. The first implementation must preserve supplied
 wording/options as content pending FLF approval; it must not reinterpret them
-clinically. The proposed optional email/future-contact question requires an
-explicit consent and privacy decision.
+clinically. For an anonymous survey, the instrument may present an optional
+email capture at either the beginning or the end, according to its approved
+survey design. Supplying an email is an identity-creation/linking action, not
+an ordinary survey answer: PRomop creates a new patient record and attaches the
+response and its approved OMOP-derived rows to that patient identity. Leaving
+it blank must neither block submission nor create a patient record. The email
+and the consent for this action require explicit privacy controls.
 
 ### HealthTree survey capability
 
@@ -61,15 +68,24 @@ and clinical provenance.
 | Analyst | Export permitted de-identified data and mapping outcomes. |
 
 Use PRomop's existing identity and link responses to `omop_core.Person`; do
-not duplicate patient identity. Anonymous campaigns require an explicit policy:
-no person link, or a consented pseudonymous participant record.
+not duplicate patient identity. Each survey explicitly selects whether
+anonymous participation is permitted. For an anonymous response, no `Person`
+link exists unless the participant opts to supply an email in the configured
+identity-capture step. PRomop then creates the patient record and links that
+same response to it. This is optional and must not turn other anonymous
+responses into pseudonymous records.
 
 ## Functional requirements
 
 ### Designer
 
 - Create surveys with title, stable code, description, audience/context,
-  effective dates, language, and consent settings.
+  effective dates, language, consent settings, and an anonymous-participation
+  setting.
+- For surveys that permit anonymous participation, configure an optional
+  identity-capture step at the start or end of the instrument. It must clearly
+  explain that an email creates a PRomop patient record and links the submitted
+  survey and any approved OMOP mappings to it.
 - Keep published versions immutable. A change makes a new draft; every response
   retains the exact presented version.
 - Compose ordered pages/sections and information, single/multi-choice, short and
@@ -91,6 +107,11 @@ no person link, or a consented pseudonymous participant record.
 - Final submission records server timestamps and becomes immutable; correction
   is a revision/new response, never an overwrite.
 - Capture required consent as a versioned attestation, not an ordinary answer.
+- An anonymous participant may submit without an email. If they elect to
+  provide one, validate and send it only to PRomop's approved patient-identity
+  creation service; on success, attach the response to the newly created
+  `Person` before mapping execution. Email is not stored in `SurveyAnswer`,
+  response schema JSON, logs, analytics exports, or browser telemetry.
 - Store the language actually used; initial support is English, Spanish, and
   Portuguese.
 
@@ -125,12 +146,12 @@ OMOP CDM tables for raw answers or configuration.
 
 | Entity | Purpose |
 | --- | --- |
-| `Survey` | Stable identity and lifecycle metadata. |
+| `Survey` | Stable identity, lifecycle metadata, and anonymous-participation policy. |
 | `SurveyVersion` | Immutable instrument snapshot. |
 | `SurveyPage`, `SurveyQuestion`, `SurveyOption` | Ordered versioned structure and choices. |
 | `SurveyRule`, `SurveyTranslation` | Routing and reviewed localised content. |
 | `ConceptMapping` | Optional governed mapping expression, targets, concepts, status, and rationale. |
-| `SurveyResponse` | Participant attempt/submission; FK to Person where applicable. |
+| `SurveyResponse` | Participant attempt/submission; nullable FK to Person, populated if authenticated or if optional email created a patient record. |
 | `SurveyAnswer` | Typed raw answer, source option, and canonical composite JSON. |
 | `ResponseRevision`, `SurveyConsent` | Correction audit and consent attestation. |
 | `MappingExecution` | Idempotent run/outcome and produced OMOP-row provenance. |
@@ -146,6 +167,14 @@ PRomop already provides `Person`, `Concept`, `Observation`, `Note`, and
 PRomop's established clinical write path/provenance fields. Migration
 dependencies and app registration belong in `~/promop`, not in a parallel
 SQLite database.
+
+The identity-capture payload is handled separately from survey answers. It is
+submitted over the same protected session but routed directly to PRomop's
+patient-record creation service; PROlog retains only the resulting `Person`
+link and a non-sensitive consent/audit outcome. It must be idempotent so a
+retry cannot create duplicate patient records. If record creation fails, the
+participant can still submit anonymously unless they choose to retry; raw
+answers are never discarded.
 
 ## Architecture
 
@@ -173,6 +202,10 @@ every write.
 - `POST /api/survey-versions/{id}/preview/`, `/publish/`.
 - `GET /api/run/surveys/{code}/` — eligible runner schema.
 - `POST/PATCH /api/responses/` — create/autosave; `POST .../submit/` finalises.
+- `POST /api/responses/{id}/identity/` — for a survey that permits anonymous
+  participation, optionally submit the consented email to PRomop to create a
+  patient record and link this response. The email is never returned by this
+  API.
 - `GET/POST /api/concepts/search/`, `/api/mappings/` — curator workflow.
 
 All endpoints require organisation-scoped object permissions, audit logging, and
@@ -191,7 +224,8 @@ an API versioning strategy.
 
 ## Delivery sequence
 
-1. Confirm PRomop installation, auth, tenancy, anonymous mode, and deployment.
+1. Confirm PRomop installation, auth, tenancy, patient-record creation service,
+   anonymous mode, and deployment.
 2. Add PRomop migrations plus definition/version/response/audit APIs.
 3. Build runner, then designer and preview.
 4. Enter/review FLF content, translations, and routing tests.
@@ -200,12 +234,9 @@ an API versioning strategy.
 
 ## Decisions needed
 
-- Is FLF actually anonymous, or is longitudinal `Person` linkage permitted?
-  How is optional email segregated?
-- Which PRomop organisation owns each survey/response?
-- What invitation/identity provider is used?
-- Who approves publication, translations, mappings, scoring, and clinical writes?
 - What validated wellbeing-to-ECOG scoring definition and concept/value convention
   will be used?
-- Are repeat administrations separate responses, scheduled series, or both?
-- What retention, withdrawal, deletion, export, and re-consent rules apply?
+- Does a participant need to be shown and actively agree to an updated consent
+  notice before a future survey administration, when the notice, intended use,
+  or data-sharing terms change? This is what “re-consent” means here; it does
+  not mean asking again for consent for an already submitted response.
