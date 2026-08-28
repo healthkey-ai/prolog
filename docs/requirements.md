@@ -123,6 +123,13 @@ responses into pseudonymous records.
   original answer.
 - At design time, curators may map a question, option, calculated score, or
   multi-answer rule to one or more OMOP concepts/tables.
+- When a designer adds or identifies a wellbeing/function question, prompt them
+  to choose whether to consider an ECOG Performance Status mapping, a Karnofsky
+  Performance Status mapping, both, or neither. For the selected score(s), the
+  mapping assistant suggests a proposed mapping for every response option (or
+  permitted response range) and shows its rationale. Suggestions are drafts:
+  the authorised designer must review, edit where needed, and approve them;
+  they are never applied automatically.
 - A mapping declares source fields, expression/version, target table/concept,
   value representation, event-date strategy, and rationale.
 - Mapping is optional at every level: a survey, question, option, or response
@@ -234,8 +241,6 @@ an API versioning strategy.
 
 ## Decisions needed
 
-- What validated wellbeing-to-ECOG scoring definition and concept/value convention
-  will be used?
 - Does a participant need to be shown and actively agree to an updated consent
   notice before a future survey administration, when the notice, intended use,
   or data-sharing terms change? This is what “re-consent” means here; it does
