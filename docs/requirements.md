@@ -107,6 +107,18 @@ responses into pseudonymous records.
 - Final submission records server timestamps and becomes immutable; correction
   is a revision/new response, never an overwrite.
 - Capture required consent as a versioned attestation, not an ordinary answer.
+- If a consent notice, intended use, or data-sharing term changes materially,
+  participants must be shown the updated notice and actively agree to it before
+  a future survey administration. This re-consent requirement never changes or
+  reopens consent for an already submitted response.
+- Support optional repeat administration. A designer may schedule a published
+  survey to be presented to its invited participants every specified number of
+  weeks or months, with a start date and optional end date. At each due date,
+  the system sends a new invitation email containing that administration's
+  survey link. Each administration creates a distinct response linked to the
+  same survey version (or the then-published version, when explicitly selected
+  by the schedule), preserving longitudinal history. Repeat administration is
+  off by default and is not required for the FLF survey.
 - An anonymous participant may submit without an email. If they elect to
   provide one, validate and send it only to PRomop's approved patient-identity
   creation service; on success, attach the response to the newly created
@@ -238,10 +250,3 @@ an API versioning strategy.
 4. Enter/review FLF content, translations, and routing tests.
 5. Add mapping review, concept search, and write-back.
 6. Validate accessibility, privacy, security, export, and clinical correctness.
-
-## Decisions needed
-
-- Does a participant need to be shown and actively agree to an updated consent
-  notice before a future survey administration, when the notice, intended use,
-  or data-sharing terms change? This is what “re-consent” means here; it does
-  not mean asking again for consent for an already submitted response.
