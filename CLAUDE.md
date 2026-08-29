@@ -25,6 +25,11 @@ last. This repository is **public**.
   backend or frontend code; it comes from a definition file validated against
   `schema/survey-definition.schema.json`. Published versions are immutable;
   wording/structure changes are a new `version`.
+- **A survey is a DAG.** `visible_if` and `rows_from` are directed edges and
+  may only point to *earlier* questions in presentation order (DEF-10). Never
+  add a schema feature or engine shortcut that allows forward references or
+  cycles; visibility is one forward pass, and cascade invalidation walks the
+  DAG forward from the changed answer.
 - **Server is authoritative.** Visibility, limits, exclusives, cascade
   invalidation and completion are validated server-side; the client mirrors
   them for UX only. Shared test vectors keep the Python and TypeScript engines

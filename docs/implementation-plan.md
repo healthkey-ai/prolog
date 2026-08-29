@@ -157,9 +157,16 @@ Goal: the JSON contract is enforced and stored immutably (DEF-1…9).
   `validate_schema(doc)` with jsonschema 2020-12.
 - `definitions/validate.py`: semantic rules (DEF-6) returning structured
   errors with JSON paths. Rules: unique section/question/option keys;
-  `visible_if.question`, `rows_from` reference an earlier question of a
-  compatible type; conditions use `value`/`values` that exist on the referenced
-  question's options; no cycles; `max_selections`/`min_selections` bounds;
+  **DAG rule (DEF-10)** — build the dependency graph (nodes = questions and
+  sections; edges = every `visible_if.question` and `rows_from`), assign each
+  question its presentation index, and reject any edge whose target index is
+  not strictly less than the source's (self-reference, forward reference);
+  because all edges point backward the graph is acyclic by construction and
+  presentation order is the topological order the engine uses; also
+  `rows_from` must target a `multi` question and conditions must use
+  `value`/`values` that exist on the referenced question's options; a
+  reachability pass warns about questions that can never be shown;
+  `max_selections`/`min_selections` bounds;
   `optional_items` ⊆ option keys; ≤ 1 `email` question; `link_identity`
   requires integrated profile; `translation_status` present for every
   non-default language; every i18n object has the default language.

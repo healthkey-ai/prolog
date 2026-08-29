@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/healthkey-ai/prolog/blob/main/schema/survey-definition.schema.json",
   "title": "PROlog survey definition",
-  "description": "Declarative definition of one survey version: sections, ordered questions, options, per-type config, visibility rules, presentation and participation settings. One file per (survey, version). The runner renders it; the backend stores it verbatim as the immutable SurveyVersion definition. Schema version 1.",
+  "description": "Declarative definition of one survey version: sections, ordered questions, options, per-type config, visibility rules, presentation and participation settings. One file per (survey, version). The runner renders it; the backend stores it verbatim as the immutable SurveyVersion definition. Schema version 1.\n\nThe survey is a directed acyclic graph (DAG): questions are nodes; every `visible_if` condition and every `rows_from` reference is a directed edge from the dependent question (or section) to the question it depends on. The graph is acyclic by construction: an edge may only point to a question that appears EARLIER in presentation order (sections in array order, then questions in array order), so the presentation order is a topological order and visibility can be evaluated in a single forward pass. JSON Schema cannot express this ordering rule; the semantic validator (`validate_definition`) enforces it and rejects forward references, self-references and cycles.",
   "type": "object",
   "required": ["slug", "version", "status", "default_language", "languages", "title", "sections"],
   "additionalProperties": false,
@@ -162,7 +162,7 @@
         "title": { "$ref": "#/$defs/i18n" },
         "description": { "$ref": "#/$defs/i18n" },
         "visible_if": {
-          "description": "All conditions must hold (AND) for the whole section to be shown.",
+          "description": "All conditions must hold (AND) for the whole section to be shown. DAG rule: each condition may reference only a question in an EARLIER section.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/condition" }
@@ -201,7 +201,7 @@
           "items": { "$ref": "#/$defs/option" }
         },
         "visible_if": {
-          "description": "All conditions must hold (AND) for the question to be shown. Hiding a question invalidates its stored answer.",
+          "description": "All conditions must hold (AND) for the question to be shown. Hiding a question invalidates its stored answer. DAG rule: each condition may reference only a question that appears EARLIER in presentation order (never itself, never a later question).",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/condition" }
@@ -266,7 +266,7 @@
       "properties": {
         "question": { "$ref": "#/$defs/key" },
         "op": {
-          "description": "eq/neq: single-valued answer equals / does not equal value. in: single-valued answer is one of values. contains: multi-valued answer includes value. answered: question has a non-skipped answer.",
+          "description": "eq/neq: single-valued answer equals / does not equal value. in: single-valued answer is one of values. contains: multi-valued answer includes value. answered: question has a non-skipped answer. `question` is a DAG edge and must point to an earlier question.",
           "enum": ["eq", "neq", "in", "contains", "answered"]
         },
         "value": { "type": "string" },
@@ -312,7 +312,7 @@
           }
         },
         "rows_from": {
-          "description": "matrix: question key whose selected option keys become this question's rows (dynamic rows).",
+          "description": "matrix: question key whose selected option keys become this question's rows (dynamic rows). DAG rule: must be a `multi` question that appears EARLIER in presentation order.",
           "$ref": "#/$defs/key"
         },
         "rows": {

@@ -120,10 +120,38 @@ identity capture and the participant opts in.
 | DEF-3 | Definitions are versioned: any wording or structural change that responses must be interpreted against is a new `version`. Published versions are immutable; every response records the exact version presented. |
 | DEF-4 | At most one `active` version per `slug`. Activating a version archives the previous active one without altering historical responses. |
 | DEF-5 | All participant-facing text is an i18n object keyed by language, falling back to `default_language`. Each non-default language carries `translation_status` (`machine` or `reviewed`); a version may not be activated while any offered language is `machine`. |
-| DEF-6 | The backend validates a definition against the schema **and** against semantic rules on load: unique keys; `visible_if`, `rows_from` and option references resolve to earlier questions; no cycles; `max_selections` ≤ option count; `optional_items` are real options; at most one email capture question; `link_identity` only in integrated profile. |
+| DEF-6 | The backend validates a definition against the schema **and** against semantic rules on load: unique keys; the DAG rule (DEF-10); option references in conditions exist on the referenced question; `max_selections` ≤ option count; `optional_items` are real options; at most one email capture question; `link_identity` only in integrated profile. |
 | DEF-7 | A `load_definition` management command registers or updates a definition file idempotently (draft) and can activate it; `validate_definition` runs DEF-6 without writing. |
 | DEF-8 | The definition stored on `SurveyVersion.definition` is byte-equivalent to the validated file (normalised JSON), so the runner, exports and mappings all read the same snapshot. |
 | DEF-9 | The schema is versioned (`schema_version`); the runner supports the current version and documents migrations for earlier ones. |
+| DEF-10 | **A survey is a directed acyclic graph (DAG).** Questions are nodes; every `visible_if` condition (on a question or a section) and every `rows_from` reference is a directed edge from the dependent element to the question it depends on. An edge may only point to a question that appears **earlier** in presentation order (sections in array order, then questions in array order). Self-references, forward references, and therefore cycles are rejected at validation. |
+
+### Survey graph
+
+The DAG rule (DEF-10) is what makes the runner simple and the data
+interpretable:
+
+- **Presentation order is a topological order.** Visibility for the whole
+  instrument is computed in one forward pass over the question list; no
+  fixed-point iteration, no ambiguity about which answer "wins".
+- **Cascade invalidation is well-defined.** When an answer changes, only the
+  descendants of that node in the DAG can change visibility; the server walks
+  forward from the changed question and clears exactly those answers (RUN-16).
+- **Reachability is decidable at design time.** The validator can report
+  questions that can never be shown (conditions on options that cannot be
+  selected together) and the designer (final phase) can render the instrument
+  as a graph.
+- **Sections are nodes too.** A section's `visible_if` may reference only
+  questions in earlier sections; every question in a hidden section is hidden.
+
+JSON Schema cannot express ordering constraints, so the schema documents the
+rule in its descriptions and the semantic validator (`validate_definition`,
+DEF-6/DEF-7) enforces it. The rule is deliberately stricter than "acyclic":
+requiring backward-only edges keeps definitions readable and guarantees
+acyclicity without a cycle search. Backward jumps in *navigation* (a
+participant returning to an earlier question) are not edges in this graph;
+they are a runner feature (RUN-9) that re-evaluates the DAG forward from the
+changed answer.
 
 ## Runner
 
