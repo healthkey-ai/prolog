@@ -25,6 +25,16 @@ A customer repository holds its definition JSON and theme directory and mounts
 them into a PROlog deployment (`PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS`);
 see the plan, §5.
 
+## Python tooling
+
+The backend uses [`uv`](https://docs.astral.sh/uv/) with `backend/pyproject.toml`
+and a committed `uv.lock` instead of `venv` + `pip`. The main reason is CI
+speed: `uv sync` installs a locked environment roughly 10–100× faster than
+`pip install`, which keeps every pull-request build short. The lockfile also
+gives identical installs across developer machines, CI, and the container
+image. `pyproject.toml` remains tool-agnostic, so `pip install -e backend/`
+still works if needed.
+
 ## Branches
 
 `dev` is the default working branch; `main` is release-ready. Both are
