@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/healthkey-ai/prolog/blob/main/schema/theme.schema.json",
+  "title": "PROlog runner theme",
+  "description": "A runner theme: design tokens, typography, brand assets and layout switches applied to the participant runner at load time. One theme.json per theme directory; asset paths are relative to that directory. The runner ships a neutral default theme; customer themes live outside this repository and are mounted at deployment. Schema version 1.",
+  "type": "object",
+  "required": ["code", "name", "colors"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "code": {
+      "description": "Theme identifier referenced by a survey definition's `theme`.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string" },
+    "color_scheme": {
+      "description": "light (default) = single light appearance. light-dark = the runner also honours a dark appearance using colors.dark.",
+      "enum": ["light", "light-dark"]
+    },
+    "colors": {
+      "description": "Token values as CSS colors. Every key in `light` is required; `dark` may override any subset.",
+      "type": "object",
+      "required": ["light"],
+      "additionalProperties": false,
+      "properties": {
+        "light": { "$ref": "#/$defs/palette" },
+        "dark": { "$ref": "#/$defs/palette_partial" }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "heading_family": { "description": "CSS font-family stack for headings, question text and buttons.", "type": "string" },
+        "body_family": { "description": "CSS font-family stack for body copy.", "type": "string" },
+        "heading_weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+        "body_weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+        "tracking": { "description": "Global letter-spacing, e.g. \"0.02em\".", "type": "string" },
+        "base_size_px": { "description": "Body text size in px (minimum 16).", "type": "integer", "minimum": 16 },
+        "font_faces": {
+          "description": "Self-hosted faces declared as @font-face. `src` is a path relative to the theme directory (woff2 preferred).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["family", "src"],
+            "additionalProperties": false,
+            "properties": {
+              "family": { "type": "string" },
+              "src": { "type": "string" },
+              "weight": { "type": "string" },
+              "style": { "enum": ["normal", "italic"] },
+              "display": { "enum": ["swap", "block", "fallback", "optional"] }
+            }
+          }
+        },
+        "google_fonts": {
+          "description": "Google Fonts families to load (e.g. \"Hanken Grotesk:wght@400;500;700\"). Only used when the deployment permits third-party font loading.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "radius_card": { "type": "string" },
+        "radius_input": { "type": "string" },
+        "radius_button": { "type": "string" },
+        "radius_sheet": { "type": "string" },
+        "shadow": { "description": "Single soft shadow used on sticky footer and drawer.", "type": "string" }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "copy_alignment": { "enum": ["left", "center"] },
+        "content_max_width": { "type": "string" },
+        "immersive_intro": {
+          "description": "true = intro and completion screens use the primary color as a full-bleed ground with decorative shapes; false = same light surface as question screens.",
+          "type": "boolean"
+        },
+        "logo_placement": { "enum": ["top-left", "top-right"] }
+      }
+    },
+    "assets": {
+      "description": "Paths relative to the theme directory. Served by the runner under the theme's asset URL; never inlined into survey content.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logo": { "description": "Logo for light surfaces (SVG preferred).", "type": "string" },
+        "logo_on_primary": { "description": "Logo variant for use on the primary-color ground.", "type": "string" },
+        "favicon": { "type": "string" },
+        "decor": {
+          "description": "Decorative SVGs (aria-hidden) placed on immersive screens.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "description": "false = instant transitions regardless of user preference. Reduced-motion preference is always honoured.", "type": "boolean" }
+      }
+    },
+    "strings": {
+      "description": "Optional overrides of runner UI chrome strings, keyed by i18next key then language (e.g. {\"intro.start\": {\"en\": \"Start the survey\"}}). Survey content is never overridden here.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "patternProperties": { "^[a-z]{2}(-[A-Za-z]{2,4})?$": { "type": "string" } },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "color": { "type": "string", "minLength": 3 },
+    "palette": {
+      "type": "object",
+      "required": ["primary", "secondary", "accent", "ground", "surface", "tint", "ink", "ink_soft", "line", "error", "success"],
+      "additionalProperties": false,
+      "properties": {
+        "primary": { "description": "Primary brand color: primary buttons, headings, selected borders, immersive grounds.", "$ref": "#/$defs/color" },
+        "primary_deep": { "description": "Hover/pressed on primary. Derived from primary if omitted.", "$ref": "#/$defs/color" },
+        "on_primary": { "description": "Text/icons on primary. Default white.", "$ref": "#/$defs/color" },
+        "secondary": { "description": "Secondary emphasis: section eyebrows, decorative shapes.", "$ref": "#/$defs/color" },
+        "accent": { "description": "Progress fill, decorative shapes. Never used for small text.", "$ref": "#/$defs/color" },
+        "focus": { "description": "Focus ring. Defaults to accent.", "$ref": "#/$defs/color" },
+        "ground": { "description": "App background.", "$ref": "#/$defs/color" },
+        "surface": { "description": "Cards and inputs.", "$ref": "#/$defs/color" },
+        "tint": { "description": "Selected/hover fill and progress track.", "$ref": "#/$defs/color" },
+        "ink": { "description": "Body text.", "$ref": "#/$defs/color" },
+        "ink_soft": { "description": "Help text and captions.", "$ref": "#/$defs/color" },
+        "line": { "description": "Borders and dividers.", "$ref": "#/$defs/color" },
+        "error": { "$ref": "#/$defs/color" },
+        "success": { "$ref": "#/$defs/color" }
+      }
+    },
+    "palette_partial": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": { "$ref": "#/$defs/color" },
+        "primary_deep": { "$ref": "#/$defs/color" },
+        "on_primary": { "$ref": "#/$defs/color" },
+        "secondary": { "$ref": "#/$defs/color" },
+        "accent": { "$ref": "#/$defs/color" },
+        "focus": { "$ref": "#/$defs/color" },
+        "ground": { "$ref": "#/$defs/color" },
+        "surface": { "$ref": "#/$defs/color" },
+        "tint": { "$ref": "#/$defs/color" },
+        "ink": { "$ref": "#/$defs/color" },
+        "ink_soft": { "$ref": "#/$defs/color" },
+        "line": { "$ref": "#/$defs/color" },
+        "error": { "$ref": "#/$defs/color" },
+        "success": { "$ref": "#/$defs/color" }
+      }
+    }
+  }
+}

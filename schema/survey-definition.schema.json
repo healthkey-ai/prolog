@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/healthkey-ai/prolog/blob/main/schema/survey-definition.schema.json",
+  "title": "PROlog survey definition",
+  "description": "Declarative definition of one survey version: sections, ordered questions, options, per-type config, visibility rules, presentation and participation settings. One file per (survey, version). The runner renders it; the backend stores it verbatim as the immutable SurveyVersion definition. Schema version 1.",
+  "type": "object",
+  "required": ["slug", "version", "status", "default_language", "languages", "title", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": {
+      "description": "Definition format version this file targets. Omitted = 1.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "slug": {
+      "description": "Stable survey identity across versions.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "version": {
+      "description": "Version of this survey's content. New wording or structure = new version; responses stay bound to the version they answered.",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)*$"
+    },
+    "status": { "enum": ["draft", "active", "archived"] },
+    "default_language": { "$ref": "#/$defs/lang" },
+    "languages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lang" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "translation_status": {
+      "description": "Per non-default language: machine = machine-translated placeholder (must not be published), reviewed = approved by the survey owner's translators. A language without an entry is treated as reviewed only if it is the default language.",
+      "type": "object",
+      "patternProperties": { "^[a-z]{2}(-[A-Za-z]{2,4})?$": { "enum": ["machine", "reviewed"] } },
+      "additionalProperties": false
+    },
+    "title": { "$ref": "#/$defs/i18n" },
+    "intro": {
+      "description": "Participant-facing welcome text shown on the intro page.",
+      "$ref": "#/$defs/i18n"
+    },
+    "completion": {
+      "description": "Participant-facing text shown on the completion page after submission.",
+      "$ref": "#/$defs/i18n"
+    },
+    "estimated_minutes": { "type": "integer", "minimum": 1 },
+    "theme": {
+      "description": "Theme code resolved by the deployment (see theme.schema.json). Unknown or omitted = the runner's default theme.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "participation": { "$ref": "#/$defs/participation" },
+    "presentation": { "$ref": "#/$defs/presentation" },
+    "consent": { "$ref": "#/$defs/consent" },
+    "notes": {
+      "description": "Internal notes (not shown to respondents).",
+      "type": "string"
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/section" }
+    }
+  },
+  "$defs": {
+    "lang": { "type": "string", "pattern": "^[a-z]{2}(-[A-Za-z]{2,4})?$" },
+    "i18n": {
+      "description": "Localized text keyed by language code. The survey's default_language key is required; missing languages fall back to it.",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": { "^[a-z]{2}(-[A-Za-z]{2,4})?$": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$" },
+    "participation": {
+      "description": "Who may respond and how a respondent is identified.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anonymous": {
+          "description": "true = respondents need no account; the response id held by the browser is the only credential. false (default) = respondents must be authenticated by the host platform.",
+          "type": "boolean",
+          "default": false
+        },
+        "resume": {
+          "description": "How an in-progress response is resumed. browser_token (default for anonymous) = response id kept in browser storage; account = attached to the authenticated user; none = no resume.",
+          "enum": ["browser_token", "account", "none"]
+        },
+        "repeat": {
+          "description": "Optional repeat administration for invited (non-anonymous) participants.",
+          "type": "object",
+          "required": ["every", "unit", "start_date"],
+          "additionalProperties": false,
+          "properties": {
+            "every": { "type": "integer", "minimum": 1 },
+            "unit": { "enum": ["weeks", "months"] },
+            "start_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            "end_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            "use_current_version": {
+              "description": "true = each administration uses the then-published version; false (default) = the version scheduled.",
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "presentation": {
+      "description": "How the runner lays the instrument out. Defaults reproduce a one-question-per-screen wizard.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "question (default) = one question per screen; section = one section per screen.",
+          "enum": ["question", "section"]
+        },
+        "overview": {
+          "description": "Show the 'all questions' overview that lets a respondent jump back to any reachable question. Default true.",
+          "type": "boolean",
+          "default": true
+        },
+        "section_interstitials": {
+          "description": "Show a lightweight, data-free interstitial when entering a new section. Default true.",
+          "type": "boolean",
+          "default": true
+        },
+        "skip_policy": {
+          "description": "Applies to questions with required=true. soft (default) = one-time 'skip this question?' confirmation, then an explicit skip is recorded; hard = cannot advance unanswered; none = silent skip.",
+          "enum": ["soft", "hard", "none"]
+        },
+        "progress": {
+          "description": "Progress indicator style. Default bar.",
+          "enum": ["bar", "steps", "none"]
+        }
+      }
+    },
+    "consent": {
+      "description": "Versioned consent attestation shown before the first question. Recorded as an attestation, never as an answer.",
+      "type": "object",
+      "required": ["version", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "text": { "$ref": "#/$defs/i18n" },
+        "required": {
+          "description": "true (default) = the respondent must actively agree before starting.",
+          "type": "boolean",
+          "default": true
+        },
+        "privacy_url": { "type": "string" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["key", "title", "questions"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "title": { "$ref": "#/$defs/i18n" },
+        "description": { "$ref": "#/$defs/i18n" },
+        "visible_if": {
+          "description": "All conditions must hold (AND) for the whole section to be shown.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "questions": {
+          "description": "Presentation order within the section; sections themselves run in array order.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/question" }
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": ["key", "type", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Globally unique within the survey; answer records reference it.",
+          "$ref": "#/$defs/key"
+        },
+        "type": {
+          "description": "info = read-only text block (no answer). single/dropdown = one option. multi = many options. scale = one integer on a labelled scale. ranking = ordered options. matrix = one scale value per row. text/number/date/email = typed input.",
+          "enum": ["info", "single", "dropdown", "multi", "scale", "ranking", "matrix", "text", "number", "date", "email"]
+        },
+        "text": { "$ref": "#/$defs/i18n" },
+        "help": { "$ref": "#/$defs/i18n" },
+        "required": {
+          "description": "true (default) = subject to the survey's skip_policy. false = plainly optional, no nudge. Ignored for info.",
+          "type": "boolean",
+          "default": true
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/option" }
+        },
+        "visible_if": {
+          "description": "All conditions must hold (AND) for the question to be shown. Hiding a question invalidates its stored answer.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "config": { "$ref": "#/$defs/config" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["single", "multi", "ranking"] } } },
+          "then": { "required": ["options"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "scale" } } },
+          "then": { "required": ["config"], "properties": { "config": { "required": ["scale"] } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "matrix" } } },
+          "then": {
+            "required": ["config"],
+            "properties": {
+              "config": {
+                "required": ["scale"],
+                "anyOf": [{ "required": ["rows_from"] }, { "required": ["rows"] }]
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "dropdown" } } },
+          "then": {
+            "anyOf": [
+              { "required": ["options"] },
+              { "properties": { "config": { "required": ["options_source"] } } }
+            ]
+          }
+        }
+      ]
+    },
+    "option": {
+      "type": "object",
+      "required": ["key", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "label": { "$ref": "#/$defs/i18n" },
+        "exclusive": {
+          "description": "Selecting this option clears all others in a multi-select (e.g. \"I am not sure\").",
+          "type": "boolean",
+          "default": false
+        },
+        "free_text": {
+          "description": "Selecting this option reveals an inline text input stored as other_text (e.g. \"Other (free text)\").",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "required": ["question", "op"],
+      "additionalProperties": false,
+      "properties": {
+        "question": { "$ref": "#/$defs/key" },
+        "op": {
+          "description": "eq/neq: single-valued answer equals / does not equal value. in: single-valued answer is one of values. contains: multi-valued answer includes value. answered: question has a non-skipped answer.",
+          "enum": ["eq", "neq", "in", "contains", "answered"]
+        },
+        "value": { "type": "string" },
+        "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "op": { "enum": ["eq", "neq", "contains"] } } }, "then": { "required": ["value"] } },
+        { "if": { "properties": { "op": { "const": "in" } } }, "then": { "required": ["values"] } }
+      ]
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_selections": {
+          "description": "multi: \"Select up to N\".",
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_selections": {
+          "description": "multi: minimum picks for the answer to count as answered (default 1).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "options_source": {
+          "description": "dropdown: named built-in option list provided by the runner (inline options, if present, are appended after it).",
+          "enum": ["iso3166_countries"]
+        },
+        "scale": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "integer" },
+            "max": { "type": "integer" },
+            "min_label": { "$ref": "#/$defs/i18n" },
+            "max_label": { "$ref": "#/$defs/i18n" },
+            "point_labels": {
+              "description": "One label per point, min..max (used by matrix legends and labelled scales).",
+              "type": "array",
+              "items": { "$ref": "#/$defs/i18n" }
+            }
+          }
+        },
+        "rows_from": {
+          "description": "matrix: question key whose selected option keys become this question's rows (dynamic rows).",
+          "$ref": "#/$defs/key"
+        },
+        "rows": {
+          "description": "matrix: fixed rows.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["key", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "$ref": "#/$defs/key" },
+              "label": { "$ref": "#/$defs/i18n" }
+            }
+          }
+        },
+        "optional_items": {
+          "description": "ranking: option keys the respondent may leave out of the ranking (e.g. \"other\").",
+          "type": "array",
+          "items": { "$ref": "#/$defs/key" }
+        },
+        "max_length": {
+          "description": "text: character limit.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "multiline": {
+          "description": "text: render a multi-line textarea (default true when max_length > 200).",
+          "type": "boolean"
+        },
+        "min_value": { "description": "number: inclusive lower bound.", "type": "number" },
+        "max_value": { "description": "number: inclusive upper bound.", "type": "number" },
+        "integer": { "description": "number: whole numbers only.", "type": "boolean" },
+        "min_date": { "description": "date: inclusive lower bound, ISO 8601 date.", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "max_date": { "description": "date: inclusive upper bound, ISO 8601 date.", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "store_separately": {
+          "description": "email: contact capture. The address is persisted in a separate contact table with no link to the response, and is never returned by the API or included in answer exports.",
+          "type": "boolean"
+        },
+        "link_identity": {
+          "description": "email: identity capture. The address is sent to the host platform's identity service, which creates or finds a participant record; the response is linked to that record. Mutually exclusive with store_separately. Requires the integrated deployment profile.",
+          "type": "boolean"
+        }
+      },
+      "not": { "required": ["store_separately", "link_identity"] }
+    }
+  }
+}

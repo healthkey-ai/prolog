@@ -1,135 +1,231 @@
 # PROlog requirements
 
 **Status:** living draft  
-**Updated:** 2026-08-28  
-**Name:** PROlog (repository rename pending)
+**Updated:** 2026-08-29  
+**Companion:** [implementation-plan.md](implementation-plan.md) · [schema/survey-definition.schema.json](../schema/survey-definition.schema.json) · [schema/theme.schema.json](../schema/theme.schema.json)
+
+## Changes in this revision (2026-08-29)
+
+This revision reorders the product around a **runner-first** delivery and makes
+PROlog a neutral, reusable platform that private customer repositories build on.
+
+1. **Runner first, designer last.** The participant runner, driven by a
+   file-based survey definition, is the first deliverable. The designer/editor
+   is the final phase; until then, instruments are authored as JSON files.
+2. **Canonical survey definition schema.** The definition format is now part of
+   this repository (`schema/survey-definition.schema.json`). It is the frozen
+   snapshot stored on every published version and the contract for the runner.
+3. **Two deployment profiles.** *Standalone* (own PostgreSQL, anonymous
+   surveys, no clinical integration) and *integrated* (installed in PRomop,
+   participant identity and OMOP write-back). The runner must be fully
+   functional in standalone mode.
+4. **Theming.** The runner supports customer-specific UI themes selected per
+   survey, declared in `schema/theme.schema.json`, and mounted at deployment
+   without a rebuild of this repository.
+5. **Contact capture vs identity capture.** Two distinct optional email steps:
+   *contact capture* (address stored separately, never linked to the response)
+   and *identity capture* (address sent to the host platform to create/link a
+   participant record). A survey uses at most one of them.
+6. **Presentation modes and skip policy.** One-question-per-screen wizard with
+   an overview/jump-back panel and a soft-required skip policy are first-class,
+   configurable behaviours.
+7. **Neutrality.** This repository contains no customer content, branding, or
+   names. Reference instruments live in private repositories and are described
+   here only as capabilities.
 
 ## Purpose
 
-PROlog designs, publishes, runs, and analyses patient surveys. It has two
-experiences: a **designer** for authorised staff to compose versioned instruments
-and governed OMOP mappings, and a **runner** for participants to complete,
-save, resume, and submit them.
+PROlog designs, publishes, runs, and analyses participant surveys, with a focus
+on patient-reported outcomes. It has two experiences: a **runner** for
+participants to complete, save, resume, and submit an instrument, and — later —
+a **designer** for authorised staff to compose versioned instruments,
+translations, and governed OMOP mappings.
 
-This is not a separate clinical-data silo. Survey definitions, raw responses,
-optional mapping provenance, and any derived clinical facts are stored in the PRomop
-database/application (`~/promop`). PROlog is a Django/React application
-deployed with, or installed as an app in, PRomop.
+PROlog is a Django/React application. In its integrated profile it is deployed
+with, or installed as an app in, **PRomop** (`~/promop`) and links responses to
+PRomop's participant identity and OMOP CDM. In its standalone profile it runs
+against its own PostgreSQL database with no clinical integration.
 
 ## Reference inputs
 
-### FLF Global Patient Survey 2026, confidential draft v0.6
+### Reference instrument (private)
 
-The supplied document is the first content reference, not a final approved
-instrument. It proposes a Follicular Lymphoma survey in English, Spanish, and
-Portuguese with six sections. When a survey is configured to allow anonymous
-participation, a participant may complete and submit it without an existing
-PRomop identity:
+The first instrument to run on PROlog is a multilingual (three languages),
+anonymous, seven-section patient-experience survey of roughly 30 questions,
+owned by a patient-advocacy organisation and maintained in that organisation's
+private repository together with its brand theme. Its wording is the owner's
+content and is never reproduced here. The capabilities it requires are:
 
-1. Participant and FL journey.
-2. Treatment history and access.
-3. CAR-T and bispecific antibodies.
-4. Decision-making burden and support.
-5. Quality of life, treatment goals, and burden.
-6. Support gaps and FLF resources.
+- Anonymous participation with browser-side resume; no account.
+- One question per screen; back to any previously answered question at any
+  time; progress and section indicators.
+- Controls: searchable country dropdown, single choice, multi-select with
+  maximum-selection limits and exclusive options, inline "Other" free text,
+  1–5 labelled scales, ranking with optional items, a rating matrix whose rows
+  are the options selected in an earlier question, long free text, and an
+  optional email step at the end.
+- Declarative branching with server-side invalidation of downstream answers
+  when a gating answer changes.
+- Soft-required skip policy with explicit, analysable skips.
+- Machine-translated placeholder languages that must not be published until
+  reviewed.
+- A strong brand: custom palette, licensed typeface with fallback, decorative
+  shapes on intro/completion screens, left-aligned copy, light-only.
 
-It includes around 29 numbered questions/subquestions. Required controls are
-country dropdowns, single choice, multi-select with limits, 1–5 Likert scales,
-ranking, free text, conditional branching, and a conditional matrix for selected
-symptoms. Examples include access-delay causes after `Yes`, and watch-and-wait
-symptom questions after `Yes`. The first implementation must preserve supplied
-wording/options as content pending FLF approval; it must not reinterpret them
-clinically. For an anonymous survey, the instrument may present an optional
-email capture at either the beginning or the end, according to its approved
-survey design. Supplying an email is an identity-creation/linking action, not
-an ordinary survey answer: PRomop creates a new patient record and attaches the
-response and its approved OMOP-derived rows to that patient identity. Leaving
-it blank must neither block submission nor create a patient record. The email
-and the consent for this action require explicit privacy controls.
+Every item above is expressed below as a neutral requirement.
 
 ### HealthTree survey capability
 
-HealthTree establishes useful baseline behaviour: draft/active/archive lifecycle,
-multi-page wizard, non-persisting preview, autosave, started/completed timestamps,
-completion percentage, and consent handling. It stores answers in a mutable
-per-user Firestore document. PROlog retains the UX but uses normalized,
-versioned, immutable submissions for reliable longitudinal analysis, exports,
-and clinical provenance.
+HealthTree establishes useful baseline behaviour: draft/active/archive
+lifecycle, multi-step wizard, non-persisting preview, autosave,
+started/completed timestamps, completion percentage, and consent handling. It
+stores answers in a mutable per-user document. PROlog retains the UX but uses
+normalized, versioned, immutable submissions for reliable longitudinal
+analysis, exports, and clinical provenance.
+
+## Deployment profiles
+
+| ID | Requirement |
+| --- | --- |
+| DEP-1 | PROlog runs in two profiles selected by settings: **standalone** (own PostgreSQL schema, no dependency on any PRomop app or table) and **integrated** (installed as a reusable Django app inside PRomop, migrations applied by PRomop). |
+| DEP-2 | The participant-record link is pluggable: a `PROLOG_PARTICIPANT_MODEL` setting names the model responses may link to (PRomop `omop_core.Person` in integrated mode). When unset, responses have no participant link and identity capture is unavailable. |
+| DEP-3 | Survey definitions and themes are loaded from directories named in settings (`PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS`) and/or from the database. A customer repository provides its content by mounting those directories at deployment; no rebuild of PROlog is required. |
+| DEP-4 | The runner frontend is built once, brand-free; theme and survey content arrive at runtime from the API. |
+| DEP-5 | A single container image (backend + built runner) plus PostgreSQL is a complete standalone deployment. |
+| DEP-6 | There is no SQLite fallback in any profile. |
 
 ## Users and access
 
 | Role | Capability |
 | --- | --- |
-| Platform administrator | Roles, organisations, retention settings. |
-| Survey author | Draft questions, translations, routing, and preview. |
-| Clinical/data curator | Search concepts and define/test/retire mappings. |
-| Reviewer/approver | Approve a version or mapping for publication. |
+| Platform administrator | Roles, organisations, retention settings, theme and definition registration. |
+| Survey author | Draft questions, translations, routing, and preview (file-based until the designer ships). |
+| Clinical/data curator | Search concepts and define/test/retire mappings (integrated profile). |
+| Reviewer/approver | Approve a version, translation, or mapping for publication. |
 | Participant | Start, save, resume, and submit available surveys. |
 | Analyst | Export permitted de-identified data and mapping outcomes. |
 
-Use PRomop's existing identity and link responses to `omop_core.Person`; do
-not duplicate patient identity. Each survey explicitly selects whether
-anonymous participation is permitted. For an anonymous response, no `Person`
-link exists unless the participant opts to supply an email in the configured
-identity-capture step. PRomop then creates the patient record and links that
-same response to it. This is optional and must not turn other anonymous
-responses into pseudonymous records.
+In the integrated profile, use PRomop's existing identity and link responses
+to the configured participant model; do not duplicate participant identity.
+Each survey explicitly selects whether anonymous participation is permitted.
+For an anonymous response no participant link exists unless the survey uses
+identity capture and the participant opts in.
 
-## Functional requirements
+## Survey definition
 
-### Designer
+| ID | Requirement |
+| --- | --- |
+| DEF-1 | A survey version is fully described by one JSON document conforming to `schema/survey-definition.schema.json`: identity (`slug`, `version`, `status`), languages and translation status, intro/completion copy, optional consent, participation and presentation settings, theme code, and ordered sections → questions → options with per-type config and visibility rules. |
+| DEF-2 | Survey content is data, never code. Question and option text is never hard-coded in backend or frontend. |
+| DEF-3 | Definitions are versioned: any wording or structural change that responses must be interpreted against is a new `version`. Published versions are immutable; every response records the exact version presented. |
+| DEF-4 | At most one `active` version per `slug`. Activating a version archives the previous active one without altering historical responses. |
+| DEF-5 | All participant-facing text is an i18n object keyed by language, falling back to `default_language`. Each non-default language carries `translation_status` (`machine` or `reviewed`); a version may not be activated while any offered language is `machine`. |
+| DEF-6 | The backend validates a definition against the schema **and** against semantic rules on load: unique keys; `visible_if`, `rows_from` and option references resolve to earlier questions; no cycles; `max_selections` ≤ option count; `optional_items` are real options; at most one email capture question; `link_identity` only in integrated profile. |
+| DEF-7 | A `load_definition` management command registers or updates a definition file idempotently (draft) and can activate it; `validate_definition` runs DEF-6 without writing. |
+| DEF-8 | The definition stored on `SurveyVersion.definition` is byte-equivalent to the validated file (normalised JSON), so the runner, exports and mappings all read the same snapshot. |
+| DEF-9 | The schema is versioned (`schema_version`); the runner supports the current version and documents migrations for earlier ones. |
+
+## Runner
+
+### Eligibility, lifecycle, resume
+
+| ID | Requirement |
+| --- | --- |
+| RUN-1 | The runner shows only `active` versions within their effective dates that the participant may access. Anonymous surveys (`participation.anonymous = true`) need no account; the response id is the sole credential and is treated as a secret. |
+| RUN-2 | Starting a survey creates a response bound to the active version and the chosen language. |
+| RUN-3 | Resume: for `browser_token`, the response id is kept in browser storage and the intro page offers **Continue** / **Start again** (start again is confirmed and abandons the previous response); for `account`, the participant's in-progress response is resumed on sign-in. |
+| RUN-4 | Submission records server timestamps, marks the response immutable, and returns it read-only thereafter. Correction is a revision/new response, never an overwrite. |
+| RUN-5 | Repeat administration (`participation.repeat`) is available to invited, non-anonymous participants only: at each due date a new invitation is sent and a distinct response is created for the scheduled or then-active version. Off by default. |
+
+### Presentation and navigation
+
+| ID | Requirement |
+| --- | --- |
+| RUN-6 | `presentation.mode = question` (default) renders one question per screen; `section` renders one section per screen. Both share the same navigation model and validation. |
+| RUN-7 | Navigation walks the ordered list of **visible** questions computed by a pure function `(definition, answers) → visibleQuestions[]`, re-evaluated on every answer change. Newly revealed branch questions are inserted in order; hidden ones are removed. |
+| RUN-8 | The URL identifies the current question (`/s/{slug}/q/{key}`) so browser back/forward work. |
+| RUN-9 | An overview panel (`presentation.overview`) lists sections and visible questions with status (answered / skipped / current / unanswered / unreachable) and an answer summary; answered and reachable questions are navigable, future unreachable ones are inert. |
+| RUN-10 | Progress shows the section position ("Section 2 of 7") and a bar over visible questions, recomputed as branches open/close. |
+| RUN-11 | Optional data-free section interstitials (`presentation.section_interstitials`). |
+| RUN-12 | An intro page shows title, intro copy, estimated time, anonymity statement (when anonymous), language selector, consent (if defined), and Start/Continue. A completion page shows completion copy and, if configured at the end, the contact or identity capture step. |
+| RUN-13 | The "Next" control reads "Finish" on the last visible question; single-choice selection does **not** auto-advance. |
+
+### Answers, validation, branching
+
+| ID | Requirement |
+| --- | --- |
+| RUN-14 | Every answer is autosaved the moment the participant moves on or changes it (per-answer upsert), with optimistic UI, retry with backoff, a visible saved indicator, and forward navigation blocked only if saving ultimately fails. |
+| RUN-15 | The server validates each answer against the frozen definition: value shape per type, option keys, `max_selections`/`min_selections`, exclusive options, scale bounds, ranking completeness (except `optional_items`), matrix rows equal to the current source selection, text/number/date bounds, and visibility (an answer to a hidden question is rejected). The client mirrors these rules for UX but never replaces them. |
+| RUN-16 | Changing a gating answer invalidates hidden/downstream answers server-side (cascade): the affected answer rows are deleted (or, for a matrix, pruned to surviving rows) and the response returns `invalidated: [keys]` so the client can sync its cache. |
+| RUN-17 | Skip policy (`presentation.skip_policy`, default `soft`): advancing past an unanswered `required` question triggers a one-time confirmation; confirming stores an explicit skip `{"skipped": true}` distinct from "not reached". `required = false` questions skip silently. `hard` blocks advancing. Skipped questions remain revisitable. |
+| RUN-18 | Completion requires every visible question to have an answer row (value or explicit skip); otherwise the API returns the missing keys and the runner navigates to the first. |
+| RUN-19 | The language actually used is stored on the response; participants may switch language before starting, and mid-survey switching preserves answers. |
+
+### Question types and answer shapes
+
+| ID | Type | Control | Stored `value` |
+| --- | --- | --- | --- |
+| Q-1 | `info` | read-only text block | none |
+| Q-2 | `single` | radio cards; `free_text` option reveals inline input | `{"option": k, "other_text"?: s}` |
+| Q-3 | `dropdown` | searchable combobox; `options_source: iso3166_countries` provides a localized ISO 3166 list, inline options appended (e.g. "Prefer not to say") | `{"option": k}` |
+| Q-4 | `multi` | checkbox cards; counter for `max_selections`; at the limit remaining cards are inert; `exclusive` options clear others | `{"options": [k…], "other_text"?: s}` |
+| Q-5 | `scale` | segmented buttons `min..max` with endpoint or point labels | `{"value": n}` |
+| Q-6 | `ranking` | sortable list with drag **and** keyboard/button reorder; `optional_items` may be left unranked | `{"order": [k…], "other_text"?: s}` |
+| Q-7 | `matrix` | one row per fixed row or per option currently selected in `rows_from`; a segmented scale per row; legend once; rows stack vertically | `{"ratings": {row: n}}` |
+| Q-8 | `text` | input or textarea (`multiline`, `max_length`) | `{"text": s}` |
+| Q-9 | `number` | numeric input (`min_value`, `max_value`, `integer`) | `{"number": n}` |
+| Q-10 | `date` | date input (`min_date`, `max_date`) | `{"date": "YYYY-MM-DD"}` |
+| Q-11 | `email` | email input with the question's help copy in an info panel; equal-weight Skip | never stored as an answer — see CON-3/CON-4; the answer row records only `{"provided": true|false}` |
+| Q-12 | any | explicit skip | `{"skipped": true}` |
+
+### Consent, contact capture, identity capture
+
+| ID | Requirement |
+| --- | --- |
+| CON-1 | When a definition declares `consent`, participants must actively agree before the first question. The attestation is stored with the consent version and timestamp as a separate record, never as an answer. |
+| CON-2 | If a consent notice, intended use, or data-sharing term changes materially, participants are shown the updated notice and must agree before a future administration. Re-consent never changes or reopens consent for an already submitted response. |
+| CON-3 | **Contact capture** (`email` question with `store_separately: true`): the address is validated and stored in a contact table with the survey version and consent text shown, **without any reference to the response or its answers**. It is never returned by the API, never joined in exports, and never logged. Available in both profiles. |
+| CON-4 | **Identity capture** (`email` question with `link_identity: true`, integrated profile only, anonymous surveys): the address is validated and sent only to the host platform's approved participant-identity service; on success the response is linked to the returned participant record before any mapping execution. The email is not stored in answers, definition JSON, logs, exports, or telemetry. The call is idempotent so a retry cannot create duplicates; on failure the participant can still submit anonymously. |
+| CON-5 | A survey has at most one email capture question, placed at the start or end of the instrument by its position in the definition. Leaving it blank never blocks submission and never creates a record. |
+| CON-6 | Anonymous responses store no PII and no IP addresses; throttling uses hashed, short-lived keys. |
+
+## Theming
+
+| ID | Requirement |
+| --- | --- |
+| THM-1 | A theme is a directory containing `theme.json` (conforming to `schema/theme.schema.json`) and its assets (logo, decorative SVGs, self-hosted font files). PROlog ships one neutral theme, `themes/default`. |
+| THM-2 | Themes are registered from `PROLOG_THEME_DIRS` at startup and exposed by `GET /api/run/themes/{code}/`; assets are served under `/api/run/themes/{code}/assets/…` with long-lived caching. |
+| THM-3 | A survey selects a theme with its `theme` code; an unknown or missing code falls back to `default` and is logged. |
+| THM-4 | The runner applies a theme at load time by setting CSS custom properties (`--p-primary`, `--p-ground`, …), injecting `@font-face` rules for declared faces, and switching layout flags (`immersive_intro`, `copy_alignment`, `logo_placement`). Component styles reference tokens only; no component references a brand color directly. |
+| THM-5 | A theme may declare `light` only (light-only product) or `light-dark`; the runner honours `prefers-color-scheme` only for `light-dark` themes. |
+| THM-6 | Themes may override runner chrome strings (`strings`) per language but can never alter survey content. |
+| THM-7 | Theme changes must not require a frontend rebuild; a theme is validated on registration and rejected with a clear error if invalid. |
+| THM-8 | Accessibility is enforced independently of theme: minimum text size, focus ring visibility, and the requirement that `accent`/`secondary` are not used for small text are built into components, and a contrast check for `ink`/`primary` on `surface`/`ground` runs on theme registration (warning below 4.5:1). |
+
+## Designer (final phase)
 
 - Create surveys with title, stable code, description, audience/context,
-  effective dates, language, consent settings, and an anonymous-participation
-  setting.
-- For surveys that permit anonymous participation, configure an optional
-  identity-capture step at the start or end of the instrument. It must clearly
-  explain that an email creates a PRomop patient record and links the submitted
-  survey and any approved OMOP mappings to it.
-- Keep published versions immutable. A change makes a new draft; every response
-  retains the exact presented version.
-- Compose ordered pages/sections and information, single/multi-choice, short and
-  long text, number, date, Likert, ranking, and matrix questions.
-- Configure stable machine keys, validation, answer options, `Other` text,
-  selection limits, help text, and requiredness.
-- Configure prior-answer visibility/skip rules, including selected-answer
-  matrices; reject cycles and unreachable pages.
+  effective dates, languages, consent settings, theme, and an
+  anonymous-participation setting.
+- Compose ordered sections and information, single/multi-choice, short and
+  long text, number, date, scale, ranking, and matrix questions; configure
+  stable machine keys, validation, answer options, `Other` text, selection
+  limits, help text, and requiredness.
+- Configure prior-answer visibility rules, including selected-answer matrices;
+  reject cycles and unreachable questions.
 - Maintain separately reviewable translations keyed to canonical content.
 - Support non-persisting preview, review/approval, publication, pausing, and
   retirement without changing historical records.
+- Keep published versions immutable; a change creates a new draft.
+- The designer reads and writes the same definition JSON the runner consumes;
+  it is an editor over the schema, not a second model. Export/import of the
+  definition file must round-trip.
+- Configure optional repeat administration (interval, start, optional end,
+  version policy) for invited participants.
 
-### Runner
+## Optional mapping and OMOP write-back (integrated profile)
 
-- Show only published, in-date surveys the participant may access.
-- Offer page navigation, progress, accessible controls, server-side validation,
-  and conditional routing.
-- Autosave drafts and resume authenticated attempts.
-- Final submission records server timestamps and becomes immutable; correction
-  is a revision/new response, never an overwrite.
-- Capture required consent as a versioned attestation, not an ordinary answer.
-- If a consent notice, intended use, or data-sharing term changes materially,
-  participants must be shown the updated notice and actively agree to it before
-  a future survey administration. This re-consent requirement never changes or
-  reopens consent for an already submitted response.
-- Support optional repeat administration. A designer may schedule a published
-  survey to be presented to its invited participants every specified number of
-  weeks or months, with a start date and optional end date. At each due date,
-  the system sends a new invitation email containing that administration's
-  survey link. Each administration creates a distinct response linked to the
-  same survey version (or the then-published version, when explicitly selected
-  by the schedule), preserving longitudinal history. Repeat administration is
-  off by default and is not required for the FLF survey.
-- An anonymous participant may submit without an email. If they elect to
-  provide one, validate and send it only to PRomop's approved patient-identity
-  creation service; on success, attach the response to the newly created
-  `Person` before mapping execution. Email is not stored in `SurveyAnswer`,
-  response schema JSON, logs, analytics exports, or browser telemetry.
-- Store the language actually used; initial support is English, Spanish, and
-  Portuguese.
-
-### Optional mapping and OMOP write-back
-
-- Every response is retained in its original submitted form, whether or not it
+- Every response is retained in its original submitted form whether or not it
   has an OMOP mapping. Raw survey capture is the source record; mappings create
   additional derived representations and never replace, mutate, or discard the
   original answer.
@@ -144,109 +240,102 @@ responses into pseudonymous records.
   they are never applied automatically.
 - A mapping declares source fields, expression/version, target table/concept,
   value representation, event-date strategy, and rationale.
-- Mapping is optional at every level: a survey, question, option, or response
-  may have no mapping. It is not a publishing or submission prerequisite.
+- Mapping is optional at every level. It is not a publishing or submission
+  prerequisite.
 - Target standard OMOP `observation`, `note`, or `note_nlp` tables as
-  appropriate. `measurement` or other OMOP domains require explicit
-  governance before use. Every generated row must link to its
-  response, input answers, mapping version, and execution actor/job.
+  appropriate. `measurement` or other OMOP domains require explicit governance
+  before use. Every generated row must link to its response, input answers,
+  mapping version, and execution actor/job.
 - Evaluate approved mappings after submission (or explicitly on an approved
-  draft), idempotently. Record success, no-result, error, and superseded states.
-  A failure never loses raw answers.
+  draft), idempotently. Record success, no-result, error, and superseded
+  states. A failure never loses raw answers.
 - Example: a clinically approved calculation can transform wellbeing/function
   answers into an ECOG value. Its instrument, algorithm, concept/value
   convention, vocabulary release, and clinical approval must be retained.
 
-## Data model and PRomop ownership
+## Data model
 
-Create these new tables through PRomop Django migrations in a
-`prolog_surveys` app (or equivalent installed reusable app). They do not alter
-OMOP CDM tables for raw answers or configuration.
+Tables live in the `prolog_surveys` Django app. In the integrated profile they
+are created through PRomop migrations; in standalone they are created by
+PROlog's own project. They never alter OMOP CDM tables.
 
 | Entity | Purpose |
 | --- | --- |
-| `Survey` | Stable identity, lifecycle metadata, and anonymous-participation policy. |
-| `SurveyVersion` | Immutable instrument snapshot. |
-| `SurveyPage`, `SurveyQuestion`, `SurveyOption` | Ordered versioned structure and choices. |
-| `SurveyRule`, `SurveyTranslation` | Routing and reviewed localised content. |
-| `ConceptMapping` | Optional governed mapping expression, targets, concepts, status, and rationale. |
-| `SurveyResponse` | Participant attempt/submission; nullable FK to Person, populated if authenticated or if optional email created a patient record. |
-| `SurveyAnswer` | Typed raw answer, source option, and canonical composite JSON. |
-| `ResponseRevision`, `SurveyConsent` | Correction audit and consent attestation. |
-| `MappingExecution` | Idempotent run/outcome and produced OMOP-row provenance. |
+| `Survey` | Stable identity (`slug`), lifecycle metadata, theme code, anonymous-participation policy, effective dates. |
+| `SurveyVersion` | Immutable snapshot: `version`, `status`, `definition` JSON (DEF-8), `schema_version`, `published_at`. |
+| `SurveyQuestion`, `SurveyOption` | Materialised on publish from the definition (keys, types, order) to give mappings and analytics stable foreign keys. Read-only projections; the JSON stays authoritative. |
+| `SurveyResponse` | Attempt/submission: version FK, language, status, `started_at`, `submitted_at`, `last_question_key`, nullable participant FK (DEP-2), `identity_linked_at`. No IP, no PII. |
+| `SurveyAnswer` | Typed raw answer per (response, question key): `value` JSON as in Q-1…Q-12, selected option keys, `updated_at`. |
+| `SurveyConsent` | Consent attestation: response, consent version, text hash, timestamp. |
+| `SurveyContact` | Contact capture (CON-3): survey version, email, consent text shown, timestamp. **No response FK.** |
+| `ResponseRevision` | Correction audit for post-submission revisions. |
+| `SurveyInvitation`, `SurveyAdministration` | Invited participants and repeat-administration schedule/occurrences (RUN-5). |
+| `ConceptMapping`, `MappingExecution` | Optional governed mapping and idempotent execution provenance (integrated). |
 
-`SurveyAnswer` is authoritative raw capture: it retains the original submitted
-answer text/value, selected options, and a typed canonical value plus JSON for
-rankings/matrices. The version snapshot gives it immutable meaning. Mappings are
-separate, optional derived records. Do not store all answers only as opaque JSON
-or use a generic EAV table as the sole representation.
+`SurveyAnswer` is authoritative raw capture. Do not store all answers only as
+opaque JSON on the response or use a generic EAV table as the sole
+representation; one row per answered question with a typed JSON value and
+indexed option keys is the minimum.
 
-PRomop already provides `Person`, `Concept`, `Observation`, `Note`, and
-`NoteNlp`. PROlog uses foreign keys to those models as appropriate and uses
-PRomop's established clinical write path/provenance fields. Migration
-dependencies and app registration belong in `~/promop`, not in a parallel
-SQLite database.
+## API boundary
 
-The identity-capture payload is handled separately from survey answers. It is
-submitted over the same protected session but routed directly to PRomop's
-patient-record creation service; PROlog retains only the resulting `Person`
-link and a non-sensitive consent/audit outcome. It must be idempotent so a
-retry cannot create duplicate patient records. If record creation fails, the
-participant can still submit anonymously unless they choose to retry; raw
-answers are never discarded.
+Runner (anonymous surveys: the response UUID is the capability token; account
+surveys: session/JWT):
 
-## Architecture
+| Method & path | Purpose |
+| --- | --- |
+| `GET /api/run/surveys/{slug}/?lang=` | Active version's definition for the runner, localized, with theme code, ETag-cached. Internal `notes` stripped. |
+| `GET /api/run/themes/{code}/` and `/assets/{path}` | Theme document and assets (THM-2). |
+| `GET /api/run/options/{source}/?lang=` | Built-in option lists (ISO 3166). |
+| `POST /api/run/responses/` `{slug, language, consent?}` | Create response → `{id, version, …}`. |
+| `GET /api/run/responses/{id}/` | Status, language, all answers, visible-question list. |
+| `PUT /api/run/responses/{id}/answers/{key}/` | Upsert one answer (autosave). Validates (RUN-15), cascades (RUN-16), returns `{answer, invalidated}`. |
+| `POST /api/run/responses/{id}/submit/` | Complete (RUN-18). |
+| `POST /api/run/responses/{id}/contact/` `{email}` | Contact capture (CON-3). |
+| `POST /api/run/responses/{id}/identity/` `{email}` | Identity capture (CON-4). Never returns the email. |
 
-```text
-React designer / participant runner
-               │ HTTPS JSON API
-               ▼
-Django PROlog survey app (inside/alongside PRomop)
-               │
-  ┌────────────┴─────────────┐
-  ▼                          ▼
-PROlog survey tables     PRomop OMOP CDM tables
-definitions, original    Person, Concept, Observation,
-answers, rules, audit    Note, NoteNlp, …
-```
+Designer and curation (later phases): `GET/POST /api/surveys/`,
+`GET/PATCH /api/surveys/{id}/draft/`, `POST /api/survey-versions/{id}/preview/`,
+`/publish/`, `GET/POST /api/concepts/search/`, `/api/mappings/`.
 
-The browser never writes directly to the database or evaluates clinical mappings.
-The backend validates the frozen version, executes approved mappings, and audits
-every write.
-
-## Initial API boundary
-
-- `GET/POST /api/surveys/` — designer list/create.
-- `GET/PATCH /api/surveys/{id}/draft/` — edit unpublished version.
-- `POST /api/survey-versions/{id}/preview/`, `/publish/`.
-- `GET /api/run/surveys/{code}/` — eligible runner schema.
-- `POST/PATCH /api/responses/` — create/autosave; `POST .../submit/` finalises.
-- `POST /api/responses/{id}/identity/` — for a survey that permits anonymous
-  participation, optionally submit the consented email to PRomop to create a
-  patient record and link this response. The email is never returned by this
-  API.
-- `GET/POST /api/concepts/search/`, `/api/mappings/` — curator workflow.
-
-All endpoints require organisation-scoped object permissions, audit logging, and
-an API versioning strategy.
+All non-runner endpoints require organisation-scoped object permissions and
+audit logging. Runner endpoints are throttled per response id and per hashed
+client key. All endpoints carry an API version.
 
 ## Non-functional requirements
 
-- Protect sensitive data: least privilege, encryption, audit log, retention and
-  deletion policy, and no PHI in client telemetry.
-- Complete applicable privacy/consent review before launch.
-- Target WCAG 2.2 AA, including keyboard flow, labels/errors, focus management,
-  responsive design, and screen-reader-safe matrices.
-- Preserve reproducibility: instrument/mapping/calculation/vocabulary versions
-  and provenance are immutable.
-- Provide backups, monitoring, autosave conflict handling, and permitted export.
+| ID | Requirement |
+| --- | --- |
+| NFR-1 | Protect sensitive data: least privilege, encryption in transit and at rest, audit log, retention and deletion policy, no PHI or PII in client telemetry or server logs. |
+| NFR-2 | Complete applicable privacy/consent review before any customer launch. |
+| NFR-3 | WCAG 2.2 AA: real `fieldset`/`legend` groups, ≥44 px targets, visible focus, keyboard-operable ranking with live announcements, `lang` attribute per language, no information by colour alone, `prefers-reduced-motion` honoured. |
+| NFR-4 | Reproducibility: instrument, theme, mapping, calculation, and vocabulary versions are immutable and recorded. |
+| NFR-5 | Backups, monitoring, autosave conflict handling (last-write-wins per answer with `updated_at`), and permitted export (CSV: one row per response, one column per question, multi-selects exploded, matrix rows exploded; contacts exported separately). |
+| NFR-6 | Text expansion: layouts tolerate ~30 % longer strings than the default language. |
+| NFR-7 | Runner performance: definition and theme cached with ETags; first meaningful paint under 2 s on a mid-range mobile over 3G; answer save round-trip under 300 ms p95 on the reference deployment. |
+| NFR-8 | Automated tests: schema/semantic validation, per-type answer validation, branching cascade, navigation model (pure functions), theme application, and end-to-end happy path plus both branch directions. |
 
 ## Delivery sequence
 
-1. Confirm PRomop installation, auth, tenancy, patient-record creation service,
-   anonymous mode, and deployment.
-2. Add PRomop migrations plus definition/version/response/audit APIs.
-3. Build runner, then designer and preview.
-4. Enter/review FLF content, translations, and routing tests.
-5. Add mapping review, concept search, and write-back.
-6. Validate accessibility, privacy, security, export, and clinical correctness.
+See [implementation-plan.md](implementation-plan.md). In summary:
+
+1. Neutral scaffold, deployment profiles, definition schema and loader.
+2. Response engine API (create, autosave, cascade, submit, contact).
+3. Runner core (intro, wizard, navigation, simple question types, resume).
+4. Complex question types (ranking, dynamic matrix, limits, exclusives).
+5. Theming.
+6. i18n, accessibility, export, hardening, first customer launch on the
+   standalone profile.
+7. Integrated profile: participant link, identity capture, repeat
+   administration.
+8. Designer and preview.
+9. Mapping review, concept search, OMOP write-back.
+
+## Open decisions
+
+| # | Decision | Recommendation |
+| --- | --- | --- |
+| 1 | Should the first customer launch use the standalone profile (own database, no PRomop)? | Yes; it is anonymous and needs no clinical integration. Integration remains available later without data migration because the schema is the same. |
+| 2 | Package boundary: publish `prolog_surveys` as an installable Python package plus a versioned runner bundle, or consume by git tag? | Git tag + container image for the first launch; package later. |
+| 3 | Who may register themes and definitions in production: file mount only, or also an admin upload? | File mount only until the designer ships. |
+| 4 | Should the standalone profile offer a *linked* contact option (email stored with explicit consent and a reference to the response, so a future administration can be pre-filled) in addition to unlinked contact capture (CON-3)? | Not in the first release: an anonymous survey should stay anonymous. If a customer confirms they want linked storage, add it as a third email mode (`link_contact`) with its own consent text and a separate table, and revisit the anonymity statement in the intro. |

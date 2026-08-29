@@ -1,16 +1,37 @@
 # PROlog
 
-PROlog is a survey designer and runner for patient-reported outcomes. Its Django
-application is intended to run alongside **PRomop**; React provides the designer
-and participant experience.
+PROlog is a generic, customer-agnostic survey platform for patient-reported
+outcomes. Its **runner** executes any survey described by the declarative
+definition in [`schema/survey-definition.schema.json`](schema/survey-definition.schema.json),
+styled by a runtime **theme** ([`schema/theme.schema.json`](schema/theme.schema.json)),
+and runs either standalone against its own PostgreSQL database or installed as
+a Django app inside **PRomop**. A **designer** for authoring instruments is the
+final phase.
 
-The evolving product requirements are in [docs/requirements.md](docs/requirements.md).
+- Requirements: [docs/requirements.md](docs/requirements.md)
+- Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
+- Working agreements: [CLAUDE.md](CLAUDE.md)
 
 ## Layout
 
-- `backend/` — Django project and reusable survey app.
-- `frontend/` — React/Vite interface.
-- `docs/` — requirements and integration decisions.
+- `schema/` — survey definition and theme contracts (JSON Schema 2020-12).
+- `themes/default/` — the neutral built-in theme.
+- `backend/` — Django project and the reusable `prolog_surveys` app.
+- `frontend/` — React/Vite runner (designer later).
+- `docs/` — requirements, plan, integration decisions.
 
-The backend intentionally has no SQLite fallback. Configure it to use the PRomop
-database, and install its app in the PRomop Django project before migrating.
+Customer instruments and brand themes are **not** part of this repository.
+A customer repository holds its definition JSON and theme directory and mounts
+them into a PROlog deployment (`PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS`);
+see the plan, §5.
+
+## Branches
+
+`dev` is the default working branch; `main` is release-ready. Both are
+protected: changes land only via pull requests.
+
+## Database
+
+There is no SQLite fallback. Standalone deployments use their own PostgreSQL
+database; integrated deployments use PRomop's database and apply migrations
+from the PRomop project.
