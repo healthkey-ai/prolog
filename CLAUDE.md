@@ -2,8 +2,9 @@
 
 Generic, customer-agnostic survey platform for patient-reported outcomes: a
 participant **runner** driven by a declarative survey definition (JSON), themed
-per deployment, deployable standalone or inside PRomop. A **designer** comes
-last. This repository is **public**.
+per deployment, installed as a Django app inside **PRomop**, which owns the
+database (revision 2026-08-31 — there is no PROlog datastore). A **designer**
+comes last. This repository is **public**.
 
 ## Source-of-truth documents (read before product/design decisions)
 
@@ -39,8 +40,18 @@ last. This repository is **public**.
   `styles/tokens.css` only; brand values come from a theme at runtime. No hex
   colours in components.
 - **No PII in anonymous flows.** No IP addresses or emails on responses, in
-  logs, exports, or telemetry. Contact capture is stored unlinked; identity
-  capture goes only to the configured identity service.
+  logs, exports, or telemetry. Identity capture (the default) sends the address
+  only to the host's identity service, which creates the account for the person
+  the response is already bound to; PROlog never persists the address. Contact
+  capture (`store_separately`) remains for mailing-list-only instruments.
+- **Every response has a person.** A response is always bound to a PRomop
+  `Person` (DEP-2, RUN-2); "anonymous" means that person carries nothing that
+  could name them, not that no record exists. Never add a path that creates a
+  response without one.
+- **Don't call an instrument anonymous on the deployment's behalf.** The runner
+  renders the anonymity statement the definition supplies; an instrument that
+  creates accounts from an email is not anonymous for those participants and
+  its copy must say so (CON-8).
 - **Runner first, designer last.** Do not start designer work before the
   runner phases in the plan are complete.
 
@@ -91,9 +102,9 @@ skill (`high --fix <base>...<head>`) from this directory in a loop and:
 - **Fix every confirmed finding**, not only the top-10 the skill reports —
   including the cleanup / reuse / simplification / efficiency angles. A pass
   that leaves a "confirmed but below the cap" tail does not converge.
-- **Verify before committing**: backend pytest in both profiles (standalone,
-  and integrated with `POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated
-  PROLOG_PARTICIPANT_MODEL=auth.User`), ruff, `tsc -b`,
+- **Verify before committing**: backend pytest against the app's own harness
+  (`PROLOG_PARTICIPANT_MODEL=auth.User` — a test fixture standing in for
+  PRomop's `omop_core.Person`, not a deployment profile), ruff, `tsc -b`,
   vitest, Playwright (twice if anything looked flaky). One commit per pass,
   pushed to the PR branch.
 - **Convergence**: stop when a pass returns only items already decided below,

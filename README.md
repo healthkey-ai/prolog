@@ -4,14 +4,14 @@ PROlog is a generic, customer-agnostic survey platform for patient-reported
 outcomes. Its **runner** executes any survey described by the declarative
 definition in [`schema/survey-definition.schema.json`](schema/survey-definition.schema.json),
 styled by a runtime **theme** ([`schema/theme.schema.json`](schema/theme.schema.json)),
-and runs either standalone against its own PostgreSQL database or installed as
-a Django app inside **PRomop**. A **designer** for authoring instruments is the
-final phase.
+and installs as a Django app inside **PRomop**, which owns the database: every
+response is bound to a PRomop `Person`, and a participant who gives an email
+gets an account. A **designer** for authoring instruments is the final phase.
 
 - Requirements: [docs/requirements.md](docs/requirements.md)
 - Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
 - Deployment and operations: [docs/deployment.md](docs/deployment.md)
-- Integrated profile (inside a host platform): [docs/integration.md](docs/integration.md)
+- Installing in a host platform: [docs/integration.md](docs/integration.md)
 - Manuals: [survey definition](docs/definitions/survey-definition.md) · [theme](docs/definitions/theme-definition.md)
 - Working agreements: [CLAUDE.md](CLAUDE.md)
 

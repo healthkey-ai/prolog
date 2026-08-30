@@ -1,10 +1,43 @@
 # PROlog requirements
 
 **Status:** living draft  
-**Updated:** 2026-08-29  
+**Updated:** 2026-08-31  
 **Companion:** [implementation-plan.md](implementation-plan.md) · [schema/survey-definition.schema.json](../schema/survey-definition.schema.json) · [schema/theme.schema.json](../schema/theme.schema.json)
 
-## Changes in this revision (2026-08-29)
+## Changes in this revision (2026-08-31)
+
+PROlog stops being a system of record. **PRomop is the database**; PROlog is the
+survey layer over it.
+
+1. **No PROlog database.** PROlog is a Django app installed inside PRomop and
+   its tables are created in PRomop's database by PRomop's migrations. There is
+   no separate PROlog datastore, no standalone schema, and nothing to migrate or
+   reconcile between the two. Surveys, versions, questions, options, responses
+   and answers are all PRomop data (DEP-1, DEP-5, Data model).
+2. **Every response belongs to a person.** A response is always bound to a
+   PRomop `Person`. Where no person is known, PROlog creates one carrying no
+   identifying attributes. "Anonymous" therefore means *a person record nobody
+   can put a name to*, not *no record at all* (DEP-2, RUN-2, CON-6).
+3. **An email creates a patient account.** When a participant supplies an
+   address at an email question, the host creates (or finds) an `Identity` and
+   `PatientUser` for the `Person` the response is already bound to, promoting
+   that person from unidentified to identified in place. The account is the
+   point of the question — it is what lets the participant come back, see their
+   own data, and be asked less next time (CON-4, CON-7).
+4. **Unlinked contact capture is no longer the default answer** to "may we
+   email you?". CON-3 remains available for instruments that genuinely want a
+   mailing list with no record behind it, but it is now the exception, and a
+   deployment must choose it deliberately.
+5. **Anonymity statements must be written for what actually happens.** An
+   instrument that creates an account from an email is not anonymous for the
+   participants who give one, and its intro, consent and privacy copy have to
+   say so. This is a documentation requirement on every deployment, not a
+   runtime toggle (CON-8).
+
+Superseded: open decisions #1 and #4 below; the standalone profile; the
+"first standalone launch" framing of phase 6 in the implementation plan.
+
+## Changes in the 2026-08-29 revision
 
 This revision reorders the product around a **runner-first** delivery and makes
 PROlog a neutral, reusable platform that private customer repositories build on.
@@ -41,10 +74,11 @@ participants to complete, save, resume, and submit an instrument, and — later 
 a **designer** for authorised staff to compose versioned instruments,
 translations, and governed OMOP mappings.
 
-PROlog is a Django/React application. In its integrated profile it is deployed
-with, or installed as an app in, **PRomop** (`~/promop`) and links responses to
-PRomop's participant identity and OMOP CDM. In its standalone profile it runs
-against its own PostgreSQL database with no clinical integration.
+PROlog is a Django/React application installed as an app inside **PRomop**,
+which owns the database. PROlog contributes the survey tables to PRomop's
+schema, binds every response to a PRomop `Person`, and — where a participant
+asks for an account — uses PRomop's identity service to give that person one.
+It holds no data of its own and has no datastore that can drift from PRomop's.
 
 ## Reference inputs
 
@@ -83,16 +117,17 @@ handling. It stores answers in a mutable per-user document. PROlog retains
 the UX but uses normalized, versioned, immutable submissions for reliable
 longitudinal analysis, exports, and clinical provenance.
 
-## Deployment profiles
+## Deployment
 
 | ID | Requirement |
 | --- | --- |
-| DEP-1 | PROlog runs in two profiles selected by settings: **standalone** (own PostgreSQL schema, no dependency on any PRomop app or table) and **integrated** (installed as a reusable Django app inside PRomop, migrations applied by PRomop). |
-| DEP-2 | The participant-record link is pluggable: a `PROLOG_PARTICIPANT_MODEL` setting names the model responses may link to (PRomop `omop_core.Person` in integrated mode). When unset, responses have no participant link and identity capture is unavailable. |
+| DEP-1 | PROlog is installed as a reusable Django app (`prolog_surveys`) inside PRomop. **PRomop's database is the only database**: PROlog's tables are created by PRomop's migrations, in PRomop's schema, alongside the OMOP CDM tables. PROlog defines no datastore of its own and no second copy of any record. |
+| DEP-2 | Every response is linked to a participant record in the host: `PROLOG_PARTICIPANT_MODEL` names the model (PRomop `omop_core.Person`) and the link is **not nullable in normal operation**. Where the participant is not known, PROlog obtains one from the host's participant service rather than storing an unattached response (RUN-2). |
 | DEP-3 | Survey definitions and themes are loaded from directories named in settings (`PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS`) and/or from the database. A customer repository provides its content by mounting those directories at deployment; no rebuild of PROlog is required. |
 | DEP-4 | The runner frontend is built once, brand-free; theme and survey content arrive at runtime from the API. |
-| DEP-5 | A single container image (backend + built runner) plus PostgreSQL is a complete standalone deployment. |
-| DEP-6 | There is no SQLite fallback in any profile. |
+| DEP-5 | A deployment is PRomop with `prolog_surveys` installed and a definition/theme directory mounted: one image, one database, one migration chain. A survey-only deployment is PRomop configured to expose nothing but the runner — still PRomop, still its database. |
+| DEP-6 | There is no SQLite fallback. |
+| DEP-7 | PROlog never writes to OMOP CDM clinical tables directly. It reads and creates `Person` rows through the host's participant service, and any clinical representation of an answer is produced by governed mapping (Mapping section), never as a side effect of capture. |
 
 ## Users and access
 
@@ -159,8 +194,8 @@ changed answer.
 
 | ID | Requirement |
 | --- | --- |
-| RUN-1 | The runner shows only `active` versions within their effective dates that the participant may access. Anonymous surveys (`participation.anonymous = true`) need no account; the response id is the sole credential and is treated as a secret. |
-| RUN-2 | Starting a survey creates a response bound to the active version and the chosen language. |
+| RUN-1 | The runner shows only `active` versions within their effective dates that the participant may access. Anonymous surveys (`participation.anonymous = true`) need no account; the response id is the sole credential and is treated as a secret. Anonymous here means the participant is not identified — the response is still bound to a person record (RUN-2), one carrying nothing that could name them. |
+| RUN-2 | Starting a survey creates a response bound to the active version, the chosen language, and a participant record. For a signed-in participant that is their own `Person`; otherwise PROlog asks the host's participant service for a new `Person` with no identifying attributes and binds the response to it. A response is never created without one (DEP-2). |
 | RUN-3 | Resume: for `browser_token`, the response id is kept in browser storage and the intro page offers **Continue** / **Start again** (start again is confirmed and abandons the previous response); for `account`, the participant's in-progress response is resumed on sign-in. |
 | RUN-4 | Submission records server timestamps, marks the response immutable, and returns it read-only thereafter. Correction is a revision/new response, never an overwrite. |
 | RUN-5 | Repeat administration (`participation.repeat`) is available to invited, non-anonymous participants only: at each due date a new invitation is sent and a distinct response is created for the scheduled or then-active version. Off by default. |
@@ -212,10 +247,12 @@ changed answer.
 | --- | --- |
 | CON-1 | When a definition declares `consent`, participants must actively agree before the first question. The attestation is stored with the consent version and timestamp as a separate record, never as an answer. |
 | CON-2 | If a consent notice, intended use, or data-sharing term changes materially, participants are shown the updated notice and must agree before a future administration. Re-consent never changes or reopens consent for an already submitted response. |
-| CON-3 | **Contact capture** (`email` question with `store_separately: true`): the address is validated and stored in a contact table with the survey version and consent text shown, **without any reference to the response or its answers**. It is never returned by the API, never joined in exports, and never logged. Available in both profiles. |
-| CON-4 | **Identity capture** (`email` question with `link_identity: true`, integrated profile only, anonymous surveys): the address is validated and sent only to the host platform's approved participant-identity service; on success the response is linked to the returned participant record before any mapping execution. The email is not stored in answers, definition JSON, logs, exports, or telemetry. The call is idempotent so a retry cannot create duplicates; on failure the participant can still submit anonymously. |
+| CON-3 | **Contact capture** (`email` question with `store_separately: true`): the address is validated and stored in a contact table with the survey version and consent text shown, **without any reference to the response or its answers**. It is never returned by the API, never joined in exports, and never logged. This is the exception, not the default (CON-4): it produces a mailing list and nothing else — no account, no way for the participant to reach their own data, and no way to honour a later access or erasure request about their answers. A deployment choosing it should be able to say why. |
+| CON-4 | **Identity capture** (`email` question with `link_identity: true`) is the default way to ask for an address. The address is validated and sent only to the host's approved identity service, which creates or finds an account (in PRomop: an `Identity` and a `PatientUser`) for the `Person` the response is **already** bound to — promoting that person from unidentified to identified in place, with no data moved and no second record created. The email is not stored in answers, definition JSON, logs, exports, or telemetry; PROlog keeps only `identity_linked_at` and an answer row recording `{"provided": true}`. The call is idempotent per response, so a retry cannot create duplicates; on failure the response stays unidentified and submission is unaffected. |
 | CON-5 | A survey has at most one email capture question, placed at the start or end of the instrument by its position in the definition. Leaving it blank never blocks submission and never creates a record. |
-| CON-6 | Anonymous responses store no PII and no IP addresses; throttling uses hashed, short-lived keys. |
+| CON-6 | Unidentified responses store no PII and no IP addresses; the `Person` they are bound to carries no identifying attribute until an account is created. Throttling uses hashed, short-lived keys. |
+| CON-7 | Account creation is a participant's choice and never a condition of answering. Leaving the email question blank, or skipping it, submits the response exactly as it stands and leaves the person unidentified. Nothing about the instrument, its questions, or its completion changes based on whether an account exists. |
+| CON-8 | A deployment must describe, in the instrument's intro and consent copy, what actually happens to the participant's data — including that giving an email creates an account against which their answers are held, when the instrument does that. PROlog will not describe an instrument as anonymous on the deployment's behalf: the runner renders the anonymity statement the definition supplies, and it is the deployment's responsibility that the statement is true. |
 
 ## Theming
 
@@ -283,19 +320,20 @@ changed answer.
 
 ## Data model
 
-Tables live in the `prolog_surveys` Django app. In the integrated profile they
-are created through PRomop migrations; in standalone they are created by
-PROlog's own project. They never alter OMOP CDM tables.
+Tables are declared by the `prolog_surveys` Django app and live in **PRomop's
+database**, created by PRomop's migrations alongside the OMOP CDM tables. There
+is no PROlog database. The app adds tables; it never alters OMOP CDM tables, and
+clinical representations of answers are produced only by governed mapping.
 
 | Entity | Purpose |
 | --- | --- |
 | `Survey` | Stable identity (`slug`), lifecycle metadata, theme code, anonymous-participation policy, effective dates. |
 | `SurveyVersion` | Immutable snapshot: `version`, `status`, `definition` JSON (DEF-8), `schema_version`, `published_at`. |
 | `SurveyQuestion`, `SurveyOption` | Materialised on publish from the definition (keys, types, order) to give mappings and analytics stable foreign keys. Read-only projections; the JSON stays authoritative. |
-| `SurveyResponse` | Attempt/submission: version FK, language, status, `started_at`, `submitted_at`, `last_question_key`, nullable participant FK (DEP-2), `identity_linked_at`. No IP, no PII. |
+| `SurveyResponse` | Attempt/submission: version FK, language, status, `started_at`, `submitted_at`, `last_question_key`, **participant FK (DEP-2) — always set**, `identity_linked_at` (null until an account exists). No IP, no PII. |
 | `SurveyAnswer` | Typed raw answer per (response, question key): `value` JSON as in Q-1…Q-12, selected option keys, `updated_at`. |
 | `SurveyConsent` | Consent attestation: response, consent version, text hash, timestamp. |
-| `SurveyContact` | Contact capture (CON-3): survey version, email, consent text shown, timestamp. **No response FK.** |
+| `SurveyContact` | Contact capture (CON-3) only — the exception path: survey version, email, consent text shown, timestamp. **No response FK.** Identity capture (CON-4) writes nothing here; the address goes to the host's identity service and is never persisted by PROlog. |
 | `ResponseRevision` | Correction audit for post-submission revisions. |
 | `SurveyInvitation`, `SurveyAdministration` | Invited participants and repeat-administration schedule/occurrences (RUN-5). |
 | `ConceptMapping`, `MappingExecution` | Optional governed mapping and idempotent execution provenance (integrated). |
@@ -315,12 +353,12 @@ surveys: session/JWT):
 | `GET /api/run/surveys/{slug}/?lang=` | Active version's definition for the runner, localized, with theme code, ETag-cached. Internal `notes` stripped. |
 | `GET /api/run/themes/{code}/` and `/assets/{path}` | Theme document and assets (THM-2). |
 | `GET /api/run/options/{source}/?lang=` | Built-in option lists (ISO 3166). |
-| `POST /api/run/responses/` `{slug, language, consent?}` | Create response → `{id, version, …}`. |
+| `POST /api/run/responses/` `{slug, language, consent?}` | Create response, obtaining or creating the participant `Person` it binds to (RUN-2) → `{id, version, …}`. The person id is never returned to an unauthenticated runner. |
 | `GET /api/run/responses/{id}/` | Status, language, all answers, visible-question list. |
 | `PUT /api/run/responses/{id}/answers/{key}/` | Upsert one answer (autosave). Validates (RUN-15), cascades (RUN-16), returns `{answer, invalidated}`. |
 | `POST /api/run/responses/{id}/submit/` | Complete (RUN-18). |
 | `POST /api/run/responses/{id}/contact/` `{email}` | Contact capture (CON-3). |
-| `POST /api/run/responses/{id}/identity/` `{email}` | Identity capture (CON-4). Never returns the email. |
+| `POST /api/run/responses/{id}/identity/` `{email}` | Identity capture (CON-4): the host creates or finds the account for the response's existing person. Never returns the email or the person id. |
 
 Designer and curation (later phases): `GET/POST /api/surveys/`,
 `GET/PATCH /api/surveys/{id}/draft/`, `POST /api/survey-versions/{id}/preview/`,
@@ -352,9 +390,8 @@ See [implementation-plan.md](implementation-plan.md). In summary:
 3. Runner core (intro, wizard, navigation, simple question types, resume).
 4. Complex question types (ranking, dynamic matrix, limits, exclusives).
 5. Theming.
-6. i18n, accessibility, export, hardening, first customer launch on the
-   standalone profile.
-7. Integrated profile: participant link, identity capture, repeat
+6. i18n, accessibility, export, hardening, first customer launch.
+7. Accounts: identity capture and account creation, consent, repeat
    administration.
 8. Designer and preview.
 9. Mapping review, concept search, OMOP write-back.
@@ -363,7 +400,9 @@ See [implementation-plan.md](implementation-plan.md). In summary:
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| 1 | Should the first customer launch use the standalone profile (own database, no PRomop)? | Yes; it is anonymous and needs no clinical integration. Integration remains available later without data migration because the schema is the same. |
+| 1 | ~~Should the first customer launch use the standalone profile?~~ | **Superseded 2026-08-31.** There is no standalone profile. Every deployment is PRomop with `prolog_surveys` installed, and every response is bound to a `Person` in PRomop's database. The trade this accepts: PROlog is no longer independently deployable, and a customer who wants surveys without an OMOP store now takes PRomop anyway. Revisit only if such a customer appears. |
 | 2 | Package boundary: publish `prolog_surveys` as an installable Python package plus a versioned runner bundle, or consume by git tag? | Git tag + container image for the first launch; package later. |
 | 3 | Who may register themes and definitions in production: file mount only, or also an admin upload? | File mount only until the designer ships. |
-| 4 | Should the standalone profile offer a *linked* contact option (email stored with explicit consent and a reference to the response, so a future administration can be pre-filled) in addition to unlinked contact capture (CON-3)? | Not in the first release: an anonymous survey should stay anonymous. If a customer confirms they want linked storage, add it as a third email mode (`link_contact`) with its own consent text and a separate table, and revisit the anonymity statement in the intro. |
+| 4 | ~~Should there be a *linked* contact option in addition to unlinked contact capture?~~ | **Superseded 2026-08-31.** Linked is the default and it is stronger than the third mode once contemplated: an address creates a real account (CON-4), not a row with a foreign key. What the old recommendation warned about still holds and is now a requirement rather than a caveat — an instrument that does this is not anonymous for those participants, and its intro and consent copy must say so (CON-8). |
+| 5 | Where does the `Person` for an unidentified response come from — created eagerly when the response is created, or lazily at first answer? | Eagerly, at response creation: it keeps the participant FK non-null everywhere (DEP-2) and avoids a second code path. The cost is a `Person` row per abandoned attempt, which the abandoned-response retention job must now clean up as well (NFR-1). |
+| 6 | Should an account created from an email question be usable immediately, or only after the participant confirms the address? | Open. Immediate use is friendlier and matches the flow that motivated this; confirmation is safer against typos and against someone entering another person's address, which would attach a stranger's account to answers they did not give. Leaning to: create the account, but treat the address as unverified until confirmed, and refuse to expose any existing data to it until then. |
