@@ -15,15 +15,42 @@ describe("IntroPage", () => {
   it("shows the create failure from 'Start again' although the resume card is still on screen", async () => {
     const server = runnerServer();
     server.on("POST", "/responses/", { status: 429, body: { detail: "throttled" } });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     m = mount(`/s/${SLUG}`);
     await m.flush();
     expect(m.$("resume-card")).not.toBeNull();
     click(m.$("start-again"));
     await m.flush();
+    click(m.$doc("start-again-confirm"));
+    await m.flush();
     expect(server.of("POST", "/responses/")).toHaveLength(1);
     expect(m.$("resume-card")).not.toBeNull();
     expect(m.$("create-error")?.textContent).toContain(t("app.throttled"));
+  });
+
+  it("confirms 'Start again' in an alert dialog, not a browser confirm box", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const server = runnerServer();
+    m = mount(`/s/${SLUG}`);
+    await m.flush();
+    expect(m.$doc("start-again-dialog")).toBeNull();
+
+    click(m.$("start-again"));
+    await m.flush();
+    const dialog = m.$doc("start-again-dialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.getAttribute("role")).toBe("alertdialog");
+    expect(dialog?.textContent).toContain(t("intro.startAgainConfirm"));
+    // Cancelling discards nothing.
+    click(m.$doc("start-again-cancel"));
+    await m.flush();
+    expect(server.of("POST", "/responses/")).toHaveLength(0);
+
+    click(m.$("start-again"));
+    await m.flush();
+    click(m.$doc("start-again-confirm"));
+    await m.flush();
+    expect(server.of("POST", "/responses/")).toHaveLength(1);
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 
   it("shows the create failure from 'Start a new response' on a submitted response", async () => {

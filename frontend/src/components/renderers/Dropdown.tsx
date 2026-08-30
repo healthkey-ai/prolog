@@ -14,10 +14,15 @@ export function Dropdown({ question, value, onChange, language }: RendererProps<
   const { t } = useTranslation();
   const source = question.config?.options_source;
   const remote = useOptionsSource(source, language);
-  const options = useMemo(
-    () => [...(remote.data?.options ?? []), ...(question.options ?? []).map((o) => ({ key: o.key, label: o.label as string }))],
-    [remote.data, question.options],
-  );
+  // options_source_include restricts the source list (a survey that only covers
+  // some countries); inline options are unaffected. The engines enforce the
+  // same restriction, so this is presentation, not validation.
+  const include = question.config?.options_source_include;
+  const options = useMemo(() => {
+    const allowed = include && new Set(include);
+    const remoteOptions = (remote.data?.options ?? []).filter((o) => !allowed || allowed.has(o.key));
+    return [...remoteOptions, ...(question.options ?? []).map((o) => ({ key: o.key, label: o.label as string }))];
+  }, [remote.data, question.options, include]);
   const selected = options.find((o) => o.key === value?.option);
   const [open, setOpen] = useState(false);
   // Without the remote list the participant could only pick the inline

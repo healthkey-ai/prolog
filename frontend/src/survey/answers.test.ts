@@ -175,3 +175,25 @@ describe("dynamic matrix rows (questions map contents)", () => {
     expect(() => validateAnswer(q, { ratings: { none: 1 } }, answers, { questions })).toThrow(/questions map/);
   });
 });
+
+describe("options_source_include", () => {
+  const source = new Set(["DE", "FR", "US", "GB"]);
+  const dropdown = {
+    key: "country",
+    type: "dropdown",
+    text: "Country",
+    options: [{ key: "prefer_not", label: "Prefer not to say" }],
+    config: { options_source: "iso3166_countries", options_source_include: ["DE", "FR"] },
+  } as unknown as Question;
+
+  it("accepts an included key and refuses an excluded one (mirrors answers.py)", () => {
+    expect(validateAnswer(dropdown, { option: "DE" }, {}, { sourceOptions: source })).toEqual({ option: "DE" });
+    expect(() => validateAnswer(dropdown, { option: "US" }, {}, { sourceOptions: source })).toThrow();
+  });
+
+  it("leaves inline options and an unrestricted source alone", () => {
+    expect(validateAnswer(dropdown, { option: "prefer_not" }, {}, { sourceOptions: source })).toEqual({ option: "prefer_not" });
+    const open = { ...dropdown, config: { options_source: "iso3166_countries" } } as unknown as Question;
+    expect(validateAnswer(open, { option: "US" }, {}, { sourceOptions: source })).toEqual({ option: "US" });
+  });
+});

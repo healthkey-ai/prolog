@@ -38,6 +38,8 @@ export interface QuestionConfig {
   max_selections?: number;
   min_selections?: number;
   options_source?: string;
+  /** Restrict `options_source` to these keys; the runner offers and accepts no others. */
+  options_source_include?: string[];
   scale?: ScaleConfig;
   rows_from?: string;
   rows?: { key: string; label: Text }[];

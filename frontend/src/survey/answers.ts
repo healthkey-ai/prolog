@@ -8,6 +8,7 @@ import {
   type AnswerValue,
   type Answers,
   type Question,
+  type QuestionConfig,
   type SkipPolicy,
   exclusiveKeys,
   freeTextKeys,
@@ -153,6 +154,21 @@ export interface ValidateOptions {
   questions?: Record<string, Question>;
 }
 
+/**
+ * The option-source keys a dropdown accepts, honouring `options_source_include`.
+ *
+ * A definition may restrict a built-in source to part of its list (a survey
+ * that only covers some countries). Mirrors source_keys in answers.py, where
+ * the restriction is authoritative.
+ */
+export function sourceKeys(cfg: QuestionConfig, sourceOptions: ReadonlySet<string> | undefined): ReadonlySet<string> {
+  const keys = sourceOptions ?? new Set<string>();
+  const include = cfg.options_source_include;
+  if (!include) return keys;
+  const allowed = new Set(include);
+  return new Set([...keys].filter((k) => allowed.has(k)));
+}
+
 export function validateAnswer(
   q: Question,
   raw: unknown,
@@ -172,7 +188,7 @@ export function validateAnswer(
     const option = raw.option;
     if (typeof option !== "string" || !option) fail("option_required");
     const allowed = new Set(optionKeys(q));
-    if (q.type === "dropdown" && cfg.options_source) for (const k of opts.sourceOptions ?? []) allowed.add(k);
+    if (q.type === "dropdown" && cfg.options_source) for (const k of sourceKeys(cfg, opts.sourceOptions)) allowed.add(k);
     if (!allowed.has(option)) fail("option_unknown", { option });
     return { option, ...otherText(raw, q, [option]) };
   }
