@@ -88,7 +88,11 @@ def test_vector(vector_path: Path):
 
     questions = question_by_key(definition)
     for case in vector.get("reject", []):
-        with pytest.raises(AnswerError):
+        label = f"{case['key']} {case['value']}"
+        # The code is the contract (the runner maps it to a message): a vector
+        # that only proved "something threw" would not keep the engines in lockstep.
+        assert isinstance(case.get("code"), str), f"{label}: reject vectors need an expected code"
+        with pytest.raises(AnswerError) as exc:
             validate_answer(
                 questions[case["key"]],
                 case["value"],
@@ -97,6 +101,7 @@ def test_vector(vector_path: Path):
                 source_options=ISO_KEYS,
                 questions=questions,
             )
+        assert exc.value.codes == [case["code"]], label
 
     for case in vector.get("accept", []):
         value = validate_answer(
@@ -298,3 +303,46 @@ def test_text_answers_have_an_absolute_cap():
     q["config"] = {"max_length": 10 * MAX_TEXT_LENGTH}
     with pytest.raises(AnswerError):
         validate_answer(q, {"text": "a" * (MAX_TEXT_LENGTH + 1)}, {})
+
+
+def test_text_limit_applies_to_the_stripped_value():
+    """'  abc  ' stores 'abc', so it is 'abc' that max_length 3 must measure."""
+    q = {"key": "t", "type": "text", "text": {"en": "t"}, "config": {"max_length": 3}}
+    assert validate_answer(q, {"text": "  abc  "}, {}) == {"text": "abc"}
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"text": "abcd"}, {})
+    assert exc.value.codes == ["text_too_long"]
+
+
+def test_exclusive_option_alone_satisfies_min_selections():
+    q = {
+        "key": "m",
+        "type": "multi",
+        "text": {"en": "m"},
+        "config": {"min_selections": 2},
+        "options": [
+            {"key": "a", "label": {"en": "a"}},
+            {"key": "b", "label": {"en": "b"}},
+            {"key": "none", "label": {"en": "none"}, "exclusive": True},
+        ],
+    }
+    assert validate_answer(q, {"options": ["none"]}, {}) == {"options": ["none"]}
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"options": ["none", "a"]}, {})
+    assert exc.value.codes == ["exclusive_combined"]
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"options": ["a"]}, {})
+    assert exc.value.codes == ["min_selections"]
+
+
+def test_rows_from_matrix_requires_the_questions_map():
+    """Without the source question an exclusive selection would become a row."""
+    definition = load_definition("sample-wellbeing.json")
+    questions = question_by_key(definition)
+    matrix = questions["symptom_impact"]
+    answers = {"has_symptoms": {"option": "yes"}, "symptoms": {"options": ["none"]}}
+    with pytest.raises(ValueError, match="questions map"):
+        validate_answer(matrix, {"ratings": {"none": 3}}, answers)
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(matrix, {"ratings": {"none": 3}}, answers, questions=questions)
+    assert exc.value.codes == ["matrix_no_rows"]

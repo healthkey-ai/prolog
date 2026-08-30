@@ -131,14 +131,21 @@ def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
     writer = csv.writer(out)
     writer.writerow(["survey", "version", "email", "language", "captured_on"])
     n = 0
-    for c in SurveyContact.objects.filter(survey_version=version).order_by("captured_on", "email"):
+    contacts = (
+        SurveyContact.objects.filter(survey_version=version)
+        .order_by("captured_on", "email")
+        .values_list("email", "language", "captured_on")
+    )
+    # Streamed like the responses: a long-running instrument holds as many
+    # contacts as submitted responses.
+    for email, language, captured_on in contacts.iterator(chunk_size=1000):
         writer.writerow(
             [
                 version.survey.slug,
                 version.version,
-                safe_cell(c.email),
-                c.language,
-                c.captured_on.isoformat(),
+                safe_cell(email),
+                language,
+                captured_on.isoformat(),
             ]
         )
         n += 1

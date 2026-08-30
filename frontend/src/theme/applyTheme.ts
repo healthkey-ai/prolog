@@ -8,19 +8,24 @@ import type { Palette, Theme } from "./types";
 
 const STYLE_ID = "prolog-theme";
 const FONTS_ID = "prolog-theme-fonts";
+const ICON_ID = "prolog-theme-icon";
 
 /** Theme values land inside a `<style>` block; keep them to a single declaration. */
 const cssValue = (v: string | number): string => String(v).replace(/[;{}<>]/g, "");
 
 const TOKEN_KEYS: (keyof Palette)[] = ["primary", "primary_deep", "on_primary", "secondary", "accent", "focus", "ground", "surface", "tint", "ink", "ink_soft", "line", "error", "success"];
 
-export function paletteVariables(p: Partial<Palette>): string {
+/** The palette with its derived tokens filled in (`primary_deep`, `on_primary`, `focus`). */
+export function paletteValues(p: Partial<Palette>): Partial<Palette> {
+  return { ...p, primary_deep: p.primary_deep ?? p.primary, on_primary: p.on_primary ?? (p.primary ? "#ffffff" : undefined), focus: p.focus ?? p.accent };
+}
+
+/** Custom-property declarations for `values`; with `except`, only those that differ from it. */
+export function paletteVariables(values: Partial<Palette>, except: Partial<Palette> = {}): string {
   const lines: string[] = [];
-  const primaryDeep = p.primary_deep ?? p.primary;
-  const values: Partial<Palette> = { ...p, primary_deep: primaryDeep, on_primary: p.on_primary ?? (p.primary ? "#ffffff" : undefined), focus: p.focus ?? p.accent };
   for (const key of TOKEN_KEYS) {
     const v = values[key];
-    if (v) lines.push(`  --p-${key.replace(/_/g, "-")}: ${cssValue(v)};`);
+    if (v && v !== except[key]) lines.push(`  --p-${key.replace(/_/g, "-")}: ${cssValue(v)};`);
   }
   return lines.join("\n");
 }
@@ -29,7 +34,8 @@ export function themeCss(theme: Theme): string {
   const t = theme.typography ?? {};
   const s = theme.shape ?? {};
   const l = theme.layout ?? {};
-  const root: string[] = [paletteVariables(theme.colors.light)];
+  const light = paletteValues(theme.colors.light);
+  const root: string[] = [paletteVariables(light)];
   const push = (name: string, value: string | number | undefined) => {
     if (value !== undefined && value !== null && value !== "") root.push(`  --p-${name}: ${cssValue(value)};`);
   };
@@ -53,9 +59,12 @@ export function themeCss(theme: Theme): string {
     )
     .join("\n");
 
+  // Dark may override any subset: its derived tokens come from the effective
+  // (light + dark) palette, so an explicit light `on_primary` is not replaced
+  // by the white default, and only what changes is repeated.
   const dark =
     theme.color_scheme === "light-dark" && theme.colors.dark
-      ? `@media (prefers-color-scheme: dark) {\n:root {\n${paletteVariables(theme.colors.dark)}\n}\n}`
+      ? `@media (prefers-color-scheme: dark) {\n:root {\n${paletteVariables(paletteValues({ ...theme.colors.light, ...theme.colors.dark }), light)}\n}\n}`
       : "";
   const motion = theme.motion?.enabled === false ? `*, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }` : "";
   return `${faces}\n:root {\n${root.join("\n")}\n}\n${dark}\n${motion}`.trim();
@@ -104,14 +113,19 @@ export function applyTheme(theme: Theme, doc: Document = document): void {
   }
   meta.content = theme.color_scheme === "light-dark" ? "light dark" : "light";
 
+  const existingIcon = doc.getElementById(ICON_ID);
   if (theme.assets?.favicon) {
-    let icon = doc.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    let icon = existingIcon as HTMLLinkElement | null;
     if (!icon) {
       icon = doc.createElement("link");
+      icon.id = ICON_ID;
       icon.rel = "icon";
       doc.head.appendChild(icon);
     }
     icon.href = theme.assets.favicon;
+  } else {
+    // A theme without a favicon must not keep the previous survey's.
+    existingIcon?.remove();
   }
 
   addStrings(theme.strings ?? {});

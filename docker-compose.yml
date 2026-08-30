@@ -4,8 +4,12 @@ services:
     environment:
       POSTGRES_DB: prolog
       POSTGRES_USER: prolog
-      POSTGRES_PASSWORD: prolog
-    ports: ["5432:5432"]
+      # No default: a fixed public password on a published port would expose
+      # every response. Set it in .env (see .env.example).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Loopback only: the app reaches db over the compose network; the host
+    # mapping exists for local tools (psql, pytest against this database).
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U prolog"]
@@ -23,7 +27,7 @@ services:
       POSTGRES_HOST: db
       POSTGRES_DB: prolog
       POSTGRES_USER: prolog
-      POSTGRES_PASSWORD: prolog
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       # Compose interpolates every service, profile or not, so `:?` here would
       # also block the db-only `docker compose up -d`; an unset or placeholder
       # key is refused by settings.py instead, and the container exits at start.
@@ -31,10 +35,15 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8000}
       PROLOG_PUBLIC_URL: ${PROLOG_PUBLIC_URL:-http://localhost:8000}
-      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-false}
+      # On, as documented for DEBUG=false. Behind a TLS-terminating proxy set
+      # PROLOG_NUM_PROXIES=1 so X-Forwarded-Proto is trusted (else it loops);
+      # set false only to try the image over plain HTTP on localhost.
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-true}
       PROLOG_CLIENT_KEY_SALT: ${PROLOG_CLIENT_KEY_SALT:-${SECRET_KEY}}
       CONN_MAX_AGE: ${CONN_MAX_AGE:-60}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+      # Local zone for calendar dates (effective windows, due dates, captured_on).
+      TIME_ZONE: ${TIME_ZONE:-UTC}
       # Operational settings from .env (compose only substitutes ${...}; it does
       # not pass .env into the container by itself).
       PROLOG_NUM_PROXIES: ${PROLOG_NUM_PROXIES:-0}
@@ -46,6 +55,7 @@ services:
       CACHE_BACKEND: ${CACHE_BACKEND:-django.core.cache.backends.locmem.LocMemCache}
       CACHE_LOCATION: ${CACHE_LOCATION:-prolog}
       PROLOG_ABANDONED_RESPONSE_DAYS: ${PROLOG_ABANDONED_RESPONSE_DAYS:-90}
+      DATA_UPLOAD_MAX_MEMORY_SIZE: ${DATA_UPLOAD_MAX_MEMORY_SIZE:-262144}
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       PROLOG_EMAIL_FROM: ${PROLOG_EMAIL_FROM:-surveys@example.org}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

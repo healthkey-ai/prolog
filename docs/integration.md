@@ -27,13 +27,18 @@ PROLOG_CLIENT_KEY_SALT = "<a long random secret>"  # hashes client keys for thro
 REST_FRAMEWORK = {
     ...,
     # Throttle scopes (defaults in prolog_surveys.conf.THROTTLE_RATES apply when omitted)
-    "DEFAULT_THROTTLE_RATES": {"run.read": "1200/hour", "run.create": "30/hour", "run.capture": "30/hour", "run.answer": "600/hour"},
+    "DEFAULT_THROTTLE_RATES": {"run.read": "1200/hour", "run.create": "30/hour", "run.capture": "30/hour", "run.answer": "600/hour", "run.write": "3000/hour"},
     "NUM_PROXIES": 1,  # reverse proxies whose X-Forwarded-For is trusted for the client address
 }
 ```
 
 `urls.py`: `path("api/", include("prolog_surveys.urls"))` and, if the host
 serves the runner, the catch-all `runner_index` view.
+
+The host project's `TIME_ZONE` governs every calendar date the app takes:
+a survey's `effective_from`/`effective_to`, the due dates of repeat
+schedules and the daily `send_due_invitations` cycle, and contacts'
+`captured_on`. Set it to the deployment's local zone.
 
 ### CSRF
 
@@ -64,6 +69,12 @@ these two columns; `makemigrations --check` passes in both profiles.
 The dependency is the participant app's *first* migration (the same
 convention as `AUTH_USER_MODEL`), so the participant model must exist from
 that migration on.
+
+Switching the profile *after* `migrate` leaves `0005_participant` recorded
+as applied while the participant columns are missing. The database system
+check `prolog_surveys.E002` detects that and fails `migrate` /
+`check --database default` with the remedy: `migrate prolog_surveys 0004
+--fake --skip-checks`, then `migrate` again.
 
 ## Participant resolver (account surveys, RUN-3)
 
@@ -126,14 +137,18 @@ never altered.
   the due `SurveyAdministration` rows and emails
   `PROLOG_PUBLIC_URL/s/<slug>?invite=<administration id>` using the
   `prolog_surveys/email/invitation.{txt,html}` templates (override them in
-  the host project to brand them).
+  the host project to brand them). Runs are serialised with a PostgreSQL
+  advisory lock: a second run started while one is in progress exits with
+  a notice and sends nothing.
 - The administration id in the link is the credential: it opens the
   survey, creates the response bound to the scheduled (or then-active)
   version and the invited participant, and re-opening the link resumes it.
   Each administration yields a distinct response, preserving history.
 - To withdraw an invitation, set `active = False` (admin or code): its links
   stop opening the survey and the responses they started become
-  inaccessible to the link holder (403). Prefer that over deleting the
+  inaccessible to the link holder (403). An invited participant who is
+  signed in keeps (and, with `resume: "account"`, resumes) their own
+  response; only the links are revoked. Prefer that over deleting the
   invitation, which cascades to its administrations and leaves any
   in-progress response orphaned (unlinked, but still stored until the
   abandoned-response purge).

@@ -1,9 +1,15 @@
 {
   "definition": "sample-wellbeing.json",
-  "description": "Complete run with skips, an optional ranking item left out, a fixed matrix and a declined contact step.",
+  "description": "Complete run with skips (including a soft-policy skip of a required question, which completion counts as answered), an optional ranking item left out, a fixed matrix and a declined contact step.",
   "steps": [
     { "answer": { "key": "country", "value": { "option": "GB" } }, "expect": { "invalidated": [] } },
-    { "answer": { "key": "age_band", "value": { "option": "30_49" } }, "expect": {} },
+    {
+      "answer": { "key": "age_band", "value": { "skipped": true } },
+      "expect": {
+        "answers_subset": { "age_band": { "skipped": true } },
+        "missing": ["birth_year", "last_visit", "overall", "has_symptoms", "daily_activities", "outcome_ranking", "support_wanted", "anything_else", "contact_email"]
+      }
+    },
     { "answer": { "key": "birth_year", "value": { "skipped": true } }, "expect": {} },
     { "answer": { "key": "last_visit", "value": { "date": "2025-05-01" } }, "expect": {} },
     { "answer": { "key": "overall", "value": { "value": 4 } }, "expect": {} },

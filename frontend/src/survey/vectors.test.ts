@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateAnswer } from "./answers";
+import { AnswerError, type AnswerIssue, validateAnswer } from "./answers";
 import { applyCascade } from "./cascade";
 import { missingKeys, progress } from "./completion";
 import type { Answers, Definition } from "./types";
@@ -19,6 +19,8 @@ interface Case {
   given?: Answers;
   key: string;
   value: unknown;
+  /** reject: the one rejection code both engines must emit. */
+  code?: string;
   canonical?: unknown;
 }
 interface Retained {
@@ -87,7 +89,18 @@ describe("shared engine vectors", () => {
       const questions = questionByKey(def);
       const opts = { skipPolicy: def.presentation?.skip_policy, sourceOptions: SOURCE_OPTIONS, questions };
       for (const c of vector.reject ?? []) {
-        expect(() => validateAnswer(questions[c.key], c.value, c.given ?? {}, opts), `${c.key} ${JSON.stringify(c.value)}`).toThrow();
+        const label = `${c.key} ${JSON.stringify(c.value)}`;
+        // The code is the contract (it is what the runner maps to a message), so
+        // a vector that only proved "something threw" would not keep the engines in lockstep.
+        expect(c.code, `${label}: reject vectors need an expected code`).toBeTypeOf("string");
+        let issues: AnswerIssue[] = [];
+        try {
+          validateAnswer(questions[c.key], c.value, c.given ?? {}, opts);
+        } catch (e) {
+          if (!(e instanceof AnswerError)) throw e;
+          issues = e.issues;
+        }
+        expect(issues.map((i) => i.code), label).toEqual([c.code]);
       }
       for (const c of vector.accept ?? []) {
         const value = validateAnswer(questions[c.key], c.value, c.given ?? {}, opts);

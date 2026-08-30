@@ -18,5 +18,20 @@ export default function globalSetup() {
   const dir = mkdtempSync(join(tmpdir(), "prolog-e2e-"));
   const themedPath = join(dir, "sample-themed.json");
   writeFileSync(themedPath, JSON.stringify(themed));
+  // Idempotent on a reused local database: an active version refuses a changed
+  // source, so the two sample surveys (and their test responses) are recreated
+  // from source on every run. Nothing else in the database is touched.
+  const slugs = "['sample-wellbeing', 'sample-themed']";
+  const reset = [
+    "from prolog_surveys import models as m",
+    `m.SurveyResponse.objects.filter(survey_version__survey__slug__in=${slugs}).delete()`,
+    `m.SurveyContact.objects.filter(survey_version__survey__slug__in=${slugs}).delete()`,
+    `m.SurveyAdministration.objects.filter(invitation__survey__slug__in=${slugs}).delete()`,
+    `m.SurveyInvitation.objects.filter(survey__slug__in=${slugs}).delete()`,
+    `m.SurveyQuestion.objects.filter(survey_version__survey__slug__in=${slugs}).delete()`,
+    `m.SurveyVersion.objects.filter(survey__slug__in=${slugs}).delete()`,
+    `m.Survey.objects.filter(slug__in=${slugs}).delete()`,
+  ].join("; ");
+  execSync(`uv run python manage.py shell -c "${reset}"`, { cwd: backend, stdio: "inherit" });
   execSync(`uv run python manage.py load_definition "${example}" "${themedPath}" --activate`, { cwd: backend, stdio: "inherit" });
 }

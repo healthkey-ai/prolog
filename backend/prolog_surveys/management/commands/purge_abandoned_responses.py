@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from ... import conf
@@ -21,8 +21,15 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         days = options["days"]
+        source = "--days"
         if days is None:
             days = conf.get("PROLOG_ABANDONED_RESPONSE_DAYS")
+            source = "PROLOG_ABANDONED_RESPONSE_DAYS"
+        # With 0 the cutoff is now (a negative value puts it in the future):
+        # every in-progress response, including those being answered at this
+        # moment, would match and be deleted.
+        if not isinstance(days, int) or days < 1:
+            raise CommandError(f"{source} must be an integer of at least 1, got {days!r}")
         cutoff = timezone.now() - timedelta(days=days)
         qs = SurveyResponse.objects.filter(status=ResponseStatus.IN_PROGRESS, updated_at__lt=cutoff)
         if options["dry_run"]:

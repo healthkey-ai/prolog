@@ -56,8 +56,8 @@ jobs:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 } # release tags, for the append-only migrations guard
       - uses: astral-sh/setup-uv@v6
-        with: { enable-cache: true }
-      - run: uv sync --frozen
+        with: { version: "0.12.7", enable-cache: true }
+      - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run python manage.py makemigrations --check --dry-run
@@ -85,10 +85,47 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
-        with: { enable-cache: true }
-      - run: uv sync --frozen
+        with: { version: "0.12.7", enable-cache: true }
+      - run: uv sync --locked
       - run: uv run python manage.py makemigrations --check --dry-run
       - run: uv run pytest --create-db
+
+  # The image is the only deployment artifact (DEP-5): build it and start it
+  # once against PostgreSQL so the deployment-only paths (uv sync without dev
+  # deps, collectstatic under DEBUG=false, migrate + load_definitions + gunicorn)
+  # break here rather than on a customer's host. Nothing is pushed.
+  docker:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      SMOKE_ENV: >-
+        -e SECRET_KEY=ci-only-secret-key-with-more-than-fifty-characters-0123456789
+        -e POSTGRES_HOST=localhost -e POSTGRES_DB=prolog -e POSTGRES_USER=prolog -e POSTGRES_PASSWORD=prolog
+        -e ALLOWED_HOSTS=localhost,127.0.0.1 -e SECURE_SSL_REDIRECT=false
+        -e EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f docker/Dockerfile -t prolog:ci .
+      - name: Deployment checks run as the image's unprivileged user
+        run: |
+          docker run --rm $SMOKE_ENV prolog:ci sh -c 'test "$(id -u)" != 0'
+          docker run --rm $SMOKE_ENV prolog:ci python manage.py check --deploy
+      - name: Start chain (migrate, load_definitions, gunicorn) and health probe
+        run: |
+          docker run -d --name app --network host             -v "$PWD/examples/deploy/surveys:/data/surveys:ro" -v "$PWD/examples/deploy/themes:/data/themes:ro"             $SMOKE_ENV prolog:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/api/health/; then exit 0; fi
+            sleep 2
+          done
+          echo "health probe never answered"; docker logs app; exit 1
+      - if: always()
+        run: docker logs app || true
 
   frontend:
     runs-on: ubuntu-latest
@@ -121,8 +158,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
-        with: { enable-cache: true }
-      - run: cd backend && uv sync --frozen
+        with: { version: "0.12.7", enable-cache: true }
+      - run: cd backend && uv sync --locked
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: cd frontend && npm ci

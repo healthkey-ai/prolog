@@ -1,3 +1,5 @@
-<p>You are invited to complete: <strong>{{ title }}</strong></p>
-<p><a href="{{ link }}">Open your survey</a></p>
-<p style="color:#666;font-size:90%">This link is personal to you. If you did not expect this email, you can ignore it.</p>
+<div lang="{{ language }}">
+<p>{{ t.intro }} <strong>{{ title }}</strong></p>
+<p><a href="{{ link }}">{{ t.open }}</a></p>
+<p style="color:#666;font-size:90%">{{ t.footer }}</p>
+</div>

@@ -58,3 +58,9 @@ def canonical_json(doc: dict[str, Any]) -> str:
 
 def checksum(doc: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_json(doc).encode("utf-8")).hexdigest()
+
+
+def source_checksum(definition: dict[str, Any]) -> str:
+    """Digest of the authored document (``$schema`` aside), independent of the
+    defaults ``normalize`` fills in: the loader's identity for "unchanged"."""
+    return checksum({k: v for k, v in definition.items() if k != "$schema"})

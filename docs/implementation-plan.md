@@ -110,7 +110,7 @@ prolog/
 │       ├── theme/                      # theme loader → CSS variables, font faces
 │       ├── i18n/                       # runner chrome strings en (+ customer languages via theme.strings)
 │       └── styles/tokens.css           # token names only; values come from the theme
-├── docker/                             # Dockerfile (backend + built runner), compose
+├── docker/Dockerfile                   # backend + built runner (docker-compose.yml is at the root)
 ├── docs/
 └── CLAUDE.md
 ```
@@ -140,11 +140,12 @@ Goal: a clean, brand-free, correctly-pinned skeleton that runs standalone.
   string resolved at model definition time); migrations for the standalone
   profile omit it. Integrated migrations are generated inside PRomop (DEP-2).
 - Frontend scaffold: Vite 8 + React 19 + TS 7 + Tailwind 4 (`@tailwindcss/vite`)
-  + shadcn init + React Query + React Router + i18next. Strict TS, ESLint,
-  Prettier, Vitest.
-- GitHub Actions: backend (ruff, mypy, pytest with Postgres service),
-  frontend (tsc, eslint, vitest), schema validation of `examples/*.json` and
-  `themes/*/theme.json`.
+  + shadcn init + React Query + React Router + i18next. Strict TS, Vitest.
+- GitHub Actions (`.github/workflows/ci.yml`, mirrored by the `Makefile`):
+  backend (ruff check/format, `makemigrations --check`, append-only
+  migrations guard, pytest with a Postgres service, in both profiles),
+  frontend (tsc, vitest, build), Playwright e2e, schema validation of
+  `examples/*.json` and `themes/*/theme.json`, and the neutrality guard.
 
 Acceptance: `docker compose up` serves the placeholder runner at `/` and
 `/api/health/`; CI green; no customer names in the repository.
@@ -237,8 +238,9 @@ design tokens (no brand values).
   test-vector file under `examples/vectors/` keeps them in lockstep).
 - Pages: Intro (title, intro copy, estimated time, anonymity note, language
   cards, consent block if defined, Start / Continue / Start again with
-  confirm), Wizard (`/s/:slug/q/:key`), Complete (completion copy, contact
-  step if last question is contact capture).
+  confirm), Wizard (`/s/:slug/q/:key`; an `email` question is asked here at
+  its position; No thanks moves on and, on the last question, submits), Complete
+  (completion copy and the read-only notice only; no data entry).
 - Wizard shell: sticky header (logo slot, section label, overview button),
   progress bar over visible questions, question area (eyebrow "Question n of
   m", text, help, control), sticky footer (Back · saved indicator · Next /
@@ -250,7 +252,8 @@ design tokens (no brand values).
   `invalidated` pruning; saved indicator; block Next only on final failure.
 - Skip policy UX: inline "Skip this question?" confirmation for `soft`;
   disabled Next for `hard`; silent for `none`/`required=false`.
-- Resume: response id in `localStorage` keyed by slug; Continue/Start again.
+- Resume: response id in `localStorage` keyed by slug (`sessionStorage`, tab
+  only, when `participation.resume` is `none`); Continue/Start again.
 - Overview panel: `Sheet` on mobile, side panel ≥1024 px; rows with status
   glyph and answer summary; navigable when answered or reachable.
 
@@ -281,7 +284,8 @@ rows following the source selection, and both gate directions.
 Goal: THM-1…8; a customer theme mounted at deploy time restyles the runner
 with no rebuild.
 
-- Backend `themes/registry.py`: scan `PROLOG_THEME_DIRS` at startup, validate
+- Backend `themes/registry.py`: scan `PROLOG_THEME_DIRS` lazily on first use
+  (the first definition, theme or health request; restart to rescan), validate
   each `theme.json` against the theme schema, run the contrast check (THM-8),
   register; `register_theme <dir>` command for one-off validation.
 - API: `GET /api/run/themes/{code}/` (theme JSON with asset paths rewritten
@@ -317,8 +321,8 @@ an unknown code.
   attribute follows the chosen language; text-expansion QA (NFR-6).
 - Accessibility audit against NFR-3 on every screen and question type;
   fix list closed before launch.
-- `export_responses --format=csv` (NFR-5) and `export_contacts`, separate
-  files, never joined.
+- `export_responses` and `export_contacts` (NFR-5): CSV only, to stdout or
+  `--out file.csv`, separate files, never joined.
 - Throttling tuned, security headers, dependency audit, backup/restore
   runbook, monitoring hooks (health, metrics), retention job for abandoned
   in-progress responses.

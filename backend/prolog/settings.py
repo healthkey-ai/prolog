@@ -7,11 +7,12 @@ values below document every setting the app reads (see ``prolog_surveys.conf``).
 
 import os
 import re
+import zoneinfo
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
-from prolog_surveys.conf import THROTTLE_RATES
+from prolog_surveys.conf import THROTTLE_RATE_RE, THROTTLE_RATES
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 REPO_ROOT = BASE_DIR.parent
@@ -27,6 +28,25 @@ def _env_list(name: str, default: list[str]) -> list[str]:
 def _env_csv(name: str, default: str) -> list[str]:
     """Comma-separated list; whitespace-tolerant and empty items dropped."""
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+
+def _throttle_rates() -> dict[str, str]:
+    """PROLOG_THROTTLE_<SCOPE> overrides of prolog_surveys.conf.THROTTLE_RATES.
+
+    Checked here because DRF parses a rate on the first request, not at boot:
+    a malformed value would pass the health check and 500 every throttled
+    endpoint. An empty variable means unset, like the other PROLOG_* values.
+    """
+    rates = {}
+    for scope, default in THROTTLE_RATES.items():
+        name = f"PROLOG_THROTTLE_{scope.removeprefix('run.').upper()}"
+        value = os.environ.get(name, "").strip() or default
+        if not THROTTLE_RATE_RE.match(value):
+            raise ImproperlyConfigured(
+                f"{name}={value!r} is not a rate DRF can parse (e.g. '30/hour')"
+            )
+        rates[scope] = value
+    return rates
 
 
 _DEV_SECRET_KEY = "prolog-development-only-key"
@@ -101,7 +121,14 @@ DATABASES = {
 }
 
 LANGUAGE_CODE = "en"
-TIME_ZONE = "UTC"
+# Calendar dates (a survey's effective window, contact capture dates, the
+# due dates of repeat schedules) are taken in this zone; set it to the
+# deployment's local zone (an IANA name such as Europe/Paris). Default UTC.
+TIME_ZONE = os.environ.get("TIME_ZONE", "UTC")
+try:
+    zoneinfo.ZoneInfo(TIME_ZONE)
+except (zoneinfo.ZoneInfoNotFoundError, ValueError) as exc:
+    raise ImproperlyConfigured(f"TIME_ZONE is not an IANA time zone name: {TIME_ZONE!r}") from exc
 USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -138,10 +165,7 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSION": "1",
     "ALLOWED_VERSIONS": ["1"],
     # PROLOG_THROTTLE_<SCOPE> overrides the defaults in prolog_surveys.conf.
-    "DEFAULT_THROTTLE_RATES": {
-        scope: os.environ.get(f"PROLOG_THROTTLE_{scope.removeprefix('run.').upper()}", rate)
-        for scope, rate in THROTTLE_RATES.items()
-    },
+    "DEFAULT_THROTTLE_RATES": _throttle_rates(),
     # Trusted reverse proxies for the client address behind the throttles (also
     # governs SECURE_PROXY_SSL_HEADER below); set from PROLOG_NUM_PROXIES.
     "NUM_PROXIES": int(os.environ.get("PROLOG_NUM_PROXIES", "0")),

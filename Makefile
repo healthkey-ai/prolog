@@ -1,5 +1,5 @@
 # Developer/CI entry points (mirrors .github/workflows/ci.yml). Requires uv, node, PostgreSQL.
-.PHONY: lint test test-backend test-backend-integrated test-frontend e2e build check
+.PHONY: lint test test-backend test-backend-integrated test-frontend e2e build docker check
 
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run python manage.py makemigrations --check --dry-run && cd .. && sh scripts/check_migrations_append_only.sh
@@ -11,7 +11,7 @@ test-backend:
 	cd backend && uv run pytest -q
 
 test-backend-integrated:
-	cd backend && POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User uv run pytest -q --no-migrations
+	cd backend && POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User uv run pytest -q --create-db
 
 test-frontend:
 	cd frontend && npm test -s
@@ -21,5 +21,8 @@ e2e:
 
 build:
 	cd frontend && npm run -s build
+
+docker:
+	docker build -f docker/Dockerfile -t prolog:local .
 
 check: lint test build e2e

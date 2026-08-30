@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Eyebrow } from "./Eyebrow";
+import { RendererBoundary } from "./RendererBoundary";
 import { DateInput } from "./renderers/DateInput";
 import { Dropdown } from "./renderers/Dropdown";
 import { EmailCapture } from "./renderers/EmailCapture";
@@ -45,7 +46,10 @@ export function QuestionScreen(props: Props) {
         </legend>
         {/* QuestionScreen owns the help text for every type; the email renderer alone shows its own notice (the privacy alert, per spec). */}
         {question.help && question.type !== "email" && <p className="mt-2 text-ink-soft">{question.help as string}</p>}
-        <div className="mt-6">{renderControl(question, props)}</div>
+        {/* The boundary catches a code-split renderer whose chunk failed to load (a stale deploy); QuestionScreen is keyed per question, so it resets with the question. */}
+        <div className="mt-6">
+          <RendererBoundary>{renderControl(question, props)}</RendererBoundary>
+        </div>
       </fieldset>
     </div>
   );

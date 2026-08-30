@@ -238,3 +238,105 @@ def test_invited_account_participant_starts_each_administration(api_client):
     assert r2.json()["id"] != r1.json()["id"]
     assert start(february).json()["id"] == r2.json()["id"]  # the link resumes its own
     assert invitation.administrations.count() == 2
+
+
+@pytest.mark.django_db
+def test_deactivated_invitation_keeps_the_account_participant_in(api_client):
+    """Deactivating an invitation revokes the *links* it sent; the invited
+    participant, signed in to their account, keeps their own response
+    (otherwise account resume would keep handing back a response they can
+    no longer open)."""
+    from prolog_surveys.models import SurveyAdministration, SurveyInvitation
+
+    doc = definition(participation={"anonymous": False, "resume": "account"})
+    version = load_definition(doc, activate=True).version
+    user = get_user_model().objects.create_user("p", "p@example.org", "x")
+    invitation = SurveyInvitation.objects.create(
+        survey=version.survey, email="p@example.org", participant=user
+    )
+    administration = SurveyAdministration.objects.create(
+        invitation=invitation, survey_version=version, due_at="2026-01-01"
+    )
+    start = lambda **extra: api_client.post(  # noqa: E731
+        "/api/run/responses/",
+        {"slug": "sample-wellbeing", "language": "en", **extra},
+        format="json",
+    )
+    api_client.force_authenticate(user)
+    r = start(invitation=str(administration.id))
+    assert r.status_code == 201, r.content
+    rid = r.json()["id"]
+    invitation.active = False
+    invitation.save()
+    # The link itself is dead, for the account holder and for anyone else.
+    assert start(invitation=str(administration.id)).status_code == 403
+    api_client.force_authenticate(None)
+    assert api_client.get(f"/api/run/responses/{rid}/").status_code == 403
+    assert api_client.get(f"/api/run/surveys/sample-wellbeing/?response={rid}").status_code == 403
+    # The participant's own access is untouched.
+    api_client.force_authenticate(user)
+    assert api_client.get(f"/api/run/responses/{rid}/").status_code == 200
+    assert api_client.get(f"/api/run/surveys/sample-wellbeing/?response={rid}").status_code == 200
+    r = api_client.patch(
+        f"/api/run/responses/{rid}/", {"last_question_key": "country"}, format="json"
+    )
+    assert r.status_code == 200
+    r = api_client.put(
+        f"/api/run/responses/{rid}/answers/country/", {"value": {"option": "GB"}}, format="json"
+    )
+    assert r.status_code == 200
+    assert start().status_code == 200 and start().json()["id"] == rid  # account resume
+    r = api_client.post(f"/api/run/responses/{rid}/submit/")
+    assert r.status_code == 400 and "missing" in r.json()  # reachable, just incomplete
+    # Another account still cannot touch it.
+    api_client.force_authenticate(get_user_model().objects.create_user("other", "", "x"))
+    assert api_client.get(f"/api/run/responses/{rid}/").status_code == 403
+
+
+class LockProbeService:
+    """Identity service that checks, from a second connection, whether the
+    caller holds the response row lock while it runs."""
+
+    row_locked: bool | None = None
+
+    def create_or_link(self, request):
+        from django.db import OperationalError, connections
+
+        conn = connections.create_connection("default")
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute(f"SELECT id FROM {SurveyResponse._meta.db_table} FOR UPDATE NOWAIT")
+                    cur.fetchall()
+                    LockProbeService.row_locked = False
+                except OperationalError:
+                    LockProbeService.row_locked = True
+        finally:
+            conn.close()
+        user, _ = get_user_model().objects.get_or_create(username="probe")
+        from prolog_surveys.identity import IdentityResult
+
+        return IdentityResult(participant_pk=user.pk)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_identity_service_is_called_without_the_response_lock(
+    api_client, settings, linked_definition
+):
+    """The host's service is an out-of-process call of unknown latency: it
+    must not pin the response row lock (and the connection) for its duration,
+    or every concurrent autosave for that response queues behind it."""
+    settings.PROLOG_IDENTITY_SERVICE = f"{__name__}.LockProbeService"
+    LockProbeService.row_locked = None
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    r = api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "someone@example.org"}, format="json"
+    )
+    assert r.status_code == 204, r.content
+    assert LockProbeService.row_locked is False
+    response = SurveyResponse.objects.get(pk=rid)
+    assert response.participant is not None and response.identity_linked_at is not None
+    assert response.answers.get(question_key="contact_email").value == {"provided": True}

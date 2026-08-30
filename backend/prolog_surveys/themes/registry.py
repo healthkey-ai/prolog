@@ -43,14 +43,16 @@ class Theme:
 
     def asset_path(self, relative: str) -> Path | None:
         """Resolve an asset inside the theme directory; None if outside or disallowed."""
-        if not relative or relative.startswith(("/", "\\")):
+        if not relative or "\x00" in relative or relative.startswith(("/", "\\")):
             return None
-        candidate = (self.directory / relative).resolve()
         try:
+            candidate = (self.directory / relative).resolve()
             candidate.relative_to(self.directory.resolve())
-        except ValueError:
-            return None
-        if candidate.suffix.lower() not in ASSET_EXTENSIONS or not candidate.is_file():
+            if candidate.suffix.lower() not in ASSET_EXTENSIONS or not candidate.is_file():
+                return None
+        except (ValueError, OSError):
+            # Outside the directory, or a path the OS refuses (embedded NUL, too
+            # long, ...): not an asset, never a server error.
             return None
         return candidate
 
@@ -121,9 +123,18 @@ def validate_theme(directory: Path) -> tuple[dict[str, Any], list[Issue]]:
                     f"asset '{ref}' is missing, outside the theme directory, or has a disallowed type",
                 )
             )
-    for name, palette in data.get("colors", {}).items():
-        for warning in palette_warnings(palette):
-            issues.append(Issue("contrast", f"$.colors.{name}", warning, "warning"))
+    colors = data.get("colors", {})
+    light_warnings = palette_warnings(colors.get("light", {}))
+    for warning in light_warnings:
+        issues.append(Issue("contrast", "$.colors.light", warning, "warning"))
+    if "dark" in colors:
+        # The runner overrides the light tokens with the dark ones, so what a
+        # dark-mode participant sees is light ∪ dark; a partial dark palette
+        # checked alone would skip every pair it does not fully redefine.
+        effective = {**colors.get("light", {}), **colors["dark"]}
+        for warning in palette_warnings(effective):
+            if warning not in light_warnings:
+                issues.append(Issue("contrast", "$.colors.dark", warning, "warning"))
     if data.get("color_scheme") == "light-dark" and "dark" not in data.get("colors", {}):
         issues.append(
             Issue("dark", "$.colors", "light-dark themes should define colors.dark", "warning")

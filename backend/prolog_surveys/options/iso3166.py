@@ -12,9 +12,12 @@ SOURCE_KEY = "iso3166_countries"
 
 @lru_cache(maxsize=32)
 def countries(lang: str) -> list[dict[str, str]]:
+    # gettext expands POSIX locale names only: ``pt_BR`` finds the regional
+    # catalogue and falls back to ``pt``, whereas the BCP 47 form ``pt-BR``
+    # matches nothing and silently yields English.
     try:
         translation = gettext.translation(
-            "iso3166-1", pycountry.LOCALES_DIR, languages=[lang], fallback=True
+            "iso3166-1", pycountry.LOCALES_DIR, languages=[lang.replace("-", "_")], fallback=True
         )
     except OSError:  # pragma: no cover
         translation = gettext.NullTranslations()

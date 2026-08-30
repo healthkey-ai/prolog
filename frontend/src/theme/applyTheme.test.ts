@@ -46,4 +46,33 @@ describe("applyTheme", () => {
     expect(i18n.t("intro.start")).toBe("Begin");
     expect(i18n.getResource("es", "translation", "intro.start")).toBe("Comenzar");
   });
+
+  it("carries the light palette's explicit values into a dark palette that overrides a subset", () => {
+    const css = themeCss({
+      ...theme,
+      colors: { light: { ...theme.colors.light, primary: "#ffe066", on_primary: "#1a1a1a", primary_deep: "#c9a800" }, dark: { primary: "#ffd23f" } },
+    });
+    const dark = css.slice(css.indexOf("@media (prefers-color-scheme: dark)"));
+    expect(dark).toContain("--p-primary: #ffd23f;");
+    expect(dark).not.toContain("--p-on-primary: #ffffff;");
+    expect(dark).not.toContain("--p-primary-deep: #ffd23f;");
+    // Unchanged tokens stay with the light block's values (cascade), not repeated.
+    expect(dark).not.toContain("--p-secondary:");
+  });
+
+  it("derives the dark fallbacks from the effective palette when light set none", () => {
+    const css = themeCss({ ...theme, colors: { light: theme.colors.light, dark: { primary: "#aabbcc" } } });
+    const dark = css.slice(css.indexOf("@media (prefers-color-scheme: dark)"));
+    expect(dark).toContain("--p-primary-deep: #aabbcc;");
+    expect(dark).not.toContain("--p-on-primary:"); // white in both schemes: nothing to repeat
+  });
+
+  it("removes a previous theme's favicon when the next theme has none", () => {
+    applyTheme(theme);
+    expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href).toBe("http://x/fav.svg");
+    applyTheme({ ...theme, code: "plain", assets: {} });
+    expect(document.querySelector('link[rel="icon"]')).toBeNull();
+    applyTheme({ ...theme, code: "again" });
+    expect(document.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+  });
 });

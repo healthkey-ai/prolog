@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
 
 /**
  * End-to-end tests run against a real backend (local PostgreSQL) and the Vite
@@ -26,12 +27,14 @@ export default defineConfig({
       url: "http://localhost:8765/api/health/",
       env: {
         DEBUG: "true", // the development key is fine for a local test backend
-        PROLOG_THEME_DIRS: `${process.cwd()}/../themes:${process.cwd()}/e2e/fixtures/themes`,
+        // From this file, not the cwd: the run may start from the repository root or CI.
+        PROLOG_THEME_DIRS: `${resolve(import.meta.dirname, "..", "themes")}:${resolve(import.meta.dirname, "e2e", "fixtures", "themes")}`,
         // Every e2e run shares one client key; never let the abuse throttles interfere.
         PROLOG_THROTTLE_CREATE: "100000/hour",
         PROLOG_THROTTLE_ANSWER: "100000/hour",
         PROLOG_THROTTLE_READ: "100000/hour",
         PROLOG_THROTTLE_CAPTURE: "100000/hour",
+        PROLOG_THROTTLE_WRITE: "100000/hour",
       },
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,

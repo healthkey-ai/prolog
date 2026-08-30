@@ -8,13 +8,18 @@ import { languageName } from "@/i18n/languageName";
 import { cn } from "@/lib/utils";
 
 export type SaveState = "idle" | "saving" | "saved" | "error" | "closed";
+export type ProgressStyle = "bar" | "steps" | "none";
 
 interface ShellProps {
   sectionLabel: string;
   sectionNumber: number;
   sectionTotal: number;
   progress: number; // 0..1
-  showProgress: boolean;
+  /** `presentation.progress`: the bar, a step counter, or nothing. */
+  progressStyle: ProgressStyle;
+  /** The step counter's figures: the screen the participant is on, of the visible screens. */
+  step: number;
+  stepTotal: number;
   onOverview?: () => void;
   languages: string[];
   language: string;
@@ -74,9 +79,25 @@ export function Shell(p: ShellProps) {
             )}
           </div>
         </div>
-        {p.showProgress && (
+        {p.progressStyle === "bar" && (
           <div className="h-1.5 w-full bg-tint" role="progressbar" aria-label={t("header.progress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.progress * 100)}>
             <div className="h-full bg-brand-accent transition-[width] duration-300 ease-out" style={{ width: `${Math.round(p.progress * 100)}%` }} />
+          </div>
+        )}
+        {p.progressStyle === "steps" && (
+          <div
+            className="mx-auto flex max-w-[var(--p-content-max)] items-center gap-2 px-3 pb-2 sm:px-4"
+            role="progressbar"
+            aria-label={t("header.progress")}
+            aria-valuemin={0}
+            aria-valuemax={p.stepTotal}
+            aria-valuenow={p.step}
+            aria-valuetext={t("header.steps", { number: p.step, total: p.stepTotal })}
+            data-testid="progress-steps"
+          >
+            {/* Decorative marker in the theme's secondary colour (never used for text). */}
+            <span className="size-2.5 shrink-0 rounded-full bg-brand-secondary" aria-hidden />
+            <span className="text-sm text-ink-soft">{t("header.steps", { number: p.step, total: p.stepTotal })}</span>
           </div>
         )}
       </header>

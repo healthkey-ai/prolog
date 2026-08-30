@@ -13,7 +13,7 @@ from django.utils import timezone
 from .. import conf
 from ..engine.visibility import iter_questions
 from ..models import LifecycleStatus, Survey, SurveyOption, SurveyQuestion, SurveyVersion
-from .normalize import checksum, normalize
+from .normalize import normalize, source_checksum
 from .schema import Issue, read_json, validate_schema
 from .validate import has_errors, validate_semantics
 
@@ -70,7 +70,10 @@ def load_definition(
     if has_errors(issues):
         raise DefinitionError(issues)
     definition = normalize(doc)
-    digest = checksum(definition)
+    # The checksum identifies the *source* document: the normalised form is
+    # derived from it, and a new normaliser default must not make an unchanged
+    # file look edited (and refuse to re-load its active version).
+    digest = source_checksum(doc)
 
     survey, _ = Survey.objects.get_or_create(
         slug=definition["slug"],
@@ -105,6 +108,12 @@ def load_definition(
         version.source = source
         version.save()
         changed = True
+    elif not created and version.definition != definition:
+        # Same source, newer normaliser: refresh the derived document so the
+        # engine never reads a stored version missing a default it now relies on.
+        version.definition = definition
+        version.schema_version = definition["schema_version"]
+        version.save(update_fields=["definition", "schema_version", "updated_at"])
 
     activated = False
     if activate and version.status != LifecycleStatus.ACTIVE:

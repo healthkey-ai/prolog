@@ -557,3 +557,117 @@ def test_patch_rejects_unknown_last_question_key(api_client, response_id):
     )
     assert r.status_code == 400 and "last_question_key" in r.json()
     assert SurveyResponse.objects.get(pk=response_id).last_question_key == ""
+
+
+def test_options_source_regional_language_is_localised(api_client, active):
+    # gettext knows POSIX locale names; a BCP 47 region tag must reach it as
+    # ``pt_BR`` (which also falls back to ``pt``), not be silently English.
+    r = api_client.get("/api/run/options/iso3166_countries/?lang=pt-BR")
+    assert r.json()["language"] == "pt-BR"
+    assert any(o["key"] == "DE" and o["label"] == "Alemanha" for o in r.json()["options"])
+    r = api_client.get("/api/run/options/iso3166_countries/?lang=es-MX")
+    assert any(o["key"] == "DE" and o["label"] == "Alemania" for o in r.json()["options"])
+
+
+# --- throttling --------------------------------------------------------------------
+
+
+def test_answer_throttle_key_is_hashed(api_client, response_id):
+    """The response id is the capability token (RUN-1); it never lands in the
+    shared cache as a throttle key (CON-6)."""
+    from django.core.cache import cache
+
+    from prolog_surveys import conf
+
+    assert put_answer(api_client, response_id, "country", {"option": "GB"}).status_code == 200
+    keys = [k for k in cache._cache if "throttle_" in k]
+    assert keys
+    assert not any(str(response_id) in k for k in keys)
+    assert any(conf.salted_hash(str(response_id)) in k for k in keys)
+
+
+@pytest.mark.parametrize("method", ["put", "post"])
+def test_answer_and_submit_are_bounded_per_client(api_client, active, monkeypatch, method):
+    """A stream of writes to fresh random ids must hit a per-client limit, not
+    only the per-response bucket (which is new for every id)."""
+    import uuid
+
+    from rest_framework.throttling import SimpleRateThrottle
+
+    monkeypatch.setitem(SimpleRateThrottle.THROTTLE_RATES, "run.write", "2/hour")
+    codes = []
+    for _ in range(3):
+        rid = uuid.uuid4()
+        if method == "put":
+            r = put_answer(api_client, rid, "country", {"option": "GB"})
+        else:
+            r = api_client.post(f"/api/run/responses/{rid}/submit/")
+        codes.append(r.status_code)
+    assert codes == [404, 404, 429]
+
+
+def test_invitation_lock_covers_only_the_administration_row(api_client, db, definition):
+    """FOR UPDATE without OF would also lock the joined invitation and survey
+    rows for the whole start transaction."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    definition["participation"] = {"anonymous": False}
+    version = load_definition(definition, activate=True).version
+    invitation = SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    administration = SurveyAdministration.objects.create(
+        invitation=invitation, survey_version=version, due_at="2026-01-01"
+    )
+    with CaptureQueriesContext(connection) as ctx:
+        r = api_client.post(
+            "/api/run/responses/",
+            {"slug": "sample-wellbeing", "language": "en", "invitation": str(administration.id)},
+            format="json",
+        )
+    assert r.status_code == 201, r.content
+    locks = [q["sql"] for q in ctx.captured_queries if "FOR UPDATE" in q["sql"]]
+    assert any(f'FOR UPDATE OF "{SurveyAdministration._meta.db_table}"' in sql for sql in locks), (
+        locks
+    )
+
+
+# --- contact capture failure -----------------------------------------------------------
+
+
+def test_contact_storage_failure_never_reports_the_address(
+    api_client, response_id, monkeypatch, caplog
+):
+    """A failure while storing the address is a 500 with the class name logged,
+    never an unhandled exception whose report would carry the body (CON-3)."""
+
+    def boom(**kwargs):
+        raise RuntimeError("disk full while storing " + kwargs["email"])
+
+    monkeypatch.setattr(SurveyContact.objects, "create", boom)
+    r = api_client.post(
+        f"/api/run/responses/{response_id}/contact/",
+        {"email": "someone@example.org"},
+        format="json",
+    )
+    assert r.status_code == 500
+    assert "someone" not in r.content.decode()
+    assert "RuntimeError" in caplog.text and "someone" not in caplog.text
+    assert not SurveyAnswer.objects.filter(response_id=response_id).exists()
+
+
+# --- admin -----------------------------------------------------------------------------
+
+
+def test_admin_keeps_loader_owned_survey_fields_readonly(active, rf):
+    """The loader identifies a survey by slug and rewrites title/theme_code on
+    every load; editing them in the admin would be reverted (or orphan the
+    survey), so only the effective window is editable once a survey exists."""
+    from django.contrib.admin.sites import site
+
+    from prolog_surveys.admin import SurveyAdmin
+    from prolog_surveys.models import Survey
+
+    request = rf.get("/admin/")
+    readonly = set(SurveyAdmin(Survey, site).get_readonly_fields(request, active.survey))
+    assert {"slug", "title", "theme_code", "allow_anonymous_participation"} <= readonly
+    assert not {"effective_from", "effective_to"} & readonly

@@ -151,15 +151,15 @@ selected/ranked, and it is limited to 500 characters.
 
 | Type | Keys | Notes |
 | --- | --- | --- |
-| `multi` | `max_selections` (int ≥ 1), `min_selections` (int ≥ 1, default 1) | "Select up to N" counter; at the limit the remaining cards become inert. `max_selections` ≤ number of options; `min` ≤ `max`. |
+| `multi` | `max_selections` (int ≥ 1), `min_selections` (int ≥ 1, default 1) | "Select up to N" counter; at the limit the remaining cards become inert. Fewer than `min_selections` picks are rejected (`min_selections`), except an `exclusive` option selected on its own, which is a complete answer. `max_selections` ≤ number of options; `min` ≤ `max`. |
 | `dropdown` | `options_source` (`iso3166_countries`) | A built-in, localised list served by `GET /api/run/options/iso3166_countries/?lang=`; inline `options` are appended after it (e.g. "Prefer not to say"). A dropdown needs `options`, `options_source`, or both. |
-| `scale` | `scale: {min, max, min_label?, max_label?, point_labels?}` | `min < max`; `point_labels` (i18n each) must have exactly `max − min + 1` entries. |
+| `scale` | `scale: {min, max, min_label?, max_label?, point_labels?}` | `min < max` and at most 101 points (`max − min ≤ 100`; the runner draws one control per point); `point_labels` (i18n each) must have exactly `max − min + 1` entries. |
 | `matrix` | `scale` (required) plus **either** `rows_from` (key of an earlier `multi` question — its selected options become the rows; an `exclusive` option never does, so a selection of only exclusive options hides the matrix) **or** `rows: [{key, label}]` (fixed rows) | Dynamic rows are labelled with the source option label, or with the participant's own `other_text` for a `free_text` option. Every current row must be rated. |
-| `ranking` | `optional_items: [keys]` | Items that may be left unranked; they sit in an "Add to ranking" tray. Everything else must be ranked exactly once. |
-| `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
+| `ranking` | `optional_items: [keys]` | Items that may be left unranked; they sit in an "Add to ranking" tray. Everything else must be ranked exactly once, so at least one item must not be optional. |
+| `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. The limit is measured on the stored value (leading/trailing whitespace stripped). Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
 | `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. Both must be real calendar dates (the schema only checks the digit pattern) with `min_date` ≤ `max_date`. |
-| `email` | `store_separately: true` **or** `link_identity: true` (mutually exclusive) | §8. |
+| `email` | `store_separately: true` **or** `link_identity: true` | **Exactly one is required**: the schema rejects both together and the validator rejects neither (`email_capture` — without a capture mode no endpoint could accept an address, so the step could only ever record a decline). §8. |
 
 Keys not used by the type are reported as warnings.
 
@@ -242,7 +242,7 @@ reachable question; changing an answer re-runs the cascade forward.
 | Field | Meaning |
 | --- | --- |
 | `anonymous` | `true`: no account; the response id held by the browser is the only credential (treated as a secret). `false`: participants need an authenticated account with a resolvable participant (integrated profile) **or** a personal invitation link. |
-| `resume` | `browser_token` (default for anonymous): the response id is kept in browser storage; the intro offers **Continue / Start again**. `account`: `POST /responses/` returns the participant's in-progress response. `none`: no resume. |
+| `resume` | `browser_token` (default for anonymous): the response id is kept in browser storage; the intro offers **Continue / Start again**. `account`: `POST /responses/` returns the participant's in-progress response. `none`: no resume on a later visit — the id is kept in `sessionStorage`, so a reload or a return to `/s/<slug>/q/…` **within the same tab** reopens the in-progress response, but the intro never offers **Continue / Start again** (Start always creates a new response) and the id is gone once the tab closes, so a later visitor on a shared device never sees it. |
 | `repeat` | Repeat administration for invited participants: every `every` `weeks`/`months` from `start_date` (month-end dates clamp), until `end_date`; `use_current_version: true` lets each administration use the then-active version instead of the scheduled one. Off by default. `start_date`/`end_date` must be real calendar dates with `end_date` ≥ `start_date` (validator errors). On an `anonymous` survey a `repeat` block is inert — the scheduler never administers anonymous surveys — and the validator warns. Nothing is scheduled or sent while the survey is outside its effective window (`effective_from`/`effective_to` on the survey record). |
 
 ---
@@ -259,7 +259,9 @@ reachable question; changing an answer re-runs the cascade forward.
 }
 ```
 
-Defaults reproduce the one-question-per-screen wizard.
+Defaults reproduce the one-question-per-screen wizard. `progress: "bar"` draws a
+completion bar in the header; `"steps"` shows a **Step n of m** counter over the
+visible screens instead; `"none"` hides both.
 
 ---
 
@@ -270,7 +272,7 @@ Defaults reproduce the one-question-per-screen wizard.
   "version": "2026-01",                   // ≤ 64 chars
   "text": { "en": "We store your answers to …" },
   "required": true,              // default true
-  "privacy_url": "https://example.org/privacy"
+  "privacy_url": "https://example.org/privacy"  // absolute http(s) URL only (validated)
 }
 ```
 
@@ -303,7 +305,7 @@ decline and moves on; on the last question it submits.
 | Situation | What to do |
 | --- | --- |
 | First release | `version: "1.0"`, `translation_status` all `reviewed`, `load_definition file --activate`. |
-| Fix a typo in a **draft** | Edit the file and load again — drafts are upserted in place (idempotent; same checksum = "unchanged"). |
+| Fix a typo in a **draft** | Edit the file and load again — drafts are upserted in place (idempotent; same checksum = "unchanged"). The checksum is taken over the file as written, so a newer runner filling in more defaults never makes an untouched file look edited. |
 | Change wording/options/branching of a **published** version | New file (or new `version` value): `1.0` → `1.1`. The loader refuses to modify an active or archived version ("bump the version to change it"). |
 | Activate the new version | `load_definition file --activate` archives the previous active version; in-progress responses keep the version they started on (the runner asks for the definition bound to the response). |
 | Review machine-translated content locally | `--activate --allow-unreviewed` (logs loudly; never for launch). |
@@ -321,8 +323,9 @@ the **active** version; loading a draft cannot retarget a live survey.
 - **Semantics** (`validate_definition`): unique keys; the DAG rule; condition
   operators/values fit the referenced question type; `rows_from` targets a
   `multi`; `max_selections` ≤ options; `min` ≤ `max`; `optional_items` are
-  options; scale `min < max` and label counts; one `email` question;
-  `link_identity` only in the integrated profile; `min_date`/`max_date` and
+  options; scale `min < max` and label counts; one `email` question, and
+  it declares exactly one capture mode (`store_separately` or
+  `link_identity`); `link_identity` only in the integrated profile; `min_date`/`max_date` and
   `repeat.start_date`/`end_date` are real calendar dates in order; `title`
   in the default language ≤ 255 characters; every non-default language has
   a `translation_status`; every i18n object has the default language;

@@ -121,3 +121,56 @@ def test_env_csv_strips_and_drops_empties(monkeypatch):
     assert _env_csv("X_CSV", "") == ["a.org", "b.org"]
     monkeypatch.delenv("X_CSV")
     assert _env_csv("X_CSV", "localhost,127.0.0.1") == ["localhost", "127.0.0.1"]
+
+
+# --- participant resolver --------------------------------------------------------
+
+
+def resolve_nobody(request):
+    return None
+
+
+@pytest.mark.parametrize("profile, model", [("standalone", None), ("integrated", "auth.User")])
+def test_participant_resolver_is_resolved_at_startup(settings, profile, model):
+    settings.PROLOG_PROFILE = profile
+    settings.PROLOG_PARTICIPANT_MODEL = model
+    settings.PROLOG_PARTICIPANT_RESOLVER = f"{__name__}.resolve_nobody"
+    conf.validate()
+    settings.PROLOG_PARTICIPANT_RESOLVER = "prolog_surveys.no_such_module.resolve"
+    with pytest.raises(ImproperlyConfigured, match="PROLOG_PARTICIPANT_RESOLVER"):
+        conf.validate()
+    settings.PROLOG_PARTICIPANT_RESOLVER = "prolog_surveys.conf.THROTTLE_RATES"  # not callable
+    with pytest.raises(ImproperlyConfigured, match="callable"):
+        conf.validate()
+
+
+# --- throttle rates ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rate", ["30/hour", "30/h", "1/sec", "5/minute", "100/day"])
+def test_throttle_rate_accepts_what_drf_parses(rate):
+    assert conf.THROTTLE_RATE_RE.match(rate)
+
+
+@pytest.mark.parametrize("rate", ["30 per hour", "30/week", "thirty/hour", "30/", "30", ""])
+def test_throttle_rate_is_validated_at_startup(settings, rate):
+    # DRF only parses a rate in the throttle's __init__, i.e. on the first
+    # request; a bad value must not get past boot and the health check.
+    settings.REST_FRAMEWORK = {
+        **settings.REST_FRAMEWORK,
+        "DEFAULT_THROTTLE_RATES": {**conf.THROTTLE_RATES, "run.create": rate},
+    }
+    with pytest.raises(ImproperlyConfigured, match="run.create"):
+        conf.validate()
+
+
+def test_settings_reject_bad_throttle_env(monkeypatch):
+    from prolog.settings import _throttle_rates
+
+    monkeypatch.setenv("PROLOG_THROTTLE_CREATE", "30 per hour")
+    with pytest.raises(ImproperlyConfigured, match="PROLOG_THROTTLE_CREATE"):
+        _throttle_rates()
+    monkeypatch.setenv("PROLOG_THROTTLE_CREATE", "45/hour")
+    assert _throttle_rates()["run.create"] == "45/hour"
+    monkeypatch.setenv("PROLOG_THROTTLE_CREATE", "")  # unset, like the other PROLOG_* values
+    assert _throttle_rates()["run.create"] == conf.THROTTLE_RATES["run.create"]

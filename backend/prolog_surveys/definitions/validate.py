@@ -16,6 +16,7 @@ import datetime as dt
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 from ..engine.answers import MAX_TEXT_LENGTH
 from .schema import SUPPORTED_SCHEMA_VERSIONS, Issue
@@ -24,6 +25,9 @@ SINGLE_VALUED = {"single", "dropdown", "scale"}
 MULTI_VALUED = {"multi", "ranking"}
 # Survey.title mirrors title[default_language] (loader._sync_survey).
 TITLE_MAX_LENGTH = 255
+# The runner draws one control per scale point (and one row of them per
+# matrix row); a typo such as max: 10000000 must fail at load, not in the browser.
+MAX_SCALE_POINTS = 101
 
 CONFIG_BY_TYPE: dict[str, set[str]] = {
     "info": set(),
@@ -92,6 +96,14 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
     issues: list[Issue] = []
     err = lambda code, path, msg: issues.append(Issue(code, path, msg, "error"))  # noqa: E731
     warn = lambda code, path, msg: issues.append(Issue(code, path, msg, "warning"))  # noqa: E731
+
+    # The runner renders privacy_url as a link; anything but an absolute http(s)
+    # URL (javascript:, data:, a bare path) is refused at load time.
+    url = (definition.get("consent") or {}).get("privacy_url")
+    if url is not None:
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            err("privacy_url", "$.consent.privacy_url", "must be an absolute http(s) URL")
 
     def parse_dates(obj: dict[str, Any], keys: tuple[str, str], path: str, code: str):
         """The two optional ISO dates of ``obj`` as a (lo, hi) pair; the schema
@@ -257,16 +269,31 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                     f"min_selections {mn} exceeds {n} options",
                 )
         if t == "ranking":
-            for item in cfg.get("optional_items", []):
+            optional = cfg.get("optional_items", [])
+            for item in optional:
                 if item not in info.option_keys:
                     err(
                         "optional_items",
                         f"{qp}.config.optional_items",
                         f"'{item}' is not an option",
                     )
+            if info.option_keys and set(info.option_keys) <= set(optional):
+                # Every item optional would make {"order": []} valid, which
+                # completion counts as answered but conditions do not.
+                err(
+                    "optional_items",
+                    f"{qp}.config.optional_items",
+                    "at least one item must remain to be ranked",
+                )
         if scale := cfg.get("scale"):
             if scale["min"] >= scale["max"]:
                 err("scale_range", f"{qp}.config.scale", "scale min must be less than max")
+            elif scale["max"] - scale["min"] + 1 > MAX_SCALE_POINTS:
+                err(
+                    "scale_range",
+                    f"{qp}.config.scale",
+                    f"a scale may have at most {MAX_SCALE_POINTS} points",
+                )
             pl = scale.get("point_labels")
             if pl is not None and len(pl) != scale["max"] - scale["min"] + 1:
                 err(

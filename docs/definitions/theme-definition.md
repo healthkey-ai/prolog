@@ -82,7 +82,7 @@ Values are CSS colours; use 6-digit hex so the contrast check can run.
 | `heading_family`, `body_family` | CSS font-family stacks for headings/question text/buttons and for body copy. Always end with real fallbacks (`"Helvetica Neue", Arial, sans-serif`). |
 | `heading_weight`, `body_weight` | 100–900. |
 | `tracking` | Global letter-spacing, e.g. `"0.02em"`. |
-| `base_size_px` | Body size in px; values below 16 are clamped to 16 by the runner. |
+| `base_size_px` | Body size in px, integer **≥ 16** — the schema rejects smaller values, so the theme is not registered (the runner additionally clamps to 16 as defence in depth). |
 | `font_faces` | Self-hosted faces: `[{ "family", "src": "fonts/x.woff2", "weight": "400 700", "style": "normal", "display": "swap" }]`. The runner injects one `@font-face` per entry; `src` must be an asset in the theme directory. |
 | `google_fonts` | Families to load from Google Fonts, e.g. `["Hanken Grotesk:wght@400;500;700"]`. Loads a stylesheet from `fonts.googleapis.com`; only use where third-party font loading is acceptable, and list the family in the stacks above. |
 
@@ -132,12 +132,15 @@ from the definition.
 }
 ```
 
-Keys available (the runner ships en, es, fr, pt; a theme may add any other
-language it offers):
+**Any** key of the runner's bundle may be overridden, in any language (the
+runner ships en, es, fr, pt; a theme may add any other language it offers).
+The authoritative list is [`frontend/src/i18n/en.json`](../../frontend/src/i18n/en.json);
+a key that is not in that file is merged but never read. The table below
+mirrors it:
 
 | Area | Keys |
 | --- | --- |
-| App | `app.title` `app.loading` `app.error` `app.retry` `app.notFound` |
+| App | `app.title` `app.loading` `app.error` `app.retry` `app.notFound` `app.closed` `app.forbidden` `app.throttled` `app.hint` (`{{path}}`) |
 | Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` |
 | Header | `header.section` (`{{number}}`, `{{total}}`) `header.overview` `header.language` `header.progress` |
 | Question | `question.eyebrow` (`{{number}}`, `{{total}}`) `question.optional` `question.info` |
@@ -145,10 +148,12 @@ language it offers):
 | Skip prompt | `skip.prompt` `skip.skip` `skip.answer` `skip.hard` |
 | Overview | `overview.title` `overview.close` `overview.answered` `overview.skipped` `overview.current` `overview.unanswered` `overview.unreachable` `overview.noAnswer` |
 | Interstitial | `interstitial.eyebrow` (`{{number}}`) `interstitial.continue` |
-| Controls | `single.other` `dropdown.placeholder` `dropdown.noResults` `dropdown.clear` `text.remaining` (`{{count}}`) `number.placeholder` `multi.counter` (`{{count}}`, `{{max}}`) `multi.limit` (`{{max}}`) `matrix.legend` `matrix.incomplete` |
-| Ranking | `ranking.help` `ranking.moveUp` `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` |
-| Email step | `email.placeholder` `email.save` `email.skip` `email.saved` `email.invalid` |
+| Controls | `single.other` `dropdown.placeholder` `dropdown.noResults` `dropdown.clear` `dropdown.error` `dropdown.retry` `text.remaining` (`{{count}}`) `number.placeholder` `multi.counter` (`{{count}}`, `{{max}}`) `multi.limit` (`{{max}}`) `matrix.legend` |
+| Ranking | `ranking.help` `ranking.drag` (`{{label}}`) `ranking.moveUp` `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` `ranking.skipped` |
+| Email step | `email.placeholder` `email.save` `email.skip` `email.saved` `email.invalid` `email.unavailable` |
 | Completion | `complete.eyebrow` `complete.title` `complete.body` `complete.readonly` `complete.missing` |
+| Common | `common.close` |
+| Validation | `error.generic` (fallback for an unknown code) and one `error.<code>` per answer-validation code shared by both engines (see the survey manual §10): `value_not_object` `skip_shape` `other_text_not_string` `options_not_list` `options_duplicate` `order_not_list` `order_duplicate` `ratings_not_object` `email_via_endpoint` `unsupported_type` `info_no_answer` `skip_not_allowed` `not_visible` `other_text_without_free_option` `other_text_too_long` (`{{max}}`) `option_required` `option_unknown` `options_unknown` `min_selections` (`{{min}}`) `max_selections` (`{{max}}`) `exclusive_combined` `value_not_integer` `value_out_of_range` (`{{min}}`, `{{max}}`) `order_unknown` `order_incomplete` `matrix_no_rows` `rows_unknown` `rows_incomplete` `rating_not_integer` `rating_out_of_range` (`{{min}}`, `{{max}}`) `text_required` `text_too_long` (`{{max}}`) `number_required` `number_not_finite` `number_not_integer` `number_too_small` (`{{min}}`) `number_too_large` (`{{max}}`) `date_format` `date_invalid` `date_too_early` (`{{min}}`) `date_too_late` (`{{max}}`) |
 
 Keep the same `{{placeholders}}` as the default string.
 
@@ -165,8 +170,10 @@ theme directories are scanned) checks:
 - **Contrast** (WCAG 2.x): `ink` / `ink_soft` / `primary` / `error` /
   `success` on `surface` and `ground`, `ink` on `tint`, and `on_primary` on
   `primary` must reach 4.5:1 — anything lower is a **warning** (logged, and
-  returned in the theme API's `warnings`). A `light-dark` theme without
-  `colors.dark` is warned.
+  returned in the theme API's `warnings`). `colors.dark` is checked as the
+  runner renders it — the light palette with the dark tokens laid over it —
+  so a partial dark palette is checked against the light tokens it keeps. A
+  `light-dark` theme without `colors.dark` is warned.
 - Duplicate codes: the first directory wins, the second is logged.
 
 Errors reject the theme (it is not registered); warnings keep it usable but

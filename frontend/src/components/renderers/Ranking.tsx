@@ -1,4 +1,4 @@
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type DragEndEvent, type UniqueIdentifier } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
@@ -28,8 +28,21 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
   // An untouched required ranking already holds its displayed order as the
   // draft (survey/answers.ts implicitAnswer), so `value` is only undefined for
   // an optional ranking, which stays skippable.
-  const labelOf = (key: string) => optionLabel(question, key) ?? key;
+  const labelOf = (key: UniqueIdentifier) => optionLabel(question, String(key)) ?? String(key);
+  const positionOf = (key: UniqueIdentifier) => order.indexOf(String(key)) + 1;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
+  // dnd-kit's own instructions and live announcements are English; the
+  // runner's chrome is localised, so they come from i18next like everything
+  // else (the arrow buttons announce through the component's own live region).
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => t("ranking.dragStart", { label: labelOf(active.id), position: positionOf(active.id), total: order.length }),
+    onDragOver: ({ active, over }) =>
+      over ? t("ranking.dragOver", { label: labelOf(active.id), position: positionOf(over.id), total: order.length }) : t("ranking.dragOutside", { label: labelOf(active.id) }),
+    onDragEnd: ({ active, over }) =>
+      over ? t("ranking.position", { label: labelOf(active.id), position: positionOf(over.id), total: order.length }) : t("ranking.dragDropped", { label: labelOf(active.id) }),
+    onDragCancel: ({ active }) => t("ranking.dragCancel", { label: labelOf(active.id), position: positionOf(active.id), total: order.length }),
+  };
 
   const commit = (next: string[], text = otherText) => {
     const hasFree = next.some((k) => free.has(k));
@@ -48,11 +61,8 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    const from = order.indexOf(String(active.id));
-    const to = order.indexOf(String(over.id));
-    const next = arrayMove(order, from, to);
-    setAnnounce(t("ranking.position", { label: labelOf(String(active.id)), position: to + 1, total: next.length }));
-    commit(next);
+    // The drop is announced by dnd-kit's live region (announcements.onDragEnd).
+    commit(arrayMove(order, order.indexOf(String(active.id)), order.indexOf(String(over.id))));
   };
 
   return (
@@ -63,7 +73,7 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
           {t("ranking.skipped")}
         </p>
       )}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} accessibility={{ screenReaderInstructions: { draggable: t("ranking.srInstructions") }, announcements }}>
         <SortableContext items={order} strategy={verticalListSortingStrategy}>
           <ol className="flex flex-col gap-3" data-testid="ranking-list">
             {order.map((key, i) => (
@@ -75,10 +85,11 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
                 option={options.find((o) => o.key === key)!}
                 onUp={() => move(key, -1)}
                 onDown={() => move(key, 1)}
-                onRemove={optional.has(key) ? () => commit(order.filter((k) => k !== key), undefined) : undefined}
+                // The text goes with the free-text item: `commit` drops it once that item leaves the order.
+                onRemove={optional.has(key) ? () => commit(order.filter((k) => k !== key)) : undefined}
+                order={order}
                 otherText={otherText}
-                onOtherText={(text) => onChange({ order, other_text: text })}
-                onOtherTextCommit={(text) => commit(order, text)}
+                onChange={onChange}
               />
             ))}
           </ol>
@@ -112,9 +123,9 @@ function SortableItem(p: {
   onUp: () => void;
   onDown: () => void;
   onRemove?: () => void;
+  order: string[];
   otherText?: string;
-  onOtherText: (text: string) => void;
-  onOtherTextCommit: (text: string | undefined) => void;
+  onChange: RendererProps<RankingValue>["onChange"];
 }) {
   const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id });
@@ -149,7 +160,7 @@ function SortableItem(p: {
           </Button>
         )}
       </div>
-      {p.option.free_text && <OtherTextInput value={p.otherText} onChange={p.onOtherText} onCommit={p.onOtherTextCommit} />}
+      {p.option.free_text && <OtherTextInput base={{ order: p.order }} value={p.otherText} onChange={p.onChange} />}
     </li>
   );
 }

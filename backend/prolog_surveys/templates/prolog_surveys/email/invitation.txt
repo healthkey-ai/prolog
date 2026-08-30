@@ -1,5 +1,5 @@
-{% autoescape off %}You are invited to complete: {{ title }}
+{% autoescape off %}{{ t.intro }} {{ title }}
 
-Open your survey: {{ link }}
+{{ t.open }}: {{ link }}
 
-This link is personal to you. If you did not expect this email, you can ignore it.{% endautoescape %}
+{{ t.footer }}{% endautoescape %}

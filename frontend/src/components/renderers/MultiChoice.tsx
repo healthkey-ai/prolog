@@ -30,7 +30,8 @@ export function MultiChoice({ question, value, onChange }: RendererProps<Options
     // Below the minimum the selection is a draft only: committing it would fail
     // validation ("select at least N") on an ordinary first click. Next
     // validates the draft and reports the shortfall if the participant stops there.
-    const complete = ordered.length >= min;
+    // An exclusive option on its own satisfies min_selections (both engines accept it).
+    const complete = ordered.length >= min || ordered.some((k) => exclusive.has(k));
     onChange({ options: ordered, ...(otherText ? { other_text: otherText } : {}) }, { commit: complete && (!keepOther || Boolean(otherText)) });
   };
 
@@ -57,9 +58,7 @@ export function MultiChoice({ question, value, onChange }: RendererProps<Options
               className="transition-opacity duration-150"
               data-testid={`option-${o.key}`}
             >
-              {o.free_text && checked && (
-                <OtherTextInput autoFocus value={value?.other_text} onChange={(text) => onChange({ options: selected, other_text: text })} onCommit={(text) => onChange({ options: selected, other_text: text }, { commit: true })} />
-              )}
+              {o.free_text && checked && <OtherTextInput autoFocus base={{ options: selected }} value={value?.other_text} onChange={onChange} />}
             </OptionCard>
           );
         })}

@@ -22,7 +22,7 @@
   "theme": "default",
   "participation": { "anonymous": true, "resume": "browser_token" },
   "presentation": { "mode": "question", "overview": true, "section_interstitials": true, "skip_policy": "soft", "progress": "bar" },
-  "notes": "Neutral sample instrument used by tests and demos. It exercises every question type, branching in both directions, a dynamic matrix, a fixed matrix, ranking with an optional item, limits and exclusives, a section-level gate and contact capture.",
+  "notes": "Neutral sample instrument used by tests and demos. It exercises every question type, branching in both directions (including a gate on a scale value), a dynamic matrix, a fixed matrix, ranking with an optional item, limits and exclusives, a section-level gate and contact capture.",
   "sections": [
     {
       "key": "about",
@@ -61,14 +61,14 @@
           "type": "number",
           "required": false,
           "text": { "en": "What year were you born?", "es": "¿En qué año nació?", "fr": "En quelle année êtes-vous né(e) ?" },
-          "config": { "min_value": 1900, "max_value": 2026, "integer": true }
+          "config": { "min_value": 1900, "max_value": 2100, "integer": true }
         },
         {
           "key": "last_visit",
           "type": "date",
           "required": false,
           "text": { "en": "When was your last clinic visit?", "es": "¿Cuándo fue su última visita a la clínica?", "fr": "À quand remonte votre dernière visite à la clinique ?" },
-          "config": { "min_date": "2000-01-01", "max_date": "2026-12-31" }
+          "config": { "min_date": "2000-01-01", "max_date": "2099-12-31" }
         }
       ]
     },
@@ -82,6 +82,14 @@
           "type": "scale",
           "text": { "en": "Overall, how would you rate your wellbeing?", "es": "En general, ¿cómo calificaría su bienestar?", "fr": "Globalement, comment évaluez-vous votre bien-être ?" },
           "config": { "scale": { "min": 1, "max": 5, "min_label": { "en": "Very poor", "es": "Muy malo", "fr": "Très mauvais" }, "max_label": { "en": "Very good", "es": "Muy bueno", "fr": "Très bon" } } }
+        },
+        {
+          "key": "low_wellbeing_reason",
+          "type": "text",
+          "required": false,
+          "text": { "en": "What has made things hard recently?", "es": "¿Qué ha hecho que las cosas sean difíciles últimamente?", "fr": "Qu'est-ce qui a rendu les choses difficiles récemment ?" },
+          "visible_if": [{ "question": "overall", "op": "in", "values": ["1", "2"] }],
+          "config": { "max_length": 500 }
         },
         {
           "key": "has_symptoms",

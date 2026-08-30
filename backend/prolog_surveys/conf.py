@@ -9,6 +9,7 @@ directly, so defaults apply uniformly.
 from __future__ import annotations
 
 import hashlib
+import re
 import warnings
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,8 @@ from django.core.exceptions import ImproperlyConfigured
 PROFILES = ("standalone", "integrated")
 
 # Throttle scopes the runner API uses and their default rates, keyed per hashed
-# client address (``run.answer``: per response id). The standalone settings
+# client address (``run.answer``: per hashed response id; ``run.write`` is the
+# per-client bound on the same answer/submit requests). The standalone settings
 # expose them as PROLOG_THROTTLE_* environment variables; an integrated host
 # copies them into its REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] (a missing
 # scope falls back to these, so nothing 500s).
@@ -28,7 +30,13 @@ THROTTLE_RATES: dict[str, str] = {
     "run.create": "30/hour",
     "run.capture": "30/hour",
     "run.answer": "600/hour",
+    "run.write": "3000/hour",
 }
+
+# What DRF's ``SimpleRateThrottle.parse_rate`` accepts: an integer, a slash and
+# a period whose first letter is s/m/h/d ("30/hour", "30/h", "1/sec"). DRF only
+# parses a rate on the first request, so it is checked here at startup.
+THROTTLE_RATE_RE = re.compile(r"^\d+/[smhd][a-z]*$")
 
 # Salt values that are public or obviously unset. A salt is what keeps the
 # hashed client addresses / user agents from being reversed by a dictionary
@@ -126,6 +134,27 @@ def validate() -> None:
             "PROLOG_CLIENT_KEY_SALT is a placeholder; set a secret value or leave it unset "
             "to derive it from SECRET_KEY"
         )
+    for scope, rate in (
+        getattr(settings, "REST_FRAMEWORK", {}).get("DEFAULT_THROTTLE_RATES", {}).items()
+    ):
+        if scope in THROTTLE_RATES and not THROTTLE_RATE_RE.match(str(rate)):
+            raise ImproperlyConfigured(
+                f"REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'][{scope!r}] = {rate!r} is not a "
+                "rate DRF can parse (e.g. '30/hour')"
+            )
+    if get("PROLOG_PARTICIPANT_RESOLVER"):
+        # Resolved lazily per request otherwise, i.e. a typo would pass the
+        # health check and 500 every account-survey request.
+        from django.utils.module_loading import import_string
+
+        try:
+            resolver = import_string(get("PROLOG_PARTICIPANT_RESOLVER"))
+        except (ImportError, AttributeError) as exc:
+            raise ImproperlyConfigured(
+                f"PROLOG_PARTICIPANT_RESOLVER could not be resolved: {exc}"
+            ) from exc
+        if not callable(resolver):
+            raise ImproperlyConfigured("PROLOG_PARTICIPANT_RESOLVER must name a callable")
     if prof == "integrated":
         if get("PROLOG_IDENTITY_SERVICE"):
             from .identity import get_identity_service

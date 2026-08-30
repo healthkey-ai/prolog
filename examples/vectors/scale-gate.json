@@ -1,0 +1,30 @@
+{
+  "definition": "sample-wellbeing.json",
+  "description": "A gate on a scale answer: `in` compares the stored integer as its canonical string ('2' matches {value: 2}); a value outside the set hides the gated question and invalidates its answer.",
+  "steps": [
+    {
+      "answer": { "key": "overall", "value": { "value": 2 } },
+      "expect": {
+        "invalidated": [],
+        "visible": ["welcome", "country", "age_band", "birth_year", "last_visit", "overall", "low_wellbeing_reason", "has_symptoms", "daily_activities", "outcome_ranking", "support_wanted", "anything_else", "contact_email"]
+      }
+    },
+    {
+      "answer": { "key": "low_wellbeing_reason", "value": { "text": "Not sleeping" } },
+      "expect": { "invalidated": [], "answers_subset": { "low_wellbeing_reason": { "text": "Not sleeping" } } }
+    },
+    {
+      "answer": { "key": "overall", "value": { "value": 1 } },
+      "expect": { "invalidated": [], "answers_subset": { "low_wellbeing_reason": { "text": "Not sleeping" } } }
+    },
+    {
+      "answer": { "key": "overall", "value": { "value": 4 } },
+      "expect": {
+        "invalidated": ["low_wellbeing_reason"],
+        "visible": ["welcome", "country", "age_band", "birth_year", "last_visit", "overall", "has_symptoms", "daily_activities", "outcome_ranking", "support_wanted", "anything_else", "contact_email"],
+        "answers": { "overall": { "value": 4 } }
+      }
+    }
+  ],
+  "final": { "progress": { "answered": 1, "total": 11 } }
+}

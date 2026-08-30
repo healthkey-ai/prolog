@@ -14,7 +14,7 @@ from django.utils import timezone
 from django.utils.cache import get_conditional_response
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -54,7 +54,13 @@ from .serializers import (
     PatchResponseSerializer,
     ResponseSerializer,
 )
-from .throttles import CaptureThrottle, ClientKeyThrottle, CreateThrottle, ResponseThrottle
+from .throttles import (
+    CaptureThrottle,
+    ClientKeyThrottle,
+    CreateThrottle,
+    ResponseThrottle,
+    WriteThrottle,
+)
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +105,9 @@ def _administration(
         return None
     qs = SurveyAdministration.objects.select_related("invitation__survey")
     if lock:
-        qs = qs.select_for_update()
+        # Only the administration row: without ``of`` PostgreSQL also locks the
+        # joined invitation and survey rows for the whole start transaction.
+        qs = qs.select_for_update(of=("self",))
     try:
         administration = qs.get(pk=token)
     except (SurveyAdministration.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:
@@ -115,15 +123,18 @@ def _owns(request, response: SurveyResponse) -> None:
     """Account surveys: only the linked participant may read or write the response."""
     if response.definition["participation"]["anonymous"]:
         return
-    if response.administration_id:
+    if response.administration_id and response.administration.invitation.active:
         # The administration id in the link is the credential, for as long as
-        # the invitation stands: deactivating it revokes every link it sent.
-        if not response.administration.invitation.active:
-            raise PermissionDenied("invitation is no longer active")
+        # the invitation stands.
         return
     participant = resolve_participant(request)
-    if participant is None or participant != response.participant_id_or_none:
-        raise PermissionDenied("not your response")
+    if participant is not None and participant == response.participant_id_or_none:
+        return
+    if response.administration_id:
+        # Deactivating an invitation revokes every link it sent, not the invited
+        # participant's own response: signed in, they keep (and resume) it.
+        raise PermissionDenied("invitation is no longer active")
+    raise PermissionDenied("not your response")
 
 
 def _language(request, definition: dict, fallback: str | None = None) -> str:
@@ -386,14 +397,16 @@ class ResponseMixin:
         _owns(self.request, response)
         return response
 
-    def writable(self, response_id) -> SurveyResponse:
+    def writable(self, response_id, *, lock: bool = True) -> SurveyResponse:
         """Lock the response row for the transaction so concurrent writes and
         submit serialise (the status/answers read below stay consistent).
+        ``lock=False`` is the same check outside a transaction, for work that
+        must not hold the row (an out-of-process call) before the locked write.
 
         Writes stop once the survey leaves its effective window (410); the
         response stays readable so the runner can explain why.
         """
-        response = self.get_response(response_id, lock=True)
+        response = self.get_response(response_id, lock=lock)
         if response.is_submitted:
             raise ReadOnly()
         error = response.survey_version.survey.closed_reason()
@@ -449,7 +462,9 @@ def _answer_result(
 
 
 class AnswerView(ResponseMixin, APIView):
-    throttle_classes = [ResponseThrottle]
+    # Per response *and* per client: the per-response bucket is fresh for every
+    # (random) id, so on its own it would bound nothing.
+    throttle_classes = [ResponseThrottle, WriteThrottle]
 
     @transaction.atomic
     def put(self, request, response_id, question_key: str):
@@ -530,7 +545,7 @@ class AnswerView(ResponseMixin, APIView):
 
 
 class SubmitView(ResponseMixin, APIView):
-    throttle_classes = [ResponseThrottle]
+    throttle_classes = [ResponseThrottle, WriteThrottle]
 
     @transaction.atomic
     def post(self, request, response_id):
@@ -568,6 +583,11 @@ def _mark_provided(response: SurveyResponse, key: str) -> None:
     )
 
 
+# The runner sends JSON, which only ever exists in ``request.data`` and frame
+# locals: ``sensitive_post_parameters`` covers a form-encoded body
+# (``request.POST``), ``sensitive_variables()`` masks every local in the view
+# and the frames beneath it in Django's error reports, and the storage steps
+# are wrapped so no exception carrying the address escapes as an unhandled 500.
 @method_decorator(sensitive_post_parameters("email"), name="dispatch")
 class ContactView(ResponseMixin, APIView):
     """Contact capture (CON-3): the address is stored with no link to the response.
@@ -580,6 +600,7 @@ class ContactView(ResponseMixin, APIView):
     # bucket, so captures never eat into a shared address's start budget).
     throttle_classes = [ResponseThrottle, CaptureThrottle]
 
+    @sensitive_variables()
     @transaction.atomic
     def post(self, request, response_id):
         response = self.writable(response_id)
@@ -597,13 +618,21 @@ class ContactView(ResponseMixin, APIView):
             response.language,
             definition["default_language"],
         )
-        SurveyContact.objects.create(
-            survey_version=response.survey_version,
-            email=ser.validated_data["email"],
-            language=response.language,
-            consent_text=notice,
-        )
-        _mark_provided(response, question["key"])
+        try:
+            SurveyContact.objects.create(
+                survey_version=response.survey_version,
+                email=ser.validated_data["email"],
+                language=response.language,
+                consent_text=notice,
+            )
+            _mark_provided(response, question["key"])
+        except Exception as exc:
+            # An unhandled exception would carry the request body — the address —
+            # into error reporting. Log the class only; the transaction rolls back.
+            log.error(
+                "contact capture failed with %s for response %s", type(exc).__name__, response.id
+            )
+            raise APIException("contact capture failed") from None
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -615,9 +644,15 @@ class IdentityView(ResponseMixin, APIView):
     # can be re-invoked: the per-response bucket alone is fresh for every id.
     throttle_classes = [ResponseThrottle, CaptureThrottle]
 
-    @transaction.atomic
+    @sensitive_variables()
     def post(self, request, response_id):
-        response = self.writable(response_id)
+        # The checks and the host's service call run outside any transaction:
+        # ``create_or_link`` is an out-of-process call of unknown latency, and
+        # holding the response row lock (and the connection) across it would
+        # queue every concurrent autosave for the response behind it. The
+        # locked write below re-checks what it depends on; the idempotency key
+        # makes a repeated service call harmless.
+        response = self.writable(response_id, lock=False)
         if not conf.is_integrated():
             raise NotFound("identity capture is only available in the integrated profile")
         ser = ContactSerializer(data=request.data)
@@ -629,6 +664,7 @@ class IdentityView(ResponseMixin, APIView):
         service = get_identity_service()
         if service is None:
             raise NotFound("no identity service is configured")
+        result = None
         if response.participant_id_or_none is None:
             try:
                 result = service.create_or_link(
@@ -654,8 +690,11 @@ class IdentityView(ResponseMixin, APIView):
                     {"detail": "identity service unavailable; you can still submit anonymously"},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
-            response.participant_id = result.participant_pk
-            response.identity_linked_at = timezone.now()
-            response.save(update_fields=["participant", "identity_linked_at", "updated_at"])
-        _mark_provided(response, question["key"])
+        with transaction.atomic():
+            response = self.writable(response_id)
+            if result is not None and response.participant_id_or_none is None:
+                response.participant_id = result.participant_pk
+                response.identity_linked_at = timezone.now()
+                response.save(update_fields=["participant", "identity_linked_at", "updated_at"])
+            _mark_provided(response, question["key"])
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api } from "./client";
-import { SupersededError, applyAnswerResult, keys, mergePatched, revertAnswer, useSaveAnswer, withEmailProvided } from "./hooks";
+import { ApiError, ApiTimeoutError, api } from "./client";
+import { SupersededError, applyAnswerResult, keys, mergePatched, revertAnswer, usePatchResponse, useSaveAnswer, withEmailProvided } from "./hooks";
 import type { AnswerResult, ResponseSummary } from "./types";
 
 const base: ResponseSummary = {
@@ -92,9 +92,12 @@ describe("useSaveAnswer", () => {
     return { promise, resolve, reject };
   }
 
-  /** Mount the hook under a QueryClient seeded with `base`; returns the hook's latest value. */
-  function mount() {
-    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  /**
+   * Mount the hook under a QueryClient seeded with `base`; returns the hook's latest value.
+   * `retry: true` keeps the hook's own retry predicate and backoff (use fake timers and `tick`).
+   */
+  function mount({ retry = false } = {}) {
+    const qc = new QueryClient({ defaultOptions: { mutations: retry ? {} : { retry: false } } });
     qc.setQueryData(keys.response("r1"), base);
     const hook: { current: ReturnType<typeof useSaveAnswer> | null } = { current: null };
     function Harness() {
@@ -113,8 +116,10 @@ describe("useSaveAnswer", () => {
       return p;
     };
     const settle = () => act(async () => new Promise<void>((r) => setTimeout(r, 0)));
+    /** Under fake timers: let `ms` elapse (the retry backoff) and flush what it triggered. */
+    const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
     const cached = () => qc.getQueryData<ResponseSummary>(keys.response("r1"))!.answers.q1;
-    return { save, settle, cached };
+    return { save, settle, tick, cached };
   }
 
   it("sends a save of a key only after the previous save of that key has settled", async () => {
@@ -156,5 +161,147 @@ describe("useSaveAnswer", () => {
     await expect(b).rejects.toBeInstanceOf(ApiError);
     await settle();
     expect(cached()).toEqual({ option: "b" }); // V1, not the pre-run V0 {option: "a"}
+  });
+
+  it.each([
+    ["a 5xx", () => new ApiError(503, { detail: "unavailable" })],
+    ["a timeout", () => new ApiTimeoutError(1)],
+  ])("retries %s with backoff and applies the eventual result", async (_what, failure) => {
+    vi.useFakeTimers();
+    const put = vi.spyOn(api, "put").mockRejectedValueOnce(failure()).mockResolvedValueOnce(result({ option: "b" }));
+    const { save, tick, cached } = mount({ retry: true });
+    const a = save({ option: "b" });
+    await tick(0);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(cached()).toEqual({ option: "b" }); // optimistic value stays through the backoff
+    await tick(1000);
+    expect(put).toHaveBeenCalledTimes(2);
+    await expect(a).resolves.toEqual(result({ option: "b" }));
+    await tick(0);
+    expect(cached()).toEqual({ option: "b" });
+    vi.useRealTimers();
+  });
+
+  it("does not retry a save that a newer save overtook during the backoff", async () => {
+    vi.useFakeTimers();
+    const second = deferred<AnswerResult>();
+    const put = vi.spyOn(api, "put").mockRejectedValueOnce(new ApiError(503, { detail: "unavailable" })).mockReturnValueOnce(second.promise);
+    const { save, tick, cached } = mount({ retry: true });
+    const a = save({ option: "b" }); // V1: fails, TanStack schedules a retry
+    await tick(0);
+    expect(put).toHaveBeenCalledTimes(1);
+    const b = save({ option: "c" }); // V2, issued while V1 waits for its retry
+    await tick(0);
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "c" } });
+    await tick(8000); // every backoff V1 could take: its retry must never reach the wire
+    expect(put).toHaveBeenCalledTimes(2);
+    second.resolve(result({ option: "c" }));
+    await expect(b).resolves.toEqual(result({ option: "c" }));
+    await expect(a).rejects.toBeInstanceOf(SupersededError);
+    await tick(0);
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(cached()).toEqual({ option: "c" });
+    vi.useRealTimers();
+  });
+
+  it("surfaces a timed-out save as a failure once retries are exhausted", async () => {
+    vi.useFakeTimers();
+    const put = vi.spyOn(api, "put").mockRejectedValue(new ApiTimeoutError(1));
+    const { save, tick, cached } = mount({ retry: true });
+    const a = save({ option: "b" });
+    const outcome = a.catch((e: unknown) => e);
+    await tick(0);
+    await tick(1000);
+    await tick(2000);
+    await tick(4000);
+    expect(put).toHaveBeenCalledTimes(4);
+    expect(await outcome).toBeInstanceOf(ApiTimeoutError);
+    await tick(0);
+    expect(cached()).toEqual({ option: "a" }); // reverted
+    vi.useRealTimers();
+  });
+});
+
+describe("usePatchResponse", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const cleanups: (() => void)[] = [];
+  afterEach(() => {
+    cleanups.splice(0).forEach((fn) => fn());
+    vi.restoreAllMocks();
+  });
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  function mount() {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    qc.setQueryData(keys.response("r1"), base);
+    const hook: { current: ReturnType<typeof usePatchResponse> | null } = { current: null };
+    function Harness() {
+      hook.current = usePatchResponse("r1");
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(createElement(QueryClientProvider, { client: qc }, createElement(Harness))));
+    cleanups.push(() => act(() => root.unmount()));
+    const patch = (body: Parameters<ReturnType<typeof usePatchResponse>["mutateAsync"]>[0]) => {
+      let p!: ReturnType<ReturnType<typeof usePatchResponse>["mutateAsync"]>;
+      act(() => {
+        p = hook.current!.mutateAsync(body);
+        p.catch(() => undefined);
+      });
+      return p;
+    };
+    const settle = () => act(async () => new Promise<void>((r) => setTimeout(r, 0)));
+    const cached = () => qc.getQueryData<ResponseSummary>(keys.response("r1"))!;
+    return { patch, settle, cached };
+  }
+
+  it("sends language switches one at a time and only the latest one touches the cache", async () => {
+    const first = deferred<{ language: string; last_question_key: string }>();
+    const second = deferred<{ language: string; last_question_key: string }>();
+    const call = vi.spyOn(api, "patch").mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { patch, settle, cached } = mount();
+    const fr = patch({ language: "fr" });
+    await settle();
+    expect(call).toHaveBeenCalledTimes(1);
+    const pt = patch({ language: "pt" });
+    await settle();
+    expect(call).toHaveBeenCalledTimes(1); // queued behind the first
+    first.resolve({ language: "fr", last_question_key: "q1" }); // the older reply
+    await expect(fr).rejects.toBeInstanceOf(SupersededError);
+    await settle();
+    expect(cached().language).toBe("en"); // not applied
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call).toHaveBeenLastCalledWith("/responses/r1/", { language: "pt" });
+    second.resolve({ language: "pt", last_question_key: "q1" });
+    await pt;
+    await settle();
+    expect(cached().language).toBe("pt");
+  });
+
+  it("does not let a language switch supersede a position update", async () => {
+    const first = deferred<{ language: string; last_question_key: string }>();
+    const second = deferred<{ language: string; last_question_key: string }>();
+    vi.spyOn(api, "patch").mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { patch, settle, cached } = mount();
+    const pos = patch({ last_question_key: "q2" });
+    const lang = patch({ language: "fr" });
+    await settle();
+    first.resolve({ language: "en", last_question_key: "q2" });
+    await pos;
+    await settle();
+    second.resolve({ language: "fr", last_question_key: "q2" });
+    await lang;
+    await settle();
+    expect(cached()).toMatchObject({ language: "fr", last_question_key: "q2" });
   });
 });

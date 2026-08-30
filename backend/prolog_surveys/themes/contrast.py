@@ -44,9 +44,12 @@ CHECKS: list[tuple[str, str, float]] = [
     ("ink_soft", "ground", 4.5),
     ("ink", "tint", 4.5),
     ("primary", "surface", 4.5),
+    ("primary", "ground", 4.5),
     ("on_primary", "primary", 4.5),
     ("error", "surface", 4.5),
+    ("error", "ground", 4.5),
     ("success", "surface", 4.5),
+    ("success", "ground", 4.5),
 ]
 
 

@@ -155,7 +155,8 @@ def validate_answer(
     """Return the canonical value for ``raw`` or raise AnswerError.
 
     ``answers`` are the response's other answers and ``questions`` the
-    definition's questions by key (both needed for dynamic matrix rows).
+    definition's questions by key (both required for a ``rows_from`` matrix;
+    omitting ``questions`` there is a ValueError).
     ``source_options`` are the keys of a dropdown's ``options_source`` list
     when applicable.
     """
@@ -193,14 +194,17 @@ def validate_answer(
         unknown = [o for o in options if o not in allowed]
         if unknown:
             _fail("options_unknown", options=unknown)
-        mn, mx = cfg.get("min_selections", 1), cfg.get("max_selections")
-        if len(options) < mn:
-            _fail("min_selections", min=mn)
-        if mx is not None and len(options) > mx:
-            _fail("max_selections", max=mx)
         exclusive = {o["key"] for o in question["options"] if o.get("exclusive")}
         if len(options) > 1 and any(o in exclusive for o in options):
             _fail("exclusive_combined")
+        mn, mx = cfg.get("min_selections", 1), cfg.get("max_selections")
+        # An exclusive option ("none of these") is a complete answer on its own:
+        # it can never be combined, so it must not be held to min_selections.
+        alone_exclusive = len(options) == 1 and options[0] in exclusive
+        if len(options) < mn and not alone_exclusive:
+            _fail("min_selections", min=mn)
+        if mx is not None and len(options) > mx:
+            _fail("max_selections", max=mx)
         ordered = [o for o in allowed if o in options]
         return {"options": ordered, **_other_text(raw, question, ordered)}
 
@@ -233,6 +237,11 @@ def validate_answer(
         ratings = raw.get("ratings")
         if not isinstance(ratings, dict):
             _fail("ratings_not_object")
+        if cfg.get("rows_from") and not questions:
+            # Without the source question its exclusive flags are invisible and an
+            # exclusive selection would silently become a row; a caller bug, not
+            # a participant error, so not an AnswerError.
+            raise ValueError("validate_answer: rows_from matrix needs the questions map")
         rows = matrix_rows(question, answers, questions)
         if not rows:
             _fail("matrix_no_rows")
@@ -254,10 +263,12 @@ def validate_answer(
         text = raw.get("text")
         if not isinstance(text, str) or not text.strip():
             _fail("text_required")
+        text = text.strip()
+        # The limit applies to what is stored (the stripped text), as for other_text.
         limit = min(cfg.get("max_length") or MAX_TEXT_LENGTH, MAX_TEXT_LENGTH)
         if len(text) > limit:
             _fail("text_too_long", max=limit)
-        return {"text": text.strip()}
+        return {"text": text}
 
     if t == "number":
         number = raw.get("number")

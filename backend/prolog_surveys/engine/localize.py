@@ -33,7 +33,7 @@ def localize(definition: dict[str, Any], lang: str) -> dict[str, Any]:
 
     def walk(node: Any, key: str | None = None) -> Any:
         if isinstance(node, dict):
-            if key in I18N_FIELDS or key == "point_labels_item":
+            if key in I18N_FIELDS:
                 return pick(node, lang, default)
             return {k: walk(v, k) for k, v in node.items()}
         if isinstance(node, list):

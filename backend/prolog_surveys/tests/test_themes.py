@@ -43,6 +43,48 @@ def test_contrast_math():
     assert warnings and "ink on surface" in warnings[0]
 
 
+def test_contrast_checks_cover_ground_for_primary_error_success():
+    """THM-8 / the theme manual: primary, error and success are drawn on the
+    page ground as well as on cards, so a primary that only reads on white
+    must be warned about."""
+    palette = {
+        **json.loads((THEMES / "default" / "theme.json").read_text())["colors"]["light"],
+        "primary": "#6a8f85",
+        "ground": "#8fa8a1",
+    }
+    warnings = palette_warnings(palette)
+    assert any(w.startswith("primary on ground") for w in warnings), warnings
+    for fg in ("error", "success"):
+        assert any(
+            w.startswith(f"{fg} on ground") for w in palette_warnings({**palette, fg: "#8a9f9a"})
+        )
+
+
+def test_partial_dark_palette_is_checked_as_light_overridden_by_dark(tmp_path):
+    """The runner renders light ∪ dark under prefers-color-scheme: dark, so a
+    dark palette that only sets `ground` must be checked against the light ink."""
+    light = json.loads((THEMES / "default" / "theme.json").read_text())["colors"]["light"]
+    write_theme(
+        tmp_path / "dim",
+        code="dim",
+        color_scheme="light-dark",
+        colors={"light": light, "dark": {"ground": "#000000"}},
+    )
+    _, issues = validate_theme(tmp_path / "dim")
+    dark = [i.message for i in issues if i.code == "contrast" and i.path == "$.colors.dark"]
+    assert any(w.startswith("ink on ground") for w in dark), [str(i) for i in issues]
+    # A pair the dark palette does not touch is reported once, under light.
+    write_theme(
+        tmp_path / "pale",
+        code="pale",
+        color_scheme="light-dark",
+        colors={"light": {**light, "ink_soft": "#bbbbbb"}, "dark": {"ground": "#f2f7f5"}},
+    )
+    _, issues = validate_theme(tmp_path / "pale")
+    paths = [i.path for i in issues if i.code == "contrast" and "ink_soft on surface" in i.message]
+    assert paths == ["$.colors.light"]
+
+
 def test_builtin_themes_validate():
     for code in ("default", "contrast"):
         data, issues = validate_theme(THEMES / code)
@@ -114,8 +156,9 @@ def test_theme_api(api_client, db):
     assert r.status_code == 200
     body = r.json()
     assert body["code"] == "contrast"
+    # Asset URLs carry a content version so a replaced file gets a new URL.
     assert body["assets"]["logo"].startswith(
-        "http://testserver/api/run/themes/contrast/assets/logo.svg"
+        "http://testserver/api/run/themes/contrast/assets/logo.svg?v="
     )
     assert body["warnings"] == []
     assert api_client.get("/api/run/themes/nope/").status_code == 404
@@ -125,7 +168,6 @@ def test_theme_assets_served_safely(api_client, db):
     r = api_client.get("/api/run/themes/contrast/assets/logo.svg")
     assert r.status_code == 200
     assert r["Content-Type"].startswith("image/svg+xml")
-    assert "immutable" in r["Cache-Control"]
     assert b"<svg" in b"".join(r.streaming_content)
     assert (
         api_client.get("/api/run/themes/contrast/assets/theme.json").status_code == 404
@@ -138,6 +180,32 @@ def test_theme_assets_served_safely(api_client, db):
         == 404
     )
     assert api_client.get("/api/run/themes/contrast/assets/missing.svg").status_code == 404
+    # An embedded NUL is a path the OS refuses (ValueError from lstat): a 404
+    # like every other malformed path, never a 500 on an unthrottled endpoint.
+    assert api_client.get("/api/run/themes/contrast/assets/logo%00.svg").status_code == 404
+    assert registry.get("contrast").asset_path("logo\x00.svg") is None
+
+
+def test_theme_assets_are_immutable_only_under_their_versioned_url(api_client, db):
+    """The theme document links ``?v=<content hash>``; only that URL may be
+    cached for a year without revalidation. The bare (or stale) URL revalidates
+    with an ETag, so a replaced logo or font reaches returning participants."""
+    logo = api_client.get("/api/run/themes/contrast/").json()["assets"]["logo"]
+    _, version = logo.split("?v=")
+    r = api_client.get(f"/api/run/themes/contrast/assets/logo.svg?v={version}")
+    assert r.status_code == 200 and "immutable" in r["Cache-Control"]
+    assert r["ETag"] == f'"{version}"'
+    for url in (
+        "/api/run/themes/contrast/assets/logo.svg",
+        "/api/run/themes/contrast/assets/logo.svg?v=stale",
+    ):
+        r = api_client.get(url)
+        assert r.status_code == 200 and "immutable" not in r["Cache-Control"], url
+        assert "max-age=" in r["Cache-Control"] and r["ETag"] == f'"{version}"'
+    r = api_client.get(
+        "/api/run/themes/contrast/assets/logo.svg", HTTP_IF_NONE_MATCH=f'"{version}"'
+    )
+    assert r.status_code == 304
 
 
 def test_definition_reports_resolved_theme(api_client, db, caplog):

@@ -43,11 +43,22 @@ class CaptureThrottle(ClientKeyThrottle):
     scope = "run.capture"
 
 
+class WriteThrottle(ClientKeyThrottle):
+    """Answer/submit per client: the per-response bucket alone is fresh for
+    every id, so a stream of writes to random ids would never be bounded."""
+
+    scope = "run.write"
+
+
 class ResponseThrottle(_RunnerThrottle):
-    """Per response id, for the autosave endpoint."""
+    """Per response id, for the autosave endpoint.
+
+    The id is the capability token (RUN-1): it is hashed like a client address
+    before it becomes a key in the (possibly shared) cache.
+    """
 
     scope = "run.answer"
 
     def get_cache_key(self, request, view):
-        ident = view.kwargs.get("response_id") or conf.salted_hash(self.get_ident(request))
-        return self.cache_format % {"scope": self.scope, "ident": ident}
+        ident = str(view.kwargs.get("response_id") or self.get_ident(request))
+        return self.cache_format % {"scope": self.scope, "ident": conf.salted_hash(ident)}

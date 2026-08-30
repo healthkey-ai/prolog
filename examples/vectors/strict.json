@@ -1,6 +1,6 @@
 {
   "definition": "sample-strict.json",
-  "description": "Hard skip policy, min_selections, a 'neq' gate, and the cascade fixed point: re-selecting the matrix source so no rated row survives must also hide (and invalidate) the question gated on the matrix being answered.",
+  "description": "Hard skip policy, min_selections (which an exclusive option alone satisfies), a 'neq' gate, the text limit on the stripped value, and the cascade fixed point: re-selecting the matrix source so no rated row survives must also hide (and invalidate) the question gated on the matrix being answered.",
   "initial": {
     "visible": [
       "mood",
@@ -214,13 +214,15 @@
       "key": "mood",
       "value": {
         "skipped": true
-      }
+      },
+      "code": "skip_not_allowed"
     },
     {
       "key": "areas",
       "value": {
         "skipped": true
-      }
+      },
+      "code": "skip_not_allowed"
     },
     {
       "key": "areas",
@@ -228,7 +230,8 @@
         "options": [
           "sleep"
         ]
-      }
+      },
+      "code": "min_selections"
     },
     {
       "key": "areas",
@@ -239,7 +242,8 @@
           "pain",
           "mobility"
         ]
-      }
+      },
+      "code": "max_selections"
     },
     {
       "given": {
@@ -255,7 +259,18 @@
         "ratings": {
           "sleep": 1
         }
-      }
+      },
+      "code": "rows_incomplete"
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "none",
+          "sleep"
+        ]
+      },
+      "code": "exclusive_combined"
     }
   ],
   "accept": [
@@ -281,6 +296,28 @@
           "sleep",
           "mobility"
         ]
+      }
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "none"
+        ]
+      },
+      "canonical": {
+        "options": [
+          "none"
+        ]
+      }
+    },
+    {
+      "key": "why_not_good",
+      "value": {
+        "text": "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx "
+      },
+      "canonical": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
     }
   ],

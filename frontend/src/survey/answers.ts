@@ -172,11 +172,14 @@ export function validateAnswer(
     const allowed = optionKeys(q);
     const unknown = options.filter((o) => !allowed.includes(o));
     if (unknown.length) fail("options_unknown", { options: unknown });
-    const min = cfg.min_selections ?? 1;
-    if (options.length < min) fail("min_selections", { min });
-    if (cfg.max_selections !== undefined && options.length > cfg.max_selections) fail("max_selections", { max: cfg.max_selections });
     const exclusive = exclusiveKeys(q);
     if (options.length > 1 && options.some((o) => exclusive.has(o))) fail("exclusive_combined");
+    const min = cfg.min_selections ?? 1;
+    // An exclusive option ("none of these") is a complete answer on its own: it
+    // can never be combined, so it must not be held to min_selections.
+    const aloneExclusive = options.length === 1 && exclusive.has(options[0]);
+    if (options.length < min && !aloneExclusive) fail("min_selections", { min });
+    if (cfg.max_selections !== undefined && options.length > cfg.max_selections) fail("max_selections", { max: cfg.max_selections });
     const ordered = allowed.filter((k) => options.includes(k));
     return { options: ordered, ...otherText(raw, q, ordered) };
   }
@@ -205,6 +208,10 @@ export function validateAnswer(
   if (q.type === "matrix") {
     const ratings = raw.ratings;
     if (!isRecord(ratings)) fail("ratings_not_object");
+    // Without the source question its exclusive flags are invisible and an
+    // exclusive selection would silently become a row: a caller bug, not a
+    // participant error (mirrors answers.py).
+    if (cfg.rows_from && !opts.questions) throw new Error("validateAnswer: rows_from matrix needs the questions map");
     const rows = matrixRows(q, answers, opts.questions ?? {});
     if (!rows.length) fail("matrix_no_rows");
     const unknown = Object.keys(ratings).filter((r) => !rows.includes(r));
@@ -227,9 +234,11 @@ export function validateAnswer(
   if (q.type === "text") {
     const text = raw.text;
     if (typeof text !== "string" || !text.trim()) fail("text_required");
+    const trimmed = text.trim();
+    // The limit applies to what is stored (the trimmed text), as for other_text.
     const limit = Math.min(cfg.max_length || MAX_TEXT_LENGTH, MAX_TEXT_LENGTH);
-    if (length(text) > limit) fail("text_too_long", { max: limit });
-    return { text: text.trim() };
+    if (length(trimmed) > limit) fail("text_too_long", { max: limit });
+    return { text: trimmed };
   }
 
   if (q.type === "number") {
@@ -246,7 +255,8 @@ export function validateAnswer(
     const d = raw.date;
     if (typeof d !== "string" || !DATE_RE.test(d)) fail("date_format");
     const parsed = new Date(`${d}T00:00:00Z`);
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== d) fail("date_invalid");
+    // Year 0 round-trips in JS but not in Python (`date.MINYEAR` is 1): both engines refuse it.
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== d || parsed.getUTCFullYear() < 1) fail("date_invalid");
     if (cfg.min_date && d < cfg.min_date) fail("date_too_early", { min: cfg.min_date });
     if (cfg.max_date && d > cfg.max_date) fail("date_too_late", { max: cfg.max_date });
     return { date: d };

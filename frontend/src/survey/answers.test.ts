@@ -66,3 +66,57 @@ describe("text length", () => {
     expect(issues).toEqual([{ code: "text_too_long", params: { max: 6 } }]);
   });
 });
+
+describe("text length (stripped value)", () => {
+  it("applies the limit to what is stored, not to surrounding whitespace", () => {
+    const q: Question = { key: "t", type: "text", text: { en: "t" }, config: { max_length: 3 } };
+    expect(validateAnswer(q, { text: "  abc  " }, {})).toEqual({ text: "abc" });
+    expect(() => validateAnswer(q, { text: "abcd" }, {})).toThrow();
+  });
+});
+
+describe("multi exclusive option", () => {
+  const q: Question = {
+    key: "m",
+    type: "multi",
+    text: { en: "m" },
+    config: { min_selections: 2 },
+    options: [
+      { key: "a", label: { en: "a" } },
+      { key: "b", label: { en: "b" } },
+      { key: "none", label: { en: "none" }, exclusive: true },
+    ],
+  };
+  it("on its own satisfies min_selections", () => {
+    expect(validateAnswer(q, { options: ["none"] }, {})).toEqual({ options: ["none"] });
+  });
+  it("still cannot be combined, and an ordinary short pick is still short", () => {
+    let codes: string[] = [];
+    try {
+      validateAnswer(q, { options: ["none", "a"] }, {});
+    } catch (e) {
+      codes = (e as AnswerError).issues.map((i) => i.code);
+    }
+    expect(codes).toEqual(["exclusive_combined"]);
+    codes = [];
+    try {
+      validateAnswer(q, { options: ["a"] }, {});
+    } catch (e) {
+      codes = (e as AnswerError).issues.map((i) => i.code);
+    }
+    expect(codes).toEqual(["min_selections"]);
+  });
+});
+
+describe("dynamic matrix rows", () => {
+  it("refuses to validate a rows_from matrix without the questions map", () => {
+    const q: Question = {
+      key: "m",
+      type: "matrix",
+      text: { en: "m" },
+      config: { rows_from: "src", scale: { min: 1, max: 3 } },
+    };
+    const answers = { src: { options: ["none"] } };
+    expect(() => validateAnswer(q, { ratings: { none: 1 } }, answers)).toThrow(/questions map/);
+  });
+});

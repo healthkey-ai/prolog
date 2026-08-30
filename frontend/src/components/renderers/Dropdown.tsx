@@ -70,8 +70,9 @@ export function Dropdown({ question, value, onChange, language }: RendererProps<
             </Command>
           </PopoverContent>
         </Popover>
+        {/* Clearing is as deliberate as choosing: it commits, so the wizard records the "no answer" where it can. */}
         {selected && (
-          <Button variant="text" size="runner-icon" onClick={() => onChange(undefined)} aria-label={t("dropdown.clear")}>
+          <Button variant="text" size="runner-icon" onClick={() => onChange(undefined, { commit: true })} aria-label={t("dropdown.clear")} data-testid="combobox-clear">
             <XIcon className="size-4" />
           </Button>
         )}

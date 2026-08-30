@@ -8,7 +8,9 @@ import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, mailers
 from django.db.models import Q
 from django.template.loader import render_to_string
@@ -19,6 +21,65 @@ from .engine.localize import pick
 from .models import LifecycleStatus, Survey, SurveyAdministration, SurveyInvitation, SurveyVersion
 
 log = logging.getLogger(__name__)
+
+# PostgreSQL advisory lock key held for the duration of a send_due_invitations
+# run so two runs (cron plus a manual one, two schedulers) never overlap.
+RUN_LOCK_KEY = 0x50524F4C  # "PROL"
+
+# Chrome of the invitation email per language (the title is the survey's own
+# translation). A host overriding the templates receives the same table as
+# ``t`` plus ``language``. Regional variants fall back to the base language,
+# unknown languages to English.
+EMAIL_STRINGS: dict[str, dict[str, str]] = {
+    "en": {
+        "intro": "You are invited to complete:",
+        "open": "Open your survey",
+        "footer": "This link is personal to you. If you did not expect this email, "
+        "you can ignore it.",
+    },
+    "es": {
+        "intro": "Le invitamos a completar:",
+        "open": "Abrir su cuestionario",
+        "footer": "Este enlace es personal. Si no esperaba este correo, puede ignorarlo.",
+    },
+    "fr": {
+        "intro": "Vous êtes invité(e) à remplir :",
+        "open": "Ouvrir votre questionnaire",
+        "footer": "Ce lien vous est personnel. Si vous n'attendiez pas ce courriel, "
+        "vous pouvez l'ignorer.",
+    },
+    "pt": {
+        "intro": "Convidamos você a preencher:",
+        "open": "Abrir o seu questionário",
+        "footer": "Este link é pessoal. Se não esperava este e-mail, pode ignorá-lo.",
+    },
+}
+
+# Hosts an invitation link must never point at outside development.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def email_strings(lang: str) -> dict[str, str]:
+    for candidate in (lang, lang.split("-")[0].split("_")[0], "en"):
+        if candidate in EMAIL_STRINGS:
+            return EMAIL_STRINGS[candidate]
+    return EMAIL_STRINGS["en"]
+
+
+def public_url_problem() -> str | None:
+    """Why PROLOG_PUBLIC_URL cannot be emailed to participants, or None.
+
+    The development default (localhost) is fine under DEBUG; a deployment
+    that forgot the setting would otherwise mail unusable links and stamp the
+    administrations sent, so they are never re-sent with the corrected URL.
+    """
+    url = conf.get("PROLOG_PUBLIC_URL")
+    host = (urlsplit(url).hostname or "").lower() if url else ""
+    if not host:
+        return f"PROLOG_PUBLIC_URL is not an absolute URL: {url!r}"
+    if not settings.DEBUG and host in _LOCAL_HOSTS:
+        return f"PROLOG_PUBLIC_URL points at {host} ({url!r}); set the public origin"
+    return None
 
 
 def add_months(day: dt.date, months: int) -> dt.date:
@@ -164,11 +225,20 @@ def schedule_due(now: dt.date | None = None) -> list[SurveyAdministration]:
         for invitation in cycle.invitations
         if invitation.id not in done
     ]
-    return SurveyAdministration.objects.bulk_create(pending)
+    # Another run may have inserted some of these between the read of ``done``
+    # and here; the conflicting rows are skipped rather than aborting the
+    # statement. pks are client-generated, so the rows that landed are those
+    # that carry them.
+    SurveyAdministration.objects.bulk_create(pending, ignore_conflicts=True)
+    return list(SurveyAdministration.objects.filter(pk__in=[a.pk for a in pending]))
 
 
 def send_pending() -> int:
     """Email every unsent administration whose invitation is active and has an address."""
+    if problem := public_url_problem():
+        # Left pending, unstamped: the batch goes out once the URL is corrected.
+        log.error("no invitation sent: %s", problem)
+        return 0
     sent = 0
     pending = (
         SurveyAdministration.objects.filter(sent_at__isnull=True, invitation__active=True)
@@ -190,6 +260,8 @@ def send_pending() -> int:
             try:
                 version = version_for(administration, active_versions)
                 if version is None:
+                    # Scheduled version archived and nothing active: left pending.
+                    log.info("invitation for survey %s not sent (no active version)", survey.slug)
                     continue
                 if not takes_invitations(version.cached_definition):
                     # The survey went anonymous after the administration was created:
@@ -206,10 +278,16 @@ def send_pending() -> int:
                         "invitation for survey %s not sent (mailer reported 0 sent)", survey.slug
                     )
                     continue
-            except Exception:
-                log.exception(
-                    "could not send administration %s of survey %s", administration.pk, survey.slug
+            except Exception as exc:
+                # The administration id is the participant's credential and a
+                # mail server's message can carry the address: log neither.
+                log.error(
+                    "could not send invitation %s of survey %s: %s",
+                    administration.invitation_id,
+                    survey.slug,
+                    type(exc).__name__,
                 )
+                log.debug("invitation %s send failure", administration.invitation_id, exc_info=True)
                 continue
             sent += 1
     for slug in sorted(skipped_anonymous):
@@ -229,6 +307,8 @@ def _send_one(mailer, administration: SurveyAdministration, version: SurveyVersi
         "title": title,
         "link": invitation_link(survey, administration),
         "due": administration.due_at,
+        "language": lang,
+        "t": email_strings(lang),
     }
     message = EmailMultiAlternatives(
         subject=render_to_string("prolog_surveys/email/invitation_subject.txt", context).strip(),

@@ -14,7 +14,10 @@ import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { Decor } from "@/components/Decor";
+import { DefinitionError } from "@/components/DefinitionError";
 import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
+import { httpUrl } from "./httpUrl";
+import { usePageTitle } from "./usePageTitle";
 
 export function IntroPage() {
   const { slug = "" } = useParams();
@@ -53,14 +56,14 @@ export function IntroPage() {
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);
   useDefinitionLanguage(definition.data?.language);
+  usePageTitle(definition.data?.title as string | undefined);
   useEffect(() => {
     if (definition.data) setNoResume(definition.data.participation?.resume === "none");
   }, [definition.data]);
 
   if (definition.isLoading) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
   if (definition.isError || !definition.data) {
-    const status = definition.error instanceof ApiError ? definition.error.status : 0;
-    return <p className="p-8 text-error">{status === 404 ? t("app.notFound") : status === 410 ? t("app.closed") : status === 403 ? t("app.forbidden") : t("app.error")}</p>;
+    return <DefinitionError error={definition.error} onRetry={() => void definition.refetch()} retrying={definition.isFetching} />;
   }
   const def = definition.data;
   const consent = def.consent;
@@ -103,7 +106,7 @@ export function IntroPage() {
         invitation,
       });
     } catch {
-      return; // create.isError renders the message
+      return; // create.isError renders the message (below both the resume card and the start form)
     }
     storeResponseId(slug, response.id, resumable);
     const key = firstOpenKey(def, response.answers, response.last_question_key);
@@ -132,6 +135,8 @@ export function IntroPage() {
   const ground = immersive ? "bg-primary text-on-primary" : "bg-ground text-ink";
   const soft = immersive ? "text-on-primary/80" : "text-ink-soft";
   const hasExisting = resumable && Boolean(bound && existing.data);
+  // Only an absolute http(s) URL becomes a link; anything else in the definition is not rendered.
+  const privacyUrl = httpUrl(consent?.privacy_url);
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
@@ -190,9 +195,9 @@ export function IntroPage() {
             {consent && (
               <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink">
                 <p className="text-[0.95rem]">{consent.text as string}</p>
-                {consent.privacy_url && (
-                  <a href={consent.privacy_url} className="mt-2 inline-block text-sm text-primary underline" target="_blank" rel="noreferrer">
-                    {consent.privacy_url}
+                {privacyUrl && (
+                  <a href={privacyUrl} className="mt-2 inline-block text-sm text-primary underline" target="_blank" rel="noreferrer">
+                    {privacyUrl}
                   </a>
                 )}
                 <div className="mt-2 flex min-h-[44px] items-center gap-3">
@@ -210,13 +215,20 @@ export function IntroPage() {
               <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={start} disabled={create.isPending || definition.isPlaceholderData} className="px-8" data-testid="start">
                 {t("intro.start")}
               </Button>
-              {create.isError && (
-                <p className="mt-2 text-sm" role="alert">
-                  {isClosed(create.error) ? t("app.closed") : create.error instanceof ApiError && create.error.status === 403 ? t("app.forbidden") : t("app.error")}
-                </p>
-              )}
             </div>
           </>
+        )}
+        {/* Outside both branches: "Start again" / "Start a new response" call start() from the resume card too. */}
+        {create.isError && (
+          <p className={`text-sm ${immersive ? "" : "text-error"}`} role="alert" data-testid="create-error">
+            {isClosed(create.error)
+              ? t("app.closed")
+              : create.error instanceof ApiError && create.error.status === 403
+                ? t("app.forbidden")
+                : create.error instanceof ApiError && create.error.status === 429
+                  ? t("app.throttled")
+                  : t("app.error")}
+          </p>
         )}
       </main>
     </div>

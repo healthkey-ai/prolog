@@ -8,6 +8,6 @@ class PrologSurveysConfig(AppConfig):
     verbose_name = "PROlog surveys"
 
     def ready(self) -> None:
-        from . import conf
+        from . import checks, conf  # noqa: F401  (importing registers the system checks)
 
         conf.validate()

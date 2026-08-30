@@ -10,6 +10,7 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from prolog_surveys.definitions import loader
 from prolog_surveys.definitions.loader import (
     ActivationError,
     DefinitionError,
@@ -17,7 +18,7 @@ from prolog_surveys.definitions.loader import (
     load_definition,
     validate_definition,
 )
-from prolog_surveys.definitions.normalize import checksum, normalize
+from prolog_surveys.definitions.normalize import checksum, normalize, source_checksum
 from prolog_surveys.definitions.validate import _walk_i18n, has_errors, validate_semantics
 from prolog_surveys.engine.localize import I18N_FIELDS, localize
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
@@ -80,7 +81,7 @@ def test_schema_rejects_both_email_modes(example):
         (lambda d: question(d, "overall").update(key="k" * 129), "$.sections[1].questions[0].key"),
         (
             lambda d: question(d, "symptoms")["options"][0].update(key="k" * 129),
-            "$.sections[1].questions[2].options[0].key",
+            "$.sections[1].questions[3].options[0].key",
         ),
         (
             lambda d: d.update(consent={"version": "v" * 65, "text": {"en": "x"}}),
@@ -132,7 +133,38 @@ def _repeat(**overrides):
             lambda d: question(d, "outcome_ranking")["config"].update(optional_items=["nope"]),
             "optional_items",
         ),
+        # every item optional: {"order": []} would validate yet never count as answered
+        (
+            lambda d: question(d, "outcome_ranking")["config"].update(
+                optional_items=[o["key"] for o in question(d, "outcome_ranking")["options"]]
+            ),
+            "optional_items",
+        ),
         (lambda d: question(d, "overall")["config"]["scale"].update(min=5, max=1), "scale_range"),
+        # the runner renders one control per point; a typo must not hang the page
+        (
+            lambda d: question(d, "overall")["config"]["scale"].update(min=0, max=10_000_000),
+            "scale_range",
+        ),
+        # the runner renders privacy_url as a link: only absolute http(s) URLs
+        (
+            lambda d: d.setdefault("consent", {"version": "1", "text": {"en": "x"}}).update(
+                privacy_url="javascript:alert(1)"
+            ),
+            "schema",
+        ),
+        (
+            lambda d: d.setdefault("consent", {"version": "1", "text": {"en": "x"}}).update(
+                privacy_url="/privacy"
+            ),
+            "schema",
+        ),
+        (  # passes the schema pattern but has no host
+            lambda d: d.setdefault("consent", {"version": "1", "text": {"en": "x"}}).update(
+                privacy_url="http://?x"
+            ),
+            "privacy_url",
+        ),
         (
             lambda d: question(d, "symptom_impact")["config"]["scale"]["point_labels"].pop(),
             "scale_labels",
@@ -156,7 +188,7 @@ def _repeat(**overrides):
         (lambda d: d.update(default_language="de"), "default_language"),
         (lambda d: question(d, "overall")["text"].pop("en"), "i18n_default"),
         (lambda d: question(d, "birth_year")["config"].update(min_value=3000), "number_range"),
-        (lambda d: question(d, "last_visit")["config"].update(min_date="2030-01-01"), "date_range"),
+        (lambda d: question(d, "last_visit")["config"].update(min_date="2100-01-01"), "date_range"),
         # the schema only checks the digit pattern; February 30th gets this far
         (
             lambda d: question(d, "last_visit")["config"].update(max_date="2026-02-30"),
@@ -418,6 +450,44 @@ def test_load_is_idempotent(example):
     assert first.version.status == LifecycleStatus.DRAFT
     assert first.version.survey.allow_anonymous_participation is True
     assert first.version.survey.theme_code == "default"
+
+
+def test_scale_span_bound_allows_a_wide_but_sane_scale(example):
+    question(example, "overall")["config"]["scale"].update(min=0, max=100)
+    assert "scale_range" not in codes(validate_definition(example))
+
+
+@pytest.mark.django_db
+def test_unchanged_file_reloads_after_a_normaliser_change(example, monkeypatch):
+    """The checksum identifies the authored document, not the normalised one:
+    a new engine default must not make every unchanged active survey fail to
+    load at container start ("immutable"), and the stored version picks the
+    default up so the engine never reads a document missing it."""
+    load_definition(example, activate=True)
+    original = normalize
+
+    def newer_normalize(doc):
+        out = original(doc)
+        out["presentation"]["new_default"] = True
+        return out
+
+    monkeypatch.setattr(loader, "normalize", newer_normalize)
+    result = load_definition(example)
+    assert not result.changed and not result.created
+    version = SurveyVersion.objects.get(pk=result.version.pk)
+    assert version.status == LifecycleStatus.ACTIVE
+    assert version.definition["presentation"]["new_default"] is True
+    assert version.checksum == source_checksum(example)
+    # An edit to the source is still a change, and still refused once published.
+    example["title"]["en"] = "Changed"
+    with pytest.raises(DefinitionError):
+        load_definition(example)
+
+
+def test_source_checksum_ignores_schema_pointer_only(example):
+    with_pointer = {**example, "$schema": "../elsewhere/schema.json"}
+    assert source_checksum(with_pointer) == source_checksum(example)
+    assert source_checksum({**example, "version": "1.1"}) != source_checksum(example)
 
 
 @pytest.mark.django_db

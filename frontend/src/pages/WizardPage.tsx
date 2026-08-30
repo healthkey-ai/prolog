@@ -3,12 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
 import { SupersededError, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
+import { DefinitionError } from "@/components/DefinitionError";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
 import { SectionInterstitial } from "@/components/SectionInterstitial";
 import { Shell, type SaveState } from "@/components/Shell";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SkipConfirm } from "@/components/SkipConfirm";
+import { Button } from "@/components/ui/button";
 import { issueMessages } from "@/i18n/issues";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
@@ -18,12 +20,20 @@ import { firstOpenKey, hasStoredAnswer, overview, position, progressFraction, ty
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue, type Question } from "@/survey/types";
 import { questionByKey } from "@/survey/visibility";
 import { useThemeLogo } from "@/theme/useTheme";
+import { usePageTitle } from "./usePageTitle";
 
 /**
  * How a save ended. Only "failed" stops the participant; "superseded" means a
  * newer save of the same question took over and reports for it.
  */
 type SaveOutcome = "saved" | "failed" | "superseded";
+
+/**
+ * The open skip prompt (soft policy). `target` is where the participant was
+ * going when it opened: Back or an overview jump from a question whose stored
+ * answer they cleared; null when it was Next.
+ */
+type SkipPrompt = { target: string | null };
 
 /** The server's view of the response differs from the cache (submitted in another tab, or gone). */
 const stale = (err: unknown) => (err instanceof ApiError && err.status === 409) || isGone(err);
@@ -46,11 +56,14 @@ export function WizardPage() {
 
   const [draft, setDraft] = useState<AnswerValue | undefined>(undefined);
   const [draftKey, setDraftKey] = useState<string | null>(null);
-  const [skipPrompt, setSkipPrompt] = useState(false);
+  const [skipPrompt, setSkipPrompt] = useState<SkipPrompt | null>(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [interstitial, setInterstitial] = useState<number | null>(null);
   const [localErrors, setLocalErrors] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  // The language whose PATCH failed: the header Select snaps back to the
+  // stored language, so the failure must be said and retryable.
+  const [languageFailed, setLanguageFailed] = useState<string | null>(null);
   const savedTimer = useRef<number | null>(null);
   const lastFailed = useRef<{ key: string; value: AnswerValue } | null>(null);
   // The route key at render time, so a save that settles after the participant
@@ -79,6 +92,16 @@ export function WizardPage() {
   const sourceLabels = useOptionsSources(sources, def?.language ?? "en");
 
   useDefinitionLanguage(def?.language);
+  // "<survey> – <step>": the step is the section on an interstitial, otherwise the question number.
+  const step =
+    def && pos?.current
+      ? interstitial !== null
+        ? (def.sections[interstitial].title as string)
+        : pos.current.type === "info"
+          ? t("question.info")
+          : t("question.eyebrow", { number: pos.questionNumber, total: pos.questionTotal })
+      : undefined;
+  usePageTitle(def && step ? t("app.pageTitle", { survey: def.title as string, step }) : undefined);
 
   // Redirect: no response, one that is gone, a submitted one, or a URL question that is not visible.
   useEffect(() => {
@@ -107,7 +130,8 @@ export function WizardPage() {
   const resetSubmit = submit.reset;
   useEffect(() => {
     keyRef.current = key;
-    setSkipPrompt(false);
+    setSkipPrompt(null);
+    setLanguageFailed(null);
     const pending = pendingErrors.current;
     pendingErrors.current = null;
     setLocalErrors(pending && pending.key === key ? pending.errors : []);
@@ -193,6 +217,13 @@ export function WizardPage() {
     [settled, navigate, slug, id, patch],
   );
 
+  // The definition failed (throttled, outage, network, or the survey is gone or
+  // closed) and nothing older is cached: say so, with a retry where one makes
+  // sense, instead of "Loading…" for good. A response error is handled by the
+  // redirect effect (gone / nothing cached) or is transient (cached data stands).
+  if (!def && definition.isError) {
+    return <DefinitionError error={definition.error} onRetry={() => void definition.refetch()} retrying={definition.isFetching} />;
+  }
   if (!def || !response.data || !pos || !pos.current) {
     return <p className="p-8 text-ink-soft">{response.isError ? t("app.error") : t("app.loading")}</p>;
   }
@@ -207,9 +238,13 @@ export function WizardPage() {
   // renderer means Next cannot race the renderer's chunk.
   const draftValue = draftKey === key ? draft : (answers[key] ?? implicitAnswer(question));
   const hasDraft = isAnswerable && hasStoredAnswer(draftValue);
-  // An explicit clear (renderer sent `undefined`) means "no answer" even when a
-  // value is stored: Next must then go through the skip flow, not keep the old value.
-  const cleared = draftKey === key && draft === undefined;
+  // An explicit clear (renderer sent `undefined`) of a stored answer means "no
+  // answer": leaving the question must then go through the skip flow, not keep
+  // the old value. Once the clear is recorded as a skip there is nothing left to clear.
+  const cleared = draftKey === key && draft === undefined && hasStoredAnswer(answers[key]);
+  // A skippable question: its clear can be recorded (as a skip, the server's only
+  // "no answer" state) without asking; soft/hard required ones go through the prompt / block.
+  const skippable = !required || policy === "none";
   const section = def.sections[current.sectionIndex];
 
   /** Client-side check of a value against the same rules the server applies; the messages are chrome strings. */
@@ -225,14 +260,22 @@ export function WizardPage() {
   const onChange = (value: AnswerValue | undefined, opts?: { commit?: boolean; advance?: boolean }) => {
     setDraft(value);
     setDraftKey(key);
-    setSkipPrompt(false);
+    setSkipPrompt(null);
     setLocalErrors([]);
-    if (opts?.commit && value !== undefined) {
+    if (!opts?.commit) return;
+    if (value !== undefined) {
       // Blur on an unchanged text/number/date field must not PUT the same value again.
       const unchanged = JSON.stringify(value) === JSON.stringify(answers[key]);
       void (unchanged ? Promise.resolve<SaveOutcome>("saved") : commit(value)).then((outcome) => {
         if (outcome === "saved" && opts.advance) void advance(after(value));
       });
+    } else if (hasStoredAnswer(answers[key]) && skippable) {
+      // An emptied field / cleared choice over a stored answer is recorded now
+      // (the server has no "no answer", only a skip), so Back, the overview,
+      // progress and browser history never bring the old value back. A required
+      // question under soft/hard policy keeps the clear as a draft until the
+      // participant leaves, when the skip flow asks or blocks (resolveCleared).
+      void persist(key, { skipped: true });
     }
   };
 
@@ -250,7 +293,7 @@ export function WizardPage() {
    * have revealed or hidden questions; the render-time `pos` is stale by then.
    */
   const advance = async (p: Position = pos) => {
-    setSkipPrompt(false);
+    setSkipPrompt(null);
     if (p.isLast) {
       // Finish must not race any autosave still in flight (a blur commit on an
       // earlier question, or a click commit right before Finish): the server
@@ -293,6 +336,30 @@ export function WizardPage() {
 
   const after = (value: AnswerValue) => position(def, { ...answers, [key]: value }, key);
 
+  /**
+   * Whether the participant may leave a question whose stored answer they
+   * cleared — the same skip flow Next applies, so the deletion is never
+   * dropped: a skippable question records the skip, a soft-required one asks
+   * (the prompt remembers `target`), a hard-required one blocks. True when there
+   * is nothing to resolve.
+   */
+  const resolveCleared = async (target: string | null): Promise<boolean> => {
+    if (!cleared) return true;
+    if (skippable) return (await persist(key, { skipped: true })) === "saved";
+    if (policy === "hard") {
+      setLocalErrors([t("skip.hard")]);
+      return false;
+    }
+    setSkipPrompt({ target });
+    return false;
+  };
+
+  /** Back and the overview jump: leave for `target` once a cleared answer is resolved. */
+  const leave = async (target: string) => {
+    if (!(await resolveCleared(target))) return;
+    await goTo(target);
+  };
+
   const onNext = async () => {
     if (interstitial !== null) {
       const target = pos.visible.find((v) => v.sectionIndex === interstitial);
@@ -329,7 +396,7 @@ export function WizardPage() {
       return;
     }
     // Unanswered.
-    if (!required || policy === "none") {
+    if (skippable) {
       if ((await persist(key, { skipped: true })) === "saved") await advance(after({ skipped: true }));
       return;
     }
@@ -337,12 +404,15 @@ export function WizardPage() {
       setLocalErrors([t("skip.hard")]);
       return;
     }
-    setSkipPrompt(true);
+    setSkipPrompt({ target: null });
   };
 
   const onSkip = async () => {
-    setSkipPrompt(false);
-    if ((await persist(key, { skipped: true })) === "saved") await advance(after({ skipped: true }));
+    const target = skipPrompt?.target ?? null;
+    setSkipPrompt(null);
+    if ((await persist(key, { skipped: true })) !== "saved") return;
+    if (target) await goTo(target);
+    else await advance(after({ skipped: true }));
   };
 
   const onBack = () => {
@@ -350,11 +420,27 @@ export function WizardPage() {
       setInterstitial(null);
       return;
     }
-    if (pos.previousKey) void goTo(pos.previousKey);
+    if (pos.previousKey) void leave(pos.previousKey);
   };
 
   const onLanguage = (lang: string) => {
-    patch.mutate({ language: lang });
+    setLanguageFailed(null);
+    patch.mutate(
+      { language: lang },
+      {
+        onError: (err) => {
+          if (isClosed(err)) {
+            setSaveState("closed");
+            return;
+          }
+          if (stale(err)) {
+            void refetchResponse(); // submitted elsewhere / gone: the redirect effect takes over
+            return;
+          }
+          setLanguageFailed(lang);
+        },
+      },
+    );
   };
 
   const retry = () => {
@@ -372,7 +458,9 @@ export function WizardPage() {
         sectionNumber={interstitial !== null ? pos.visibleSectionIndexes.indexOf(interstitial) + 1 : pos.sectionNumber}
         sectionTotal={pos.sectionTotal}
         progress={progressValue}
-        showProgress={def.presentation?.progress !== "none"}
+        progressStyle={def.presentation?.progress ?? "bar"}
+        step={pos.index + 1}
+        stepTotal={pos.visible.length}
         onOverview={def.presentation?.overview !== false ? () => setOverviewOpen(true) : undefined}
         languages={def.languages}
         language={def.language}
@@ -383,7 +471,7 @@ export function WizardPage() {
         nextDisabled={saveState === "error" || saveState === "closed" || submit.isPending || (policy === "hard" && required && isAnswerable && !hasDraft && answers[key] === undefined)}
         saveState={saveState}
         onRetry={retry}
-        footerExtra={skipPrompt ? <SkipConfirm onSkip={onSkip} onAnswer={() => setSkipPrompt(false)} /> : localErrors.length ? <ErrorBanner errors={localErrors} /> : null}
+        footerExtra={skipPrompt ? <SkipConfirm onSkip={onSkip} onAnswer={() => setSkipPrompt(null)} /> : localErrors.length ? <ErrorBanner errors={localErrors} /> : null}
         logo={logo}
       >
         {interstitial !== null ? (
@@ -413,8 +501,16 @@ export function WizardPage() {
             {submit.error instanceof ApiError && submit.error.body.missing ? t("complete.missing") : t("app.error")}
           </p>
         )}
+        {languageFailed && saveState !== "closed" && (
+          <p className="mt-6 text-sm text-error" role="alert" data-testid="language-error">
+            {t("app.error")}{" "}
+            <Button variant="link" size="runner-sm" className="text-error" onClick={() => onLanguage(languageFailed)} disabled={patch.isPending}>
+              {t("app.retry")}
+            </Button>
+          </p>
+        )}
       </Shell>
-      <OverviewPanel open={overviewOpen} onClose={() => setOverviewOpen(false)} sections={rows} definitionSections={def.sections} answers={answers} onNavigate={goTo} sourceLabels={sourceLabels} />
+      <OverviewPanel open={overviewOpen} onClose={() => setOverviewOpen(false)} sections={rows} definitionSections={def.sections} answers={answers} onNavigate={(target) => void leave(target)} sourceLabels={sourceLabels} />
     </>
   );
 }

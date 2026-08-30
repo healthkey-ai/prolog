@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.utils import timezone
 
 from prolog_surveys.definitions.loader import load_definition
-from prolog_surveys.exports import write_contacts, write_responses
+from prolog_surveys.exports import safe_cell, write_contacts, write_responses
 from prolog_surveys.models import SurveyContact, SurveyResponse
 
 
@@ -102,13 +102,93 @@ def test_export_contacts_separate(version, submitted):
     assert "response" not in text.splitlines()[0]
 
 
-def test_export_commands(version, submitted, tmp_path, capsys):
+def test_export_commands(version, submitted, api_client, tmp_path, capsys):
+    api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
     call_command("export_responses", "sample-wellbeing", "--out", str(tmp_path / "r.csv"))
     call_command("export_contacts", "sample-wellbeing", "--out", str(tmp_path / "c.csv"))
-    assert (tmp_path / "r.csv").read_text().count("\n") == 2
+    rows = list(csv.reader(io.StringIO((tmp_path / "r.csv").read_text())))
+    assert len(rows) == 2 and rows[1][4] == "submitted"
     assert "someone@example.org" in (tmp_path / "c.csv").read_text()
-    call_command("export_responses", "sample-wellbeing", "--include-in-progress")
-    assert "response_id" in capsys.readouterr().out
+    call_command(
+        "export_responses",
+        "sample-wellbeing",
+        "--include-in-progress",
+        "--out",
+        str(tmp_path / "all.csv"),
+    )
+    rows = list(csv.reader(io.StringIO((tmp_path / "all.csv").read_text())))
+    assert len(rows) == 3
+    assert sorted(r[4] for r in rows[1:]) == ["in_progress", "submitted"]
+    call_command("export_responses", "sample-wellbeing")
+    assert (
+        capsys.readouterr().out.count("\n") == 2
+    )  # stdout works too, default excludes in-progress
+
+
+# --- spreadsheet formula injection (safe_cell) -----------------------------
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("=1+1", "'=1+1"),
+        ("+x", "'+x"),
+        ("-2", "'-2"),
+        ("@SUM(A1)", "'@SUM(A1)"),
+        ("\tcmd", "'\tcmd"),
+        ("\rcmd", "'\rcmd"),
+        ("plain text, all good", "plain text, all good"),
+        ("", ""),
+    ],
+)
+def test_safe_cell_neutralises_leading_formula_characters(text, expected):
+    assert safe_cell(text) == expected
+
+
+def test_exports_apply_safe_cell_to_free_text_and_emails(version, api_client):
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    fill(
+        api_client,
+        rid,
+        {
+            "country": {"option": "GB"},
+            "age_band": {"option": "30_49"},
+            "birth_year": {"number": 1990},
+            "last_visit": {"skipped": True},
+            "overall": {"value": 4},
+            "has_symptoms": {"option": "yes"},
+            "symptoms": {"options": ["other"], "other_text": "-2"},
+            "symptom_impact": {"ratings": {"other": 4}},
+            "daily_activities": {"ratings": {"walking": 1, "housework": 2, "socialising": 3}},
+            "outcome_ranking": {
+                "order": ["independence", "energy", "side_effects", "fewer_visits"]
+            },
+            "support_wanted": {"options": ["peer"]},
+            "told_clinician": {"option": "no"},
+            "anything_else": {"text": '=HYPERLINK("x")'},
+        },
+    )
+    assert (
+        api_client.post(
+            f"/api/run/responses/{rid}/contact/", {"email": "+x@example.org"}, format="json"
+        ).status_code
+        == 204
+    )
+    assert api_client.post(f"/api/run/responses/{rid}/submit/").status_code == 200
+    out = io.StringIO()
+    write_responses(version, out)
+    rows = list(csv.reader(io.StringIO(out.getvalue())))
+    record = dict(zip(rows[0], rows[1], strict=True))
+    assert record["anything_else"] == '\'=HYPERLINK("x")'
+    assert record["symptoms.other_text"] == "'-2"
+    out = io.StringIO()
+    write_contacts(version, out)
+    rows = list(csv.reader(io.StringIO(out.getvalue())))
+    assert dict(zip(rows[0], rows[1], strict=True))["email"] == "'+x@example.org"
 
 
 def test_purge_abandoned(version, api_client, capsys):

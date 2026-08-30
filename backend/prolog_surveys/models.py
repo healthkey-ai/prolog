@@ -75,6 +75,9 @@ class SurveyVersion(models.Model):
     )
     schema_version = models.PositiveIntegerField(default=1)
     definition = models.JSONField(help_text="Normalised definition; the runner's contract.")
+    # Identifies the *source* document (normalize.source_checksum), so an unchanged
+    # file re-loads after a normaliser change; the help_text predates that and is
+    # left alone because changing it would need a migration.
     checksum = models.CharField(max_length=64, help_text="SHA-256 of the normalised definition.")
     source = models.CharField(
         max_length=512, blank=True, default="", help_text="File it was loaded from."

@@ -89,7 +89,7 @@
           "default": false
         },
         "resume": {
-          "description": "How an in-progress response is resumed. browser_token (default for anonymous) = response id kept in browser storage; account = attached to the authenticated user; none = no resume.",
+          "description": "How an in-progress response is resumed. browser_token (default for anonymous) = response id kept in browser storage; account = attached to the authenticated user; none = resumed only within the current browser tab (sessionStorage), never on a later visit.",
           "enum": ["browser_token", "account", "none"]
         },
         "repeat": {
@@ -153,7 +153,11 @@
           "type": "boolean",
           "default": true
         },
-        "privacy_url": { "type": "string" }
+        "privacy_url": {
+          "description": "Absolute http(s) URL of the privacy notice linked from the consent step.",
+          "type": "string",
+          "pattern": "^https?://[^\\s]+$"
+        }
       }
     },
     "section": {
@@ -290,7 +294,7 @@
           "minimum": 1
         },
         "min_selections": {
-          "description": "multi: minimum picks for the answer to count as answered (default 1).",
+          "description": "multi: minimum number of picks accepted (default 1); fewer is rejected. An `exclusive` option selected on its own always satisfies it.",
           "type": "integer",
           "minimum": 1
         },
@@ -303,7 +307,7 @@
           "required": ["min", "max"],
           "additionalProperties": false,
           "properties": {
-            "min": { "type": "integer" },
+            "min": { "description": "min < max; the runner renders one control per point, so max - min + 1 must not exceed 101 (checked by the semantic validator).", "type": "integer" },
             "max": { "type": "integer" },
             "min_label": { "$ref": "#/$defs/i18n" },
             "max_label": { "$ref": "#/$defs/i18n" },

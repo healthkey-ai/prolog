@@ -43,10 +43,17 @@ class SurveyAdmin(admin.ModelAdmin):
         "responses",
     )
     search_fields = ("slug", "title")
-    # Mirrors ``participation.anonymous`` of the loaded definition; the loader
-    # sets it, so editing it here would only drift from the instrument.
+    # Loader-owned: the loader finds a survey by ``slug`` (changing it here
+    # would orphan the survey and every link sent) and rewrites ``title``,
+    # ``theme_code`` and ``allow_anonymous_participation`` from the definition
+    # on every load, so edits here would only drift from the instrument until
+    # the next load reverts them. Only the effective window is admin-owned.
+    loader_fields = ("slug", "title", "theme_code", "allow_anonymous_participation")
     readonly_fields = ("allow_anonymous_participation",)
     inlines = [VersionInline]
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.loader_fields if obj is not None else self.readonly_fields
 
     def get_queryset(self, request):
         return (

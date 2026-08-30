@@ -18,9 +18,7 @@ export function SingleChoice({ question, value, onChange }: RendererProps<Option
         const checked = value?.option === o.key;
         return (
           <OptionCard key={o.key} kind="radio" value={o.key} label={o.label as string} checked={checked} data-testid={`option-${o.key}`}>
-            {o.free_text && checked && (
-              <OtherTextInput autoFocus value={value?.other_text} onChange={(text) => onChange({ option: o.key, other_text: text })} onCommit={(text) => onChange({ option: o.key, other_text: text }, { commit: true })} />
-            )}
+            {o.free_text && checked && <OtherTextInput autoFocus base={{ option: o.key }} value={value?.other_text} onChange={onChange} />}
           </OptionCard>
         );
       })}

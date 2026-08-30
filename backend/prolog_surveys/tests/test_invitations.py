@@ -34,6 +34,13 @@ def definition(**participation):
     return doc
 
 
+@pytest.fixture(autouse=True)
+def public_url(settings):
+    """The test runner turns DEBUG off, where the localhost default is refused
+    (see test_local_public_url_refuses_to_send_outside_debug)."""
+    settings.PROLOG_PUBLIC_URL = "https://survey.example.org"
+
+
 def test_due_dates_weeks_and_months():
     weekly = {"every": 2, "unit": "weeks", "start_date": "2026-01-01", "end_date": "2026-02-15"}
     assert list(due_dates(weekly, dt.date(2026, 3, 1))) == [
@@ -280,8 +287,14 @@ def test_one_failed_email_does_not_stop_the_batch(monkeypatch, caplog):
     monkeypatch.setattr(invitations, "_send_one", flaky)
     assert send_pending() == 1
     assert [m.to for m in mail.outbox] == [["b@example.org"]]
-    assert "could not send administration" in caplog.text
-    assert SurveyAdministration.objects.filter(sent_at__isnull=True).count() == 1
+    failed = SurveyAdministration.objects.get(sent_at__isnull=True)
+    assert f"could not send invitation {failed.invitation_id}" in caplog.text
+    assert "RuntimeError" in caplog.text
+    # The administration id is the participant's credential and the exception
+    # text of a mail server may carry the address: neither belongs in a log.
+    assert str(failed.pk) not in caplog.text
+    assert "a@example.org" not in caplog.text
+    assert "mail server hiccup" not in caplog.text
 
 
 @pytest.mark.django_db
@@ -308,3 +321,116 @@ def test_unsent_message_is_not_marked_sent(monkeypatch, caplog):
         assert send_pending() == 0
     assert SurveyAdministration.objects.get().sent_at is None
     assert "not sent" in caplog.text
+
+
+@pytest.mark.django_db
+def test_email_chrome_follows_the_invitation_language(settings):
+    settings.PROLOG_PUBLIC_URL = "https://survey.example.org"
+    version = load_definition(definition(), activate=True).version
+    for lang in ("fr", "pt-BR", "xx"):
+        SurveyInvitation.objects.create(
+            survey=version.survey, email=f"{lang}@example.org", language=lang
+        )
+    schedule_due(dt.date(2026, 1, 1))
+    assert send_pending() == 3
+    by_recipient = {m.to[0]: m for m in mail.outbox}
+    french = by_recipient["fr@example.org"]
+    assert "You are invited" not in french.body
+    assert invitations.EMAIL_STRINGS["fr"]["intro"] in french.body
+    assert invitations.EMAIL_STRINGS["fr"]["open"] in french.alternatives[0][0]
+    assert 'lang="fr"' in french.alternatives[0][0]
+    # A regional variant falls back to its base language, an unknown one to English.
+    assert invitations.EMAIL_STRINGS["pt"]["intro"] in by_recipient["pt-BR@example.org"].body
+    assert invitations.EMAIL_STRINGS["en"]["intro"] in by_recipient["xx@example.org"].body
+
+
+@pytest.mark.django_db
+def test_concurrent_run_creating_the_same_cycle_does_not_abort_the_batch(monkeypatch):
+    version = load_definition(definition(), activate=True).version
+    first, second = (
+        SurveyInvitation.objects.create(survey=version.survey, email=f"{n}@example.org")
+        for n in ("a", "b")
+    )
+    real_bulk_create = SurveyAdministration.objects.bulk_create
+
+    def racing_bulk_create(objs, **kwargs):
+        # Another run inserted the first invitation's administration between
+        # this run's read of the existing ones and its insert.
+        SurveyAdministration.objects.create(
+            invitation=first, survey_version=version, due_at=dt.date(2026, 1, 1)
+        )
+        return real_bulk_create(objs, **kwargs)
+
+    monkeypatch.setattr(SurveyAdministration.objects, "bulk_create", racing_bulk_create)
+    created = schedule_due(dt.date(2026, 1, 1))
+    assert [a.invitation_id for a in created] == [second.id]
+    assert SurveyAdministration.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_command_refuses_to_overlap_a_running_instance(capsys):
+    from django.db import connections
+
+    version = load_definition(definition(), activate=True).version
+    SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    other = connections.create_connection("default")
+    try:
+        with other.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", [invitations.RUN_LOCK_KEY])
+            assert cursor.fetchone()[0] is True
+        call_command("send_due_invitations")
+        assert "already running" in capsys.readouterr().out
+        assert not SurveyAdministration.objects.exists() and not mail.outbox
+        with other.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_unlock(%s)", [invitations.RUN_LOCK_KEY])
+    finally:
+        other.close()
+    call_command("send_due_invitations")
+    assert "created 1 administration(s), sent 1 invitation(s)" in capsys.readouterr().out
+    # The lock is released at the end of the run.
+    with connections["default"].cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_lock(%s)", [invitations.RUN_LOCK_KEY])
+        assert cursor.fetchone()[0] is True
+        cursor.execute("SELECT pg_advisory_unlock(%s)", [invitations.RUN_LOCK_KEY])
+
+
+@pytest.mark.django_db
+def test_administration_without_a_version_is_reported(caplog):
+    caplog.set_level(logging.INFO, logger="prolog_surveys.invitations")
+    doc = definition(repeat={"every": 1, "unit": "weeks", "start_date": "2026-01-01"})
+    v1 = load_definition(doc, activate=True).version
+    SurveyInvitation.objects.create(survey=v1.survey, email="p@example.org")
+    schedule_due(dt.date(2026, 1, 1))
+    # The scheduled version is archived and nothing is active any more.
+    SurveyVersion.objects.filter(pk=v1.pk).update(status="archived")
+    assert send_pending() == 0 and not mail.outbox
+    assert "invitation for survey sample-wellbeing not sent (no active version)" in caplog.text
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "url", ["http://localhost:5173", "http://127.0.0.1:8000", "https://[::1]/", "", "/s"]
+)
+def test_local_public_url_refuses_to_send_outside_debug(settings, caplog, url):
+    settings.DEBUG = False
+    settings.PROLOG_PUBLIC_URL = url
+    version = load_definition(definition(), activate=True).version
+    SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    schedule_due(dt.date(2026, 1, 1))
+    assert send_pending() == 0 and not mail.outbox
+    assert "PROLOG_PUBLIC_URL" in caplog.text
+    # Nothing is stamped: the batch goes out once the URL is corrected.
+    assert SurveyAdministration.objects.get().sent_at is None
+    settings.PROLOG_PUBLIC_URL = "https://survey.example.org"
+    assert send_pending() == 1
+
+
+@pytest.mark.django_db
+def test_local_public_url_is_fine_under_debug(settings):
+    settings.DEBUG = True
+    settings.PROLOG_PUBLIC_URL = "http://localhost:5173"
+    version = load_definition(definition(), activate=True).version
+    SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    schedule_due(dt.date(2026, 1, 1))
+    assert send_pending() == 1
+    assert "http://localhost:5173/s/sample-wellbeing?invite=" in mail.outbox[0].body

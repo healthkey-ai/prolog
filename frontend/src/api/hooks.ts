@@ -113,29 +113,74 @@ export function mergePatched(current: ResponseSummary, patch: ResponsePatch, dat
   return next;
 }
 
-export function usePatchResponse(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: ResponsePatch) => api.patch<PatchedResponse>(`/responses/${id}/`, body),
-    onSuccess: (data, body) => {
-      // Merge only what this PATCH owns: an answer PUT may still be in flight and its
-      // optimistic value must survive a PATCH that raced it on the server. With
-      // nothing cached there is nothing to merge into (the slim PATCH body is
-      // not a ResponseSummary), so the cache is left for the next fetch.
-      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && mergePatched(current, body, data));
-    },
-  });
-}
-
 /**
- * Rejection of a save that a newer save of the same key has overtaken: never
- * retried, never applied to the cache, and not a failure for the caller (the
- * newer save's outcome is the one that counts).
+ * Rejection of a save (or PATCH) that a newer one of the same key or field has
+ * overtaken: never retried, never applied to the cache, and not a failure for
+ * the caller (the newer one's outcome is the one that counts).
  */
 export class SupersededError extends Error {
   constructor() {
     super("save superseded by a newer value");
   }
+}
+
+type PatchField = keyof ResponsePatch;
+const patchFields = (body: ResponsePatch): PatchField[] => (Object.keys(body) as PatchField[]).filter((f) => body[f] !== undefined);
+
+/**
+ * PATCHes are sequenced per field like answer saves: each goes out only after
+ * the previous PATCH of this response settled (the server stores them in
+ * arrival order), one that a newer PATCH of all its fields overtook never
+ * reaches the wire, and a result is merged only for the fields it is still
+ * the latest of. Two quick language switches therefore cannot leave the cache
+ * (and so the chrome) on the language the server did not keep.
+ */
+export function usePatchResponse(id: string) {
+  const qc = useQueryClient();
+  const seqs = useRef(new Map<PatchField, number>());
+  const seqOf = useRef(new WeakMap<ResponsePatch, Partial<Record<PatchField, number>>>());
+  const inflight = useRef<Promise<unknown>>(Promise.resolve());
+  /** The fields of `body` that no later PATCH has set since. */
+  const latestFields = (body: ResponsePatch) => {
+    const mine = seqOf.current.get(body) ?? {};
+    return patchFields(body).filter((f) => mine[f] === seqs.current.get(f));
+  };
+  return useMutation({
+    mutationFn: async (body: ResponsePatch) => {
+      const run = (async () => {
+        await inflight.current.catch(() => undefined);
+        if (!latestFields(body).length) throw new SupersededError();
+        const data = await api.patch<PatchedResponse>(`/responses/${id}/`, body);
+        // Persisted, but a newer PATCH of every field it set is queued: the
+        // caller must not act on it (nor the cache).
+        if (!latestFields(body).length) throw new SupersededError();
+        return data;
+      })();
+      inflight.current = run;
+      return run;
+    },
+    retry: false,
+    onMutate: (body) => {
+      const mine: Partial<Record<PatchField, number>> = {};
+      for (const field of patchFields(body)) {
+        const seq = (seqs.current.get(field) ?? 0) + 1;
+        seqs.current.set(field, seq);
+        mine[field] = seq;
+      }
+      seqOf.current.set(body, mine);
+    },
+    onSuccess: (data, body) => {
+      // Merge only what this PATCH owns and is still the latest of: an answer
+      // PUT may still be in flight and its optimistic value must survive a
+      // PATCH that raced it on the server. With nothing cached there is nothing
+      // to merge into (the slim PATCH body is not a ResponseSummary), so the
+      // cache is left for the next fetch.
+      const fields = latestFields(body);
+      if (!fields.length) return;
+      const owned = Object.fromEntries(fields.map((f) => [f, body[f]])) as ResponsePatch;
+      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && mergePatched(current, owned, data));
+    },
+  });
 }
 
 /** The cached value of `key` before an optimistic save, so a failed save can put it back. */

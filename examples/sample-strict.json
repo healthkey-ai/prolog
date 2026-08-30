@@ -17,7 +17,7 @@
   "presentation": {
     "skip_policy": "hard"
   },
-  "notes": "Minimal neutral instrument for the engine vectors: hard skip policy, a minimum selection count, a 'neq' gate, and a dynamic matrix that gates a later question (cascade fixed point).",
+  "notes": "Minimal neutral instrument for the engine vectors: hard skip policy, a minimum selection count with an exclusive option, a 'neq' gate, and a dynamic matrix that gates a later question (cascade fixed point).",
   "sections": [
     {
       "key": "main",
@@ -100,6 +100,13 @@
               "label": {
                 "en": "Mobility"
               }
+            },
+            {
+              "key": "none",
+              "label": {
+                "en": "None of these"
+              },
+              "exclusive": true
             }
           ],
           "config": {

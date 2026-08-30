@@ -7,10 +7,12 @@ COPY frontend/ ./
 COPY schema/ ../schema/
 RUN npm run build
 
-# Stage 2: backend + built runner served by WhiteNoise
-FROM python:3.14-slim
+# Stage 2: backend + built runner served by WhiteNoise.
+# The Python minor and the uv version are the ones CI tests with
+# (.github/workflows/ci.yml); bump both together.
+FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /usr/local/bin/uv
 WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./backend/
 RUN cd backend && uv sync --frozen --no-dev --no-install-project
@@ -23,5 +25,12 @@ ENV PATH="/app/backend/.venv/bin:$PATH" DEBUG=false PROLOG_PROFILE=standalone \
 WORKDIR /app/backend
 # collectstatic only needs settings to import; the build-time key is never persisted.
 RUN SECRET_KEY=build-only-not-persisted python manage.py collectstatic --noinput
+# The app never writes to the image: run it as an unprivileged user that owns
+# nothing under /app (the build output is world-readable).
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin app
+USER app
 EXPOSE 8000
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py load_definitions && gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]
+# A definition file that fails to load is reported and skipped (load_definitions
+# exits non-zero); the rest are served, so one bad file does not keep the whole
+# deployment down.
+CMD ["sh", "-c", "python manage.py migrate --noinput && { python manage.py load_definitions || echo 'load_definitions: some definitions were skipped (see above)' >&2; } && exec gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]
