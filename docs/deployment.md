@@ -57,7 +57,7 @@ Any wording or structure change after activation requires a **new
 | `PROLOG_THROTTLE_CREATE/CAPTURE/ANSWER/READ` | throttle rates per hashed client address (create `30/hour`, contact/identity capture `30/hour`, answer `600/hour` per response, read `1200/hour`). Behind NAT (clinic Wi-Fi, mobile carriers) many participants share one address: raise `CREATE`/`CAPTURE` accordingly |
 | `CACHE_BACKEND`, `CACHE_LOCATION` | where throttle counters live. Default: an in-process cache, so each gunicorn worker counts separately and every rate is effectively multiplied by `WEB_CONCURRENCY`. For exact limits use a cache shared by all workers, e.g. `CACHE_BACKEND=django.core.cache.backends.redis.RedisCache CACHE_LOCATION=redis://cache:6379/1` |
 | `PROLOG_ABANDONED_RESPONSE_DAYS` | retention of in-progress responses (default 90) |
-| `PROLOG_CLIENT_KEY_SALT` | salt for hashed client keys (throttling); rotate to reset |
+| `PROLOG_CLIENT_KEY_SALT` | salt for the hashed client keys (throttle counters, `user_agent_hash`); defaults to `SECRET_KEY`, so it only needs setting to rotate the hashes independently of the key. A placeholder value (`prolog`, `change-me`) is refused at start |
 | `EMAIL_BACKEND`, `PROLOG_EMAIL_FROM` | invitations (integrated profile) |
 | `SECURE_SSL_REDIRECT` | `true` by default when `DEBUG=false`; `/api/health/` is exempt |
 | `PROLOG_NUM_PROXIES` | number of reverse proxies in front of the app (default `0`). Set `1` behind a TLS-terminating proxy so its `X-Forwarded-Proto` / `X-Forwarded-For` are trusted; otherwise the HTTPS redirect loops and throttling keys on the proxy's address |
@@ -73,7 +73,9 @@ uses `google_fonts`.
 
 ## Privacy defaults
 
-- No IP addresses or user agents are stored; throttling uses salted hashes.
+- No raw IP addresses or user agents are stored anywhere: the throttle keys
+  in the cache and `user_agent_hash` on a response are salted SHA-256
+  hashes (`PROLOG_CLIENT_KEY_SALT`, `SECRET_KEY` by default).
 - Contact-capture emails live in `SurveyContact` with no reference to any
   response and are exported separately.
 - No third-party analytics; the only browser storage is the response id

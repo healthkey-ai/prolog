@@ -12,7 +12,7 @@ export function CompletePage() {
   const { t } = useTranslation();
   const id = storedResponseId(slug);
   const response = useResponse(id);
-  const definition = useSurveyDefinition(slug, response.data?.language, undefined, id);
+  const definition = useSurveyDefinition(slug, { lang: response.data?.language, responseId: id });
   useDefinitionLanguage(definition.data?.language);
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);

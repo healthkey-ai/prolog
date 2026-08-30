@@ -31,6 +31,7 @@ export default defineConfig({
         PROLOG_THROTTLE_CREATE: "100000/hour",
         PROLOG_THROTTLE_ANSWER: "100000/hour",
         PROLOG_THROTTLE_READ: "100000/hour",
+        PROLOG_THROTTLE_CAPTURE: "100000/hour",
       },
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,

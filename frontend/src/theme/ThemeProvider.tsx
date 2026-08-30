@@ -34,11 +34,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const stale = response.isError;
   // Wait for the response before asking for its definition: its language is part
   // of the key, so fetching at language "" first would fetch the definition twice.
-  const definition = useSurveyDefinition(slug, response.data?.language, invite, stale ? undefined : responseId, { enabled: !responseId || !response.isPending });
+  const definition = useSurveyDefinition(slug, { lang: response.data?.language, invite, responseId: stale ? undefined : responseId, enabled: !responseId || !response.isPending });
   const code = definition.data?.theme_code;
   const theme = useTheme(code);
 
   useEffect(() => {
+    // 404 only, not the wider "gone" test: a 403 on an account survey is a session
+    // problem, and the stored id must survive a re-login to resume that response.
     if (response.error instanceof ApiError && response.error.status === 404) clearResponseId(slug);
   }, [response.error, slug]);
 

@@ -92,7 +92,7 @@ skill (`high --fix <base>...<head>`) from this directory in a loop and:
   that leaves a "confirmed but below the cap" tail does not converge.
 - **Verify before committing**: backend pytest in both profiles (standalone,
   and integrated with `POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated
-  PROLOG_PARTICIPANT_MODEL=auth.User --no-migrations`), ruff, `tsc -b`,
+  PROLOG_PARTICIPANT_MODEL=auth.User`), ruff, `tsc -b`,
   vitest, Playwright (twice if anything looked flaky). One commit per pass,
   pushed to the PR branch.
 - **Convergence**: stop when a pass returns only items already decided below,

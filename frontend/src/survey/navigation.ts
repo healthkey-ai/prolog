@@ -3,8 +3,8 @@
  * Pure functions; the wizard page owns no navigation logic of its own.
  */
 import { missingKeys } from "./completion";
-import { ANSWERABLE, type Answers, type Definition } from "./types";
-import { isAnswered, type VisibleQuestion, visibleQuestions } from "./visibility";
+import { ANSWERABLE, type Answers, type AnswerValue, type Definition } from "./types";
+import { type VisibleQuestion, visibleQuestions } from "./visibility";
 
 export type QuestionStatus = "answered" | "skipped" | "current" | "unanswered" | "unreachable";
 
@@ -27,7 +27,6 @@ export interface Position {
   current: VisibleQuestion | null;
   index: number; // index within visible list, -1 if not visible
   previousKey: string | null;
-  nextKey: string | null;
   isLast: boolean;
   /** 1-based question number among answerable visible questions. */
   questionNumber: number;
@@ -48,7 +47,6 @@ export function position(def: Definition, answers: Answers, currentKey: string |
     current,
     index,
     previousKey: index > 0 ? visible[index - 1].key : null,
-    nextKey: index >= 0 && index < visible.length - 1 ? visible[index + 1].key : null,
     isLast: index === visible.length - 1,
     questionNumber: current ? answerable.filter((v) => v.index <= current.index).length : 0,
     questionTotal: answerable.length,
@@ -83,13 +81,19 @@ export function firstOpenKey(def: Definition, answers: Answers, lastKey?: string
 }
 
 /**
+ * The server's rule for "this question holds an answer": an answer row exists
+ * and it is not a skip. A declined capture (`{provided: false}`) or an empty
+ * all-optional ranking counts, exactly as the server counts it for progress
+ * and completion; the wizard's Next and the overview tick both go by this.
+ */
+export function hasStoredAnswer(value: AnswerValue | undefined): boolean {
+  return value !== undefined && !("skipped" in value && value.skipped);
+}
+
+/**
  * Furthest question the participant may jump to: everything up to and
  * including the first unanswered visible question (or the last reached one).
  */
-export function reachableIndex(def: Definition, answers: Answers, lastKey?: string | null): number {
-  return reachableFrom(visibleQuestions(def, answers), missingKeys(def, answers), lastKey);
-}
-
 function reachableFrom(visible: VisibleQuestion[], missing: string[], lastKey?: string | null): number {
   const firstMissing = missing.length ? visible.findIndex((v) => v.key === missing[0]) : visible.length - 1;
   const last = lastKey ? visible.findIndex((v) => v.key === lastKey) : -1;
@@ -106,7 +110,7 @@ export function overview(def: Definition, answers: Answers, currentKey: string |
     let status: QuestionStatus;
     if (v.key === currentKey) status = "current";
     else if (value && "skipped" in value) status = "skipped";
-    else if (isAnswered(value) || (value && "provided" in value)) status = "answered";
+    else if (hasStoredAnswer(value)) status = "answered";
     else if (v.index <= reachable) status = "unanswered";
     else status = "unreachable";
     const section = sections.get(v.sectionIndex) ?? { key: v.sectionKey, sectionIndex: v.sectionIndex, rows: [] };

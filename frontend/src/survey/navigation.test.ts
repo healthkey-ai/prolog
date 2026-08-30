@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { firstOpenKey, overview, position, progressFraction } from "./navigation";
+import { firstOpenKey, hasStoredAnswer, overview, position, progressFraction } from "./navigation";
 import type { Definition } from "./types";
 
 const def = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "examples", "sample-wellbeing.json"), "utf-8")) as Definition;
@@ -19,7 +19,7 @@ describe("navigation", () => {
   it("computes position, numbering and neighbours", () => {
     const p = position(def, { has_symptoms: { option: "yes" } }, "symptoms");
     expect(p.previousKey).toBe("has_symptoms");
-    expect(p.nextKey).toBe("daily_activities");
+    expect(p.visible[p.index + 1].key).toBe("daily_activities");
     expect(p.questionNumber).toBe(7); // welcome is info, not counted
     expect(p.sectionNumber).toBe(2);
     expect(p.sectionTotal).toBe(5); // follow-up section revealed by has_symptoms=yes
@@ -36,6 +36,23 @@ describe("navigation", () => {
     expect(byKey.last_visit.status).toBe("unreachable");
     expect(byKey.last_visit.navigable).toBe(false);
     expect(byKey.welcome.navigable).toBe(true);
+  });
+
+  it("counts any stored row that is not a skip as an answer, as the server does", () => {
+    expect(hasStoredAnswer(undefined)).toBe(false);
+    expect(hasStoredAnswer({ skipped: true })).toBe(false);
+    expect(hasStoredAnswer({ option: "a" })).toBe(true);
+    expect(hasStoredAnswer({ provided: false })).toBe(true); // a declined capture is an answer row
+    expect(hasStoredAnswer({ order: [] })).toBe(true); // an all-optional ranking with nothing ranked
+  });
+
+  it("ticks a declined capture in the overview", () => {
+    const tiny = {
+      ...def,
+      sections: [{ key: "s", title: { en: "S" }, questions: [{ key: "contact", type: "email", text: { en: "Email?" } }, { key: "note", type: "text", text: { en: "Note" } }] }],
+    } as unknown as Definition;
+    const rows = overview(tiny, { contact: { provided: false } }, "note", "note").flatMap((s) => s.rows);
+    expect(rows.find((r) => r.key === "contact")?.status).toBe("answered");
   });
 
   it("never reports negative progress on an info block", () => {

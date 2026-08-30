@@ -20,30 +20,38 @@ export function retainedWhenHidden(question: Question | undefined, value: Answer
 export function applyCascade(def: Definition, answers: Answers): CascadeResult {
   const questions = questionByKey(def);
   const surviving: Answers = { ...answers };
-  const invalidated: string[] = [];
-  const visible = visibleKeys(def, surviving);
-  const visibleSet = new Set(visible);
+  const invalidated = new Set<string>();
+  // Pruning a matrix can change what is visible (a question conditioned on it
+  // being `answered`), which can hide further answers: walk again until a pass
+  // prunes nothing, so the result is a fixed point. Mirrors cascade.py.
+  let visible: string[];
+  for (;;) {
+    visible = visibleKeys(def, surviving);
+    const visibleSet = new Set(visible);
 
-  for (const key of Object.keys(surviving)) {
-    if (!visibleSet.has(key) && !retainedWhenHidden(questions[key], surviving[key])) {
-      delete surviving[key];
-      invalidated.push(key);
+    for (const key of Object.keys(surviving)) {
+      if (!visibleSet.has(key) && !retainedWhenHidden(questions[key], surviving[key])) {
+        delete surviving[key];
+        invalidated.add(key);
+      }
     }
-  }
 
-  for (const [key, value] of Object.entries(surviving)) {
-    const q = questions[key];
-    if (!q || q.type !== "matrix" || !isAnswered(value) || !("ratings" in value)) continue;
-    const rows = matrixRows(q, surviving, questions);
-    const ratings = Object.fromEntries(Object.entries(value.ratings).filter(([r]) => rows.includes(r)));
-    if (Object.keys(ratings).length !== Object.keys(value.ratings).length) {
-      if (Object.keys(ratings).length) surviving[key] = { ratings };
-      else delete surviving[key];
-      invalidated.push(key);
+    let pruned = false;
+    for (const [key, value] of Object.entries(surviving)) {
+      const q = questions[key];
+      if (!q || q.type !== "matrix" || !isAnswered(value) || !("ratings" in value)) continue;
+      const rows = matrixRows(q, surviving, questions);
+      const ratings = Object.fromEntries(Object.entries(value.ratings).filter(([r]) => rows.includes(r)));
+      if (Object.keys(ratings).length !== Object.keys(value.ratings).length) {
+        if (Object.keys(ratings).length) surviving[key] = { ratings };
+        else delete surviving[key];
+        invalidated.add(key);
+        pruned = true;
+      }
     }
+    if (!pruned) break;
   }
 
   const order = Object.keys(questions);
-  invalidated.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  return { answers: surviving, invalidated, visible };
+  return { answers: surviving, invalidated: [...invalidated].sort((a, b) => order.indexOf(a) - order.indexOf(b)), visible };
 }

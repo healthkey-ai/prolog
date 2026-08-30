@@ -1,8 +1,8 @@
 """Phase 7: integrated profile — participant link, identity capture, account resume.
 
-Runs only with PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User
-(and --no-migrations, since the participant column is added by the host's
-migration). CI runs this configuration as a separate job.
+Runs only with PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User;
+the packaged ``0005_participant`` migration adds the participant columns when
+that setting is present. CI runs this configuration as a separate job.
 """
 
 from __future__ import annotations

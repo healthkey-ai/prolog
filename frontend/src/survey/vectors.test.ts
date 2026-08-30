@@ -82,13 +82,15 @@ describe("shared engine vectors", () => {
         expect(missingKeys(def, given)).toEqual(c.expect.missing);
       }
 
+      // The same options as `store`: the definition's skip policy and its
+      // question map (dynamic matrix rows), so a hard policy is exercised here too.
+      const questions = questionByKey(def);
+      const opts = { skipPolicy: def.presentation?.skip_policy, sourceOptions: SOURCE_OPTIONS, questions };
       for (const c of vector.reject ?? []) {
-        const q = questionByKey(def)[c.key];
-        expect(() => validateAnswer(q, c.value, c.given ?? {}, { sourceOptions: SOURCE_OPTIONS }), `${c.key} ${JSON.stringify(c.value)}`).toThrow();
+        expect(() => validateAnswer(questions[c.key], c.value, c.given ?? {}, opts), `${c.key} ${JSON.stringify(c.value)}`).toThrow();
       }
       for (const c of vector.accept ?? []) {
-        const q = questionByKey(def)[c.key];
-        const value = validateAnswer(q, c.value, c.given ?? {}, { sourceOptions: SOURCE_OPTIONS });
+        const value = validateAnswer(questions[c.key], c.value, c.given ?? {}, opts);
         if (c.canonical) expect(value).toEqual(c.canonical);
       }
 

@@ -7,7 +7,8 @@ import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "lucide-
 import { Button } from "../ui/button";
 import { OtherTextInput } from "./OtherTextInput";
 import type { RendererProps } from "./types";
-import { optionLabel, type Option, type RankingValue } from "@/survey/types";
+import { defaultOrder } from "@/survey/answers";
+import { freeTextKeys, optionLabel, type Option, type RankingValue } from "@/survey/types";
 import { cn } from "@/lib/utils";
 
 /** Ranking with drag **and** ▲▼ buttons, live position announcements, optional items (Q-6). */
@@ -15,7 +16,13 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
   const { t } = useTranslation();
   const options = question.options ?? [];
   const optional = new Set(question.config?.optional_items ?? []);
-  const order = value?.order ?? options.filter((o) => !optional.has(o.key)).map((o) => o.key);
+  const free = freeTextKeys(question);
+  // A stored skip reaches the renderer as the value; the list shows the default
+  // order (moving an item still commits it) with a notice so it does not read
+  // as an answer.
+  const skipped = value !== undefined && "skipped" in value && Boolean(value.skipped);
+  const order = (skipped ? undefined : value?.order) ?? defaultOrder(question);
+  const otherText = skipped ? undefined : value?.other_text;
   const unranked = options.filter((o) => optional.has(o.key) && !order.includes(o.key));
   const [announce, setAnnounce] = useState("");
   // An untouched required ranking already holds its displayed order as the
@@ -24,9 +31,9 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
   const labelOf = (key: string) => optionLabel(question, key) ?? key;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
-  const commit = (next: string[], otherText = value?.other_text) => {
-    const hasFree = next.some((k) => options.find((o) => o.key === k)?.free_text);
-    onChange({ order: next, ...(hasFree && otherText ? { other_text: otherText } : {}) }, { commit: true });
+  const commit = (next: string[], text = otherText) => {
+    const hasFree = next.some((k) => free.has(k));
+    onChange({ order: next, ...(hasFree && text ? { other_text: text } : {}) }, { commit: true });
   };
 
   const move = (key: string, delta: number) => {
@@ -51,6 +58,11 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
   return (
     <div>
       <p className="mb-3 text-sm text-ink-soft">{t("ranking.help")}</p>
+      {skipped && (
+        <p className="mb-3 rounded-[var(--p-radius-card)] bg-tint px-3 py-2 text-sm text-ink" role="status" data-testid="ranking-skipped">
+          {t("ranking.skipped")}
+        </p>
+      )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={order} strategy={verticalListSortingStrategy}>
           <ol className="flex flex-col gap-3" data-testid="ranking-list">
@@ -64,7 +76,7 @@ export function Ranking({ question, value, onChange }: RendererProps<RankingValu
                 onUp={() => move(key, -1)}
                 onDown={() => move(key, 1)}
                 onRemove={optional.has(key) ? () => commit(order.filter((k) => k !== key), undefined) : undefined}
-                otherText={value?.other_text}
+                otherText={otherText}
                 onOtherText={(text) => onChange({ order, other_text: text })}
                 onOtherTextCommit={(text) => commit(order, text)}
               />

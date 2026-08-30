@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiError } from "@/api/client";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -27,8 +28,10 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
     setError(null);
     try {
       await onSubmitEmail(email);
-    } catch {
-      setError(t("app.error"));
+    } catch (err) {
+      // The address never reaches the answer; the endpoint's status says what went wrong.
+      const status = err instanceof ApiError ? err.status : 0;
+      setError(t(status === 503 ? "email.unavailable" : status === 429 ? "app.throttled" : "app.error"));
     } finally {
       setBusy(false);
     }

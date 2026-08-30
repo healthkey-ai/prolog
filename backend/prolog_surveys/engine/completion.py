@@ -27,9 +27,10 @@ def missing_keys(
     ``visible``/``questions`` accept a caller's precomputed walk so one request
     does not traverse the definition several times.
     """
-    questions = questions or question_by_key(definition)
+    if questions is None:
+        questions = question_by_key(definition)
     if visible is None:
-        visible = visible_questions(definition, answers)
+        visible = visible_questions(definition, answers, questions=questions)
     missing: list[str] = []
     for v in visible:
         if v.type not in ANSWERABLE:
@@ -52,13 +53,14 @@ def progress(
     *,
     visible: list[VisibleQuestion] | None = None,
     missing: list[str] | None = None,
+    questions: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Answered = visible answerable questions that are not missing, so a
     pruned matrix (rated, but not for every current row) counts as open,
     exactly as ``missing_keys`` reports it; a skip counts as answered."""
     if visible is None:
-        visible = visible_questions(definition, answers)
+        visible = visible_questions(definition, answers, questions=questions)
     if missing is None:
-        missing = missing_keys(definition, answers, visible=visible)
+        missing = missing_keys(definition, answers, visible=visible, questions=questions)
     total = sum(1 for v in visible if v.type in ANSWERABLE)
     return {"answered": total - len(missing), "total": total}

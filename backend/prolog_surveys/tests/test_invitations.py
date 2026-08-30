@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 import pytest
 from django.core import mail
 from django.core.management import call_command
+from django.utils import timezone
 
+from prolog_surveys import invitations
 from prolog_surveys.definitions.loader import load_definition
 from prolog_surveys.invitations import (
     add_months,
@@ -16,7 +19,12 @@ from prolog_surveys.invitations import (
     schedule_due,
     send_pending,
 )
-from prolog_surveys.models import SurveyAdministration, SurveyInvitation, SurveyResponse
+from prolog_surveys.models import (
+    SurveyAdministration,
+    SurveyInvitation,
+    SurveyResponse,
+    SurveyVersion,
+)
 from prolog_surveys.tests.conftest import example_definition
 
 
@@ -210,3 +218,67 @@ def test_anonymous_survey_takes_no_invitations(api_client, caplog):
     )
     assert r.status_code == 400 and "invitation" in r.json()
     assert not SurveyResponse.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field, days", [("effective_to", -1), ("effective_from", 1)])
+def test_closed_survey_is_neither_scheduled_nor_sent(field, days, caplog):
+    caplog.set_level(logging.INFO, logger="prolog_surveys.invitations")
+    doc = definition(repeat={"every": 1, "unit": "weeks", "start_date": "2026-01-01"})
+    version = load_definition(doc, activate=True).version
+    survey = version.survey
+    setattr(survey, field, timezone.localdate() + dt.timedelta(days=days))
+    survey.save()
+    invitation = SurveyInvitation.objects.create(survey=survey, email="p@example.org")
+    # Outside the effective window the link would be refused (410): no administration...
+    assert schedule_due() == []
+    assert not SurveyAdministration.objects.exists()
+    assert "sample-wellbeing is not scheduled" in caplog.text
+    # ...and one created before the window closed stays unsent (not marked sent)...
+    admin = SurveyAdministration.objects.create(
+        invitation=invitation, survey_version=version, due_at=dt.date(2026, 1, 1)
+    )
+    assert send_pending() == 0 and not mail.outbox
+    admin.refresh_from_db()
+    assert admin.sent_at is None
+    assert "not sent" in caplog.text
+    # ...until the survey is open again.
+    setattr(survey, field, None)
+    survey.save()
+    assert send_pending() == 1
+
+
+@pytest.mark.django_db
+def test_one_broken_schedule_does_not_stop_the_others(caplog):
+    good = load_definition(definition(), activate=True).version
+    bad_doc = definition(repeat={"every": 1, "unit": "weeks", "start_date": "2026-01-01"})
+    bad_doc["slug"] = "broken"
+    bad = load_definition(bad_doc, activate=True).version
+    # The validator refuses this, so corrupt the stored definition directly.
+    bad.definition["participation"]["repeat"]["start_date"] = "2026-13-01"
+    SurveyVersion.objects.filter(pk=bad.pk).update(definition=bad.definition)
+    for version in (good, bad):
+        SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    created = schedule_due(dt.date(2026, 1, 1))
+    assert [a.invitation.survey.slug for a in created] == ["sample-wellbeing"]
+    assert "could not schedule survey broken" in caplog.text
+
+
+@pytest.mark.django_db
+def test_one_failed_email_does_not_stop_the_batch(monkeypatch, caplog):
+    version = load_definition(definition(), activate=True).version
+    for address in ("a@example.org", "b@example.org"):
+        SurveyInvitation.objects.create(survey=version.survey, email=address)
+    schedule_due(dt.date(2026, 1, 1))
+    real_send = invitations._send_one
+
+    def flaky(mailer, administration, version):
+        if administration.invitation.email == "a@example.org":
+            raise RuntimeError("mail server hiccup")
+        real_send(mailer, administration, version)
+
+    monkeypatch.setattr(invitations, "_send_one", flaky)
+    assert send_pending() == 1
+    assert [m.to for m in mail.outbox] == [["b@example.org"]]
+    assert "could not send administration" in caplog.text
+    assert SurveyAdministration.objects.filter(sent_at__isnull=True).count() == 1

@@ -40,11 +40,13 @@ class IdentityServiceError(Exception):
 
 
 def get_identity_service() -> IdentityService | None:
+    """The configured service: PROLOG_IDENTITY_SERVICE names a class, a
+    factory function (both called with no arguments) or a prebuilt instance."""
     path = conf.get("PROLOG_IDENTITY_SERVICE")
     if not path:
         return None
     target = import_string(path)
-    return target() if isinstance(target, type) else target
+    return target() if callable(target) else target
 
 
 def idempotency_key(response_id: Any) -> str:

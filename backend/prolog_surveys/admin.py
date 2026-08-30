@@ -43,6 +43,9 @@ class SurveyAdmin(admin.ModelAdmin):
         "responses",
     )
     search_fields = ("slug", "title")
+    # Mirrors ``participation.anonymous`` of the loaded definition; the loader
+    # sets it, so editing it here would only drift from the instrument.
+    readonly_fields = ("allow_anonymous_participation",)
     inlines = [VersionInline]
 
     def get_queryset(self, request):

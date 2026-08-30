@@ -21,7 +21,14 @@ export const keys = {
  * previous language after a switch. `enabled: false` holds the query (e.g.
  * until the response, and so its language, is known).
  */
-export function useSurveyDefinition(slug: string | undefined, lang?: string, invite?: string, responseId?: string | null, options?: { enabled?: boolean }) {
+export interface DefinitionOptions {
+  lang?: string;
+  invite?: string;
+  responseId?: string | null;
+  enabled?: boolean;
+}
+
+export function useSurveyDefinition(slug: string | undefined, { lang, invite, responseId, enabled = true }: DefinitionOptions = {}) {
   const params = new URLSearchParams();
   if (lang) params.set("lang", lang);
   if (invite) params.set("invite", invite);
@@ -30,7 +37,7 @@ export function useSurveyDefinition(slug: string | undefined, lang?: string, inv
   return useQuery({
     queryKey: [...keys.definition(slug ?? "", lang), invite ?? "", responseId ?? ""],
     queryFn: () => api.get<RunnerDefinition>(`/surveys/${slug}/${qs ? `?${qs}` : ""}`),
-    enabled: Boolean(slug) && (options?.enabled ?? true),
+    enabled: Boolean(slug) && enabled,
     staleTime: Infinity,
     // A language switch re-keys the query; keep rendering the previous
     // localisation meanwhile instead of unmounting the page (and its state).
@@ -91,13 +98,15 @@ export function useCreateResponse() {
 }
 
 export type ResponsePatch = { last_question_key?: string; language?: string };
+/** What PATCH /responses/<id>/ returns: the response's own fields, not the answers or progress figures. */
+export type PatchedResponse = Pick<ResponseSummary, "language" | "last_question_key">;
 
 /**
  * Merge a PATCH result into the cached response, taking only the fields this
  * PATCH set: a slow `last_question_key` PATCH that lands after a language
  * switch must not carry the old language back with it.
  */
-export function mergePatched(current: ResponseSummary, patch: ResponsePatch, data: ResponseSummary): ResponseSummary {
+export function mergePatched(current: ResponseSummary, patch: ResponsePatch, data: PatchedResponse): ResponseSummary {
   const next = { ...current };
   if (patch.language !== undefined) next.language = data.language;
   if (patch.last_question_key !== undefined) next.last_question_key = data.last_question_key;
@@ -107,11 +116,13 @@ export function mergePatched(current: ResponseSummary, patch: ResponsePatch, dat
 export function usePatchResponse(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: ResponsePatch) => api.patch<ResponseSummary>(`/responses/${id}/`, body),
+    mutationFn: (body: ResponsePatch) => api.patch<PatchedResponse>(`/responses/${id}/`, body),
     onSuccess: (data, body) => {
       // Merge only what this PATCH owns: an answer PUT may still be in flight and its
-      // optimistic value must survive a PATCH that raced it on the server.
-      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => (current ? mergePatched(current, body, data) : data));
+      // optimistic value must survive a PATCH that raced it on the server. With
+      // nothing cached there is nothing to merge into (the slim PATCH body is
+      // not a ResponseSummary), so the cache is left for the next fetch.
+      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && mergePatched(current, body, data));
     },
   });
 }
@@ -166,21 +177,35 @@ export function useSaveAnswer(id: string) {
   // The sequence of each mutation's variables, so a retry (which re-runs
   // mutationFn with the same object) can tell it has been superseded.
   const seqOf = useRef(new WeakMap<object, number>());
+  // The PUT in flight per key: the server stores PUTs in arrival order, so two
+  // of the same key on the wire at once could land newest-first. Each save
+  // waits for the previous one of its key to settle before it is sent.
+  const inflight = useRef(new Map<string, Promise<unknown>>());
   return useMutation({
     mutationFn: async (vars: { key: string; value: AnswerValue }) => {
-      // The server stores PUTs in arrival order: an older value retried after a
-      // newer one succeeded would overwrite it (and cascade) while the cache
-      // shows the newer one, so a superseded save never reaches the wire again.
       const superseded = () => seqOf.current.get(vars) !== seqs.current.get(vars.key);
-      if (superseded()) throw new SupersededError();
-      const result = await api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value });
-      if (superseded()) {
-        // Persisted, but a newer save is already in flight: the caller must not
-        // act on it. Its value is what a failure of that newer save reverts to.
-        baselines.current.set(vars.key, { previous: result.answer.value, had: true });
-        throw new SupersededError();
+      const run = (async () => {
+        // Whatever the previous save's outcome, this one goes out only after it.
+        await inflight.current.get(vars.key)?.catch(() => undefined);
+        // An older value retried (or queued) after a newer one would overwrite
+        // it (and cascade) while the cache shows the newer one, so a superseded
+        // save never reaches the wire.
+        if (superseded()) throw new SupersededError();
+        const result = await api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value });
+        if (superseded()) {
+          // Persisted, but a newer save is already queued: the caller must not
+          // act on it. Its value is what a failure of that newer save reverts to.
+          baselines.current.set(vars.key, { previous: result.answer.value, had: true });
+          throw new SupersededError();
+        }
+        return result;
+      })();
+      inflight.current.set(vars.key, run);
+      try {
+        return await run;
+      } finally {
+        if (inflight.current.get(vars.key) === run) inflight.current.delete(vars.key);
       }
-      return result;
     },
     retry: (count, error) => count < 3 && !(error instanceof SupersededError) && !(error instanceof ApiError && error.status < 500),
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
@@ -201,7 +226,11 @@ export function useSaveAnswer(id: string) {
     },
     onError: (_err, { key }, ctx) => {
       if (!latest(key, ctx)) return;
-      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && revertAnswer(current, key, ctx));
+      // Revert to the latest value known to be persisted, not to what the cache
+      // held when this save started: an older save of the key that landed
+      // meanwhile moved the baseline (onError runs before onSettled clears it).
+      const base = baselines.current.get(key) ?? ctx;
+      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && revertAnswer(current, key, base));
     },
     onSuccess: (result, { key }, ctx) => {
       if (!latest(key, ctx)) return;

@@ -12,15 +12,17 @@ presentation order is the topological order the engine evaluates.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from .schema import SUPPORTED_SCHEMA_VERSIONS, Issue
 
-OPTION_TYPES = {"single", "dropdown", "multi", "ranking"}
 SINGLE_VALUED = {"single", "dropdown", "scale"}
 MULTI_VALUED = {"multi", "ranking"}
+# Survey.title mirrors title[default_language] (loader._sync_survey).
+TITLE_MAX_LENGTH = 255
 
 CONFIG_BY_TYPE: dict[str, set[str]] = {
     "info": set(),
@@ -42,7 +44,6 @@ class QuestionInfo:
     key: str
     index: int
     section_index: int
-    section_key: str
     type: str
     question: dict[str, Any]
     path: str
@@ -82,10 +83,29 @@ def _walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     return found
 
 
+def has_errors(issues: list[Issue]) -> bool:
+    return any(i.level == "error" for i in issues)
+
+
 def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone") -> list[Issue]:
     issues: list[Issue] = []
     err = lambda code, path, msg: issues.append(Issue(code, path, msg, "error"))  # noqa: E731
     warn = lambda code, path, msg: issues.append(Issue(code, path, msg, "warning"))  # noqa: E731
+
+    def parse_dates(obj: dict[str, Any], keys: tuple[str, str], path: str, code: str):
+        """The two optional ISO dates of ``obj`` as a (lo, hi) pair; the schema
+        only checks the digit pattern, so "2026-02-30" gets here."""
+        out: list[dt.date | None] = []
+        for key in keys:
+            raw = obj.get(key)
+            day = None
+            if raw is not None:
+                try:
+                    day = dt.date.fromisoformat(raw)
+                except ValueError:
+                    err(code, f"{path}.{key}", f"'{raw}' is not a calendar date (YYYY-MM-DD)")
+            out.append(day)
+        return out[0], out[1]
 
     schema_version = definition.get("schema_version", 1)
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
@@ -138,6 +158,29 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 warn(
                     "i18n_extra", f"{path}.{lang}", "text for a language the survey does not offer"
                 )
+    if len(definition["title"].get(default_lang, "")) > TITLE_MAX_LENGTH:
+        err(
+            "title_length",
+            f"$.title.{default_lang}",
+            f"title in the default language exceeds {TITLE_MAX_LENGTH} characters",
+        )
+
+    # --- participation ----------------------------------------------------
+    participation = definition.get("participation") or {}
+    if repeat := participation.get("repeat"):
+        rp = "$.participation.repeat"
+        start, end = parse_dates(repeat, ("start_date", "end_date"), rp, "repeat_date_invalid")
+        if start and end and end < start:
+            err("repeat_range", rp, "end_date is before start_date")
+        if participation.get("anonymous"):
+            # RUN-5: repeat administration reaches invited participants only;
+            # the scheduler skips an anonymous survey, so the schedule is inert.
+            warn(
+                "repeat_anonymous",
+                rp,
+                "repeat administration only applies to invited participants; "
+                "an anonymous survey is never scheduled",
+            )
 
     # --- keys and question inventory ------------------------------------
     questions: dict[str, QuestionInfo] = {}
@@ -154,7 +197,7 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             if q["key"] in questions:
                 err("duplicate_key", f"{qp}.key", f"duplicate question key '{q['key']}'")
                 continue
-            info = QuestionInfo(q["key"], index, si, section["key"], q["type"], q, qp)
+            info = QuestionInfo(q["key"], index, si, q["type"], q, qp)
             index += 1
             seen: set[str] = set()
             for oi, o in enumerate(q.get("options", [])):
@@ -262,7 +305,7 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             if lo is not None and hi is not None and lo > hi:
                 err("number_range", f"{qp}.config", "min_value exceeds max_value")
         if t == "date":
-            lo, hi = cfg.get("min_date"), cfg.get("max_date")
+            lo, hi = parse_dates(cfg, ("min_date", "max_date"), f"{qp}.config", "date_invalid")
             if lo and hi and lo > hi:
                 err("date_range", f"{qp}.config", "min_date exceeds max_date")
 
@@ -357,7 +400,7 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 )
 
     # --- reachability (warning) -----------------------------------------
-    if not any(i.level == "error" for i in issues):
+    if not has_errors(issues):
         unreachable: set[str] = set()
         for info in questions.values():
             conds = list(info.question.get("visible_if", []))
@@ -385,7 +428,3 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 warn("unreachable", info.path, f"question '{info.key}' can never be shown")
 
     return issues
-
-
-def has_errors(issues: list[Issue]) -> bool:
-    return any(i.level == "error" for i in issues)

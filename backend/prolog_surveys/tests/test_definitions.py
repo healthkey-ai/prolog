@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 
 import pytest
 from django.core.management import call_command
@@ -17,7 +18,8 @@ from prolog_surveys.definitions.loader import (
     validate_definition,
 )
 from prolog_surveys.definitions.normalize import checksum, normalize
-from prolog_surveys.definitions.validate import has_errors, validate_semantics
+from prolog_surveys.definitions.validate import _walk_i18n, has_errors, validate_semantics
+from prolog_surveys.engine.localize import I18N_FIELDS, localize
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
 from prolog_surveys.tests.conftest import EXAMPLE_PATH
 
@@ -64,6 +66,36 @@ def test_schema_error_reported_with_path(example):
 def test_schema_rejects_both_email_modes(example):
     question(example, "contact_email")["config"]["link_identity"] = True
     assert has_errors(validate_definition(example))
+
+
+@pytest.mark.parametrize(
+    "mutate, path",
+    [
+        # Lengths mirror the database columns (Survey.slug, SurveyVersion.version, ...)
+        # so a definition the schema admits can always be stored.
+        (lambda d: d.update(slug="s" * 121), "$.slug"),
+        (lambda d: d.update(version="1." + "1" * 31), "$.version"),
+        (lambda d: d.update(theme="t" * 65), "$.theme"),
+        (lambda d: d["sections"][0].update(key="k" * 129), "$.sections[0].key"),
+        (lambda d: question(d, "overall").update(key="k" * 129), "$.sections[1].questions[0].key"),
+        (
+            lambda d: question(d, "symptoms")["options"][0].update(key="k" * 129),
+            "$.sections[1].questions[2].options[0].key",
+        ),
+        (
+            lambda d: d.update(consent={"version": "v" * 65, "text": {"en": "x"}}),
+            "$.consent.version",
+        ),
+    ],
+)
+def test_schema_bounds_identifier_lengths(example, mutate, path):
+    mutate(example)
+    issues = validate_definition(example)
+    assert [i.path for i in issues if i.code == "schema"] == [path], [str(i) for i in issues]
+
+
+def _repeat(**overrides):
+    return {"every": 1, "unit": "weeks", "start_date": "2026-01-01", **overrides}
 
 
 # --- semantic rules ------------------------------------------------------------
@@ -125,7 +157,31 @@ def test_schema_rejects_both_email_modes(example):
         (lambda d: question(d, "overall")["text"].pop("en"), "i18n_default"),
         (lambda d: question(d, "birth_year")["config"].update(min_value=3000), "number_range"),
         (lambda d: question(d, "last_visit")["config"].update(min_date="2030-01-01"), "date_range"),
+        # the schema only checks the digit pattern; February 30th gets this far
+        (
+            lambda d: question(d, "last_visit")["config"].update(max_date="2026-02-30"),
+            "date_invalid",
+        ),
         (lambda d: d.update(schema_version=2), "schema_version"),
+        (lambda d: d["title"].update(en="t" * 256), "title_length"),
+        (
+            lambda d: d.update(
+                participation={"anonymous": False, "repeat": _repeat(start_date="2026-02-30")}
+            ),
+            "repeat_date_invalid",
+        ),
+        (
+            lambda d: d.update(
+                participation={"anonymous": False, "repeat": _repeat(end_date="2026-00-10")}
+            ),
+            "repeat_date_invalid",
+        ),
+        (
+            lambda d: d.update(
+                participation={"anonymous": False, "repeat": _repeat(end_date="2025-12-31")}
+            ),
+            "repeat_range",
+        ),
     ],
 )
 def test_semantic_errors(example, mutate, expected):
@@ -274,6 +330,65 @@ def test_config_mismatch_is_warning(example):
     issues = validate_semantics(example)
     assert not has_errors(issues)
     assert "config_mismatch" in codes(issues, "warning")
+
+
+def test_repeat_on_anonymous_survey_is_warned(example):
+    # RUN-5: repeat administration reaches invited participants only, so the
+    # schedule is inert (the scheduler skips anonymous surveys) but not fatal.
+    example["participation"] = {"anonymous": True, "repeat": _repeat(end_date="2026-06-01")}
+    issues = validate_semantics(example)
+    assert not has_errors(issues)
+    assert [i.path for i in issues if i.code == "repeat_anonymous"] == ["$.participation.repeat"]
+    example["participation"]["anonymous"] = False
+    assert codes(validate_semantics(example), "warning") == []
+
+
+def test_title_length_is_checked_in_the_default_language_only(example):
+    example["title"]["es"] = "t" * 300  # only title[default_language] is stored on Survey
+    assert "title_length" not in codes(validate_semantics(example))
+
+
+# --- i18n inventory: validator vs localiser -------------------------------------
+
+
+def _resolve(doc, path: str):
+    node = doc
+    for key, index in re.findall(r"\.([a-z_]+)|\[(\d+)\]", path):
+        node = node[int(index)] if index else node[key]
+    return node
+
+
+def test_i18n_walk_matches_localizer(example):
+    """The validator's i18n inventory (``_walk_i18n``) and the engine's
+    ``I18N_FIELDS`` are maintained separately; a field one knows and the other
+    does not would validate yet reach the runner as a ``{lang: text}`` object
+    (or be localised without its default-language check)."""
+    example["consent"] = {"version": "1", "text": {"en": "Consent", "es": "Consentimiento"}}
+    walked = _walk_i18n(example)
+    # every field name the localiser localises occurs in the walk (the example
+    # exercises them all), and every walked path is a language map
+    assert I18N_FIELDS <= {re.split(r"[.\[]", path)[-1] for path, _ in walked}
+    for path, obj in walked:
+        assert obj and set(obj) <= set(example["languages"]), path
+    # after localisation every walked path is a plain string...
+    localized = localize(example, "es")
+    for path, _ in walked:
+        assert isinstance(_resolve(localized, path), str), path
+    # ...and no language map survives anywhere the walk did not look
+    survivors: list[str] = []
+
+    def scan(node, path):
+        if isinstance(node, dict):
+            if path != "$.translation_status" and example["default_language"] in node:
+                survivors.append(path)
+            for k, v in node.items():
+                scan(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                scan(v, f"{path}[{i}]")
+
+    scan(localized, "$")
+    assert survivors == []
 
 
 # --- normalisation --------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { ApiError } from "@/api/client";
+import { ApiError, isClosed, isGone } from "@/api/client";
 import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,22 +37,28 @@ export function IntroPage() {
   // starts the response for its own administration instead.
   const otherAdministration = Boolean(invite && existing.data && existing.data.administration !== invite);
   // The stored id no longer resolves: purged response, or an expired account session.
-  const existingGone = existing.error instanceof ApiError && (existing.error.status === 404 || existing.error.status === 403);
+  const existingGone = isGone(existing.error);
+  // Whether a stored response is resumed at all is only known from the
+  // definition; until it says otherwise a stored id is taken as resumable (the
+  // common case). A `resume: "none"` survey then unbinds, so the id of an
+  // earlier same-tab response never pins the intro to that response's version.
+  const [noResume, setNoResume] = useState(false);
   // Response-bound, like ThemeProvider and the wizard: the server serves the
   // version this response uses and takes its id as the credential, so a
   // returning invited/account participant without the token is not refused
   // here, the resume point is computed against the right version, and the
   // cache entry is shared. Falls back to the plain query for a fresh start.
-  const bound = existingId && !existing.isError && !fresh && !otherAdministration ? existingId : undefined;
-  const definition = useSurveyDefinition(slug, language ?? (bound ? existing.data?.language : undefined), invite, bound, { enabled: !existingId || !existing.isPending });
+  const bound = existingId && !noResume && !existing.isError && !fresh && !otherAdministration ? existingId : undefined;
+  const definition = useSurveyDefinition(slug, { lang: language ?? (bound ? existing.data?.language : undefined), invite, responseId: bound, enabled: !existingId || !existing.isPending });
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);
   useDefinitionLanguage(definition.data?.language);
+  if (definition.data && (definition.data.participation?.resume === "none") !== noResume) setNoResume(!noResume);
 
   if (definition.isLoading) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
   if (definition.isError || !definition.data) {
     const status = definition.error instanceof ApiError ? definition.error.status : 0;
-    return <p className="p-8 text-error">{status === 404 ? t("app.notFound") : status === 410 ? t("app.closed") : t("app.error")}</p>;
+    return <p className="p-8 text-error">{status === 404 ? t("app.notFound") : status === 410 ? t("app.closed") : status === 403 ? t("app.forbidden") : t("app.error")}</p>;
   }
   const def = definition.data;
   const consent = def.consent;
@@ -123,7 +129,7 @@ export function IntroPage() {
   const immersive = layout.immersiveIntro;
   const ground = immersive ? "bg-primary text-on-primary" : "bg-ground text-ink";
   const soft = immersive ? "text-on-primary/80" : "text-ink-soft";
-  const hasExisting = resumable && existingId && existing.data && !existing.isError && !fresh && !otherAdministration;
+  const hasExisting = resumable && Boolean(bound && existing.data);
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
@@ -204,7 +210,7 @@ export function IntroPage() {
               </Button>
               {create.isError && (
                 <p className="mt-2 text-sm" role="alert">
-                  {create.error instanceof ApiError && create.error.status === 410 ? t("app.closed") : t("app.error")}
+                  {isClosed(create.error) ? t("app.closed") : create.error instanceof ApiError && create.error.status === 403 ? t("app.forbidden") : t("app.error")}
                 </p>
               )}
             </div>

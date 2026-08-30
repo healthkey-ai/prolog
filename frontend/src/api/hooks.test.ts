@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { applyAnswerResult, mergePatched, revertAnswer, withEmailProvided } from "./hooks";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError, api } from "./client";
+import { SupersededError, applyAnswerResult, keys, mergePatched, revertAnswer, useSaveAnswer, withEmailProvided } from "./hooks";
 import type { AnswerResult, ResponseSummary } from "./types";
 
 const base: ResponseSummary = {
@@ -67,5 +71,90 @@ describe("withEmailProvided", () => {
     const next = withEmailProvided({ ...base, missing: ["q3", "email"] }, "email");
     expect(next.answers.email).toEqual({ provided: true });
     expect(next.missing).toEqual(["q3"]);
+  });
+});
+
+describe("useSaveAnswer", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const cleanups: (() => void)[] = [];
+  afterEach(() => {
+    cleanups.splice(0).forEach((fn) => fn());
+    vi.restoreAllMocks();
+  });
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  /** Mount the hook under a QueryClient seeded with `base`; returns the hook's latest value. */
+  function mount() {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    qc.setQueryData(keys.response("r1"), base);
+    const hook: { current: ReturnType<typeof useSaveAnswer> | null } = { current: null };
+    function Harness() {
+      hook.current = useSaveAnswer("r1");
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(createElement(QueryClientProvider, { client: qc }, createElement(Harness))));
+    cleanups.push(() => act(() => root.unmount()));
+    const save = (value: AnswerResult["answer"]["value"]) => {
+      let p!: Promise<AnswerResult>;
+      act(() => {
+        p = hook.current!.mutateAsync({ key: "q1", value });
+        p.catch(() => undefined); // outcomes are asserted explicitly below
+      });
+      return p;
+    };
+    const settle = () => act(async () => new Promise<void>((r) => setTimeout(r, 0)));
+    const cached = () => qc.getQueryData<ResponseSummary>(keys.response("r1"))!.answers.q1;
+    return { save, settle, cached };
+  }
+
+  it("sends a save of a key only after the previous save of that key has settled", async () => {
+    const first = deferred<AnswerResult>();
+    const second = deferred<AnswerResult>();
+    const put = vi.spyOn(api, "put").mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { save, settle, cached } = mount();
+    const a = save({ option: "b" });
+    await settle();
+    expect(put).toHaveBeenCalledTimes(1);
+    const b = save({ option: "c" });
+    await settle();
+    expect(put).toHaveBeenCalledTimes(1); // queued behind the first, not on the wire
+    first.resolve(result({ option: "b" }));
+    await expect(a).rejects.toBeInstanceOf(SupersededError);
+    await settle();
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "c" } });
+    second.resolve(result({ option: "c" }));
+    await b;
+    await settle();
+    expect(cached()).toEqual({ option: "c" });
+  });
+
+  it("reverts a failed save to the latest persisted value, not to the value before the run", async () => {
+    const first = deferred<AnswerResult>();
+    const second = deferred<AnswerResult>();
+    vi.spyOn(api, "put").mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { save, settle, cached } = mount();
+    const a = save({ option: "b" }); // V1
+    await settle();
+    const b = save({ option: "c" }); // V2
+    await settle();
+    expect(cached()).toEqual({ option: "c" }); // optimistic
+    first.resolve(result({ option: "b" })); // V1 persisted while V2 is outstanding
+    await expect(a).rejects.toBeInstanceOf(SupersededError);
+    await settle();
+    second.reject(new ApiError(400, { detail: "refused" }));
+    await expect(b).rejects.toBeInstanceOf(ApiError);
+    await settle();
+    expect(cached()).toEqual({ option: "b" }); // V1, not the pre-run V0 {option: "a"}
   });
 });

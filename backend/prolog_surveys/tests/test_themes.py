@@ -59,6 +59,16 @@ def test_registry_loads_and_resolves():
     assert registry.resolve(None).code == "default"
 
 
+def test_unknown_theme_logged_once_until_reload(caplog):
+    registry.resolve("nope")
+    registry.resolve("nope")
+    registry.resolve("other")
+    assert caplog.text.count("unknown theme code") == 2
+    registry.reload()
+    registry.resolve("nope")
+    assert caplog.text.count("unknown theme code") == 3
+
+
 def test_invalid_theme_rejected(tmp_path, settings, caplog):
     write_theme(tmp_path / "broken", code="broken", colors={"light": {"primary": "#000"}})
     settings.PROLOG_THEME_DIRS = [str(THEMES), str(tmp_path)]

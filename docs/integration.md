@@ -23,6 +23,7 @@ PROLOG_THEME_DIRS = ["/srv/prolog/themes", "/srv/themes"]
 PROLOG_SCHEMA_DIR = "/srv/prolog/schema"
 PROLOG_PUBLIC_URL = "https://surveys.example.org"
 PROLOG_EMAIL_FROM = "surveys@example.org"
+PROLOG_CLIENT_KEY_SALT = "<a long random secret>"  # hashes client keys for throttling; defaults to SECRET_KEY when unset
 REST_FRAMEWORK = {
     ...,
     # Throttle scopes (defaults in prolog_surveys.conf.THROTTLE_RATES apply when omitted)
@@ -34,20 +35,35 @@ REST_FRAMEWORK = {
 `urls.py`: `path("api/", include("prolog_surveys.urls"))` and, if the host
 serves the runner, the catch-all `runner_index` view.
 
+### CSRF
+
+Session-authenticated participants (account surveys) write through the
+runner, which reads Django's `csrftoken` cookie and echoes it in the
+`X-CSRFToken` header. Keep the defaults that make this work:
+`CSRF_COOKIE_HTTPONLY = False`, `CSRF_USE_SESSIONS = False`, and the
+default `CSRF_COOKIE_NAME` / `CSRF_HEADER_NAME`. Anonymous and invited
+participants are not session-authenticated and need no token.
+
 ## Migrations (DEP-2)
 
-PROlog's own migrations create every table **without** the participant
-foreign keys, because the target model is only known to the host. After
-installing the app, generate one migration in the host project:
+The participant foreign keys (`SurveyResponse.participant`,
+`SurveyInvitation.participant`) target a model only the host knows, so the
+packaged migration `0005_participant` builds its operations from
+`PROLOG_PARTICIPANT_MODEL` at load time: with the setting present it adds
+the two columns (and depends on the participant model's app); without it,
+it is empty. Set the setting **before** the first `migrate` and simply run:
 
 ```sh
-python manage.py makemigrations prolog_surveys   # adds SurveyResponse.participant and SurveyInvitation.participant
+python manage.py migrate
 ```
 
-Keep that migration in the host repository (set `MIGRATION_MODULES` if you
-prefer to keep it out of the installed package). The fields exist on the
-models only when `PROLOG_PARTICIPANT_MODEL` is set, so the standalone
-schema and the integrated schema differ by exactly these two columns.
+No `makemigrations` in the host project and no `MIGRATION_MODULES` are
+needed. The fields exist on the models only when `PROLOG_PARTICIPANT_MODEL`
+is set, so the standalone schema and the integrated schema differ by exactly
+these two columns; `makemigrations --check` passes in both profiles.
+The dependency is the participant app's *first* migration (the same
+convention as `AUTH_USER_MODEL`), so the participant model must exist from
+that migration on.
 
 ## Participant resolver (account surveys, RUN-3)
 
@@ -115,14 +131,21 @@ never altered.
   survey, creates the response bound to the scheduled (or then-active)
   version and the invited participant, and re-opening the link resumes it.
   Each administration yields a distinct response, preserving history.
+- To withdraw an invitation, set `active = False` (admin or code): its links
+  stop opening the survey and the responses they started become
+  inaccessible to the link holder (403). Prefer that over deleting the
+  invitation, which cascades to its administrations and leaves any
+  in-progress response orphaned (unlinked, but still stored until the
+  abandoned-response purge).
 
 ## Testing the integrated profile
 
 ```sh
 POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User \
-  uv run pytest --no-migrations --create-db
+  uv run pytest --create-db
 ```
 
-`--no-migrations` builds the schema from the models (including the
-participant columns) and a separate database name keeps it apart from the
-standalone test database. CI runs both configurations.
+The packaged migrations (including `0005_participant`) build the schema, so
+the chain is exercised exactly as a host would run it; a separate database
+name keeps it apart from the standalone test database. CI runs both
+configurations.

@@ -9,6 +9,8 @@ import {
   type Answers,
   type Question,
   type SkipPolicy,
+  exclusiveKeys,
+  freeTextKeys,
   questionConfig,
   questionOptions,
   questionRequired,
@@ -66,9 +68,6 @@ export class AnswerError extends Error {
     super(issues.map((i) => `${i.code} ${JSON.stringify(i.params)}`).join("; "));
     this.issues = issues;
   }
-  get codes(): string[] {
-    return this.issues.map((i) => i.code);
-  }
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -102,8 +101,18 @@ function length(text: string): number {
  */
 export function implicitAnswer(q: Question): AnswerValue | undefined {
   if (q.type !== "ranking" || !questionRequired(q)) return undefined;
+  return { order: defaultOrder(q) };
+}
+
+/**
+ * The order a ranking shows before the participant touches it: the options in
+ * definition order minus `config.optional_items`. The renderer and
+ * `implicitAnswer` share this so the displayed list and the answer Next
+ * accepts cannot diverge.
+ */
+export function defaultOrder(q: Question): string[] {
   const optional = new Set(questionConfig(q).optional_items ?? []);
-  return { order: questionOptions(q).filter((o) => !optional.has(o.key)).map((o) => o.key) };
+  return questionOptions(q).filter((o) => !optional.has(o.key)).map((o) => o.key);
 }
 
 function optionKeys(q: Question): string[] {
@@ -116,7 +125,7 @@ function otherText(raw: Record<string, unknown>, q: Question, selected: string[]
   if (typeof text !== "string") fail("other_text_not_string");
   const trimmed = text.trim();
   if (!trimmed) return {};
-  const free = new Set(questionOptions(q).filter((o) => o.free_text).map((o) => o.key));
+  const free = freeTextKeys(q);
   if (!selected.some((k) => free.has(k))) fail("other_text_without_free_option");
   if (length(trimmed) > MAX_OTHER_TEXT) fail("other_text_too_long", { max: MAX_OTHER_TEXT });
   return { other_text: trimmed };
@@ -164,7 +173,7 @@ export function validateAnswer(
     const min = cfg.min_selections ?? 1;
     if (options.length < min) fail("min_selections", { min });
     if (cfg.max_selections !== undefined && options.length > cfg.max_selections) fail("max_selections", { max: cfg.max_selections });
-    const exclusive = new Set(questionOptions(q).filter((o) => o.exclusive).map((o) => o.key));
+    const exclusive = exclusiveKeys(q);
     if (options.length > 1 && options.some((o) => exclusive.has(o))) fail("exclusive_combined");
     const ordered = allowed.filter((k) => options.includes(k));
     return { options: ordered, ...otherText(raw, q, ordered) };
@@ -201,6 +210,8 @@ export function validateAnswer(
     const missing = rows.filter((r) => !(r in ratings));
     if (missing.length) fail("rows_incomplete", { missing });
     const scale = cfg.scale!;
+    // Built in rows order (as the server returns it), so a draft rated out of
+    // order compares equal to the stored value.
     const out: Record<string, number> = {};
     for (const row of rows) {
       const v = ratings[row];

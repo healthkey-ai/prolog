@@ -135,6 +135,9 @@ class ThemeRegistry:
     def __init__(self) -> None:
         self._themes: dict[str, Theme] | None = None
         self._lock = threading.Lock()
+        # Unknown codes already logged: a misconfigured survey is resolved on
+        # every definition request, and one line per code is enough.
+        self._warned: set[str] = set()
 
     def reload(self) -> dict[str, Theme]:
         themes: dict[str, Theme] = {}
@@ -167,6 +170,7 @@ class ThemeRegistry:
             log.error("no '%s' theme found in PROLOG_THEME_DIRS", DEFAULT_THEME)
         with self._lock:
             self._themes = themes
+            self._warned = set()
         return themes
 
     def all(self) -> dict[str, Theme]:
@@ -182,7 +186,8 @@ class ThemeRegistry:
         themes = self.all()
         if code and code in themes:
             return themes[code]
-        if code and code != DEFAULT_THEME:
+        if code and code != DEFAULT_THEME and code not in self._warned:
+            self._warned.add(code)
             log.warning("unknown theme code '%s'; falling back to %s", code, DEFAULT_THEME)
         return themes.get(DEFAULT_THEME)
 

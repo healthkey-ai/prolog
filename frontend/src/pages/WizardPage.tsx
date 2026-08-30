@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import { ApiError } from "@/api/client";
+import { ApiError, isClosed, isGone } from "@/api/client";
 import { SupersededError, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
@@ -14,9 +14,9 @@ import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
 import { AnswerError, implicitAnswer, validateAnswer } from "@/survey/answers";
 import { missingKeys } from "@/survey/completion";
-import { firstOpenKey, overview, position, progressFraction, type Position } from "@/survey/navigation";
+import { firstOpenKey, hasStoredAnswer, overview, position, progressFraction, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue, type Question } from "@/survey/types";
-import { isAnswered, questionByKey } from "@/survey/visibility";
+import { questionByKey } from "@/survey/visibility";
 import { useThemeLogo } from "@/theme/useTheme";
 
 /**
@@ -25,10 +25,8 @@ import { useThemeLogo } from "@/theme/useTheme";
  */
 type SaveOutcome = "saved" | "failed" | "superseded";
 
-/** The response no longer exists for this participant (purged, or an account session that expired). */
-const gone = (err: unknown) => err instanceof ApiError && (err.status === 403 || err.status === 404);
 /** The server's view of the response differs from the cache (submitted in another tab, or gone). */
-const stale = (err: unknown) => err instanceof ApiError && (err.status === 409 || gone(err));
+const stale = (err: unknown) => (err instanceof ApiError && err.status === 409) || isGone(err);
 
 export function WizardPage() {
   const { slug = "", key = "" } = useParams();
@@ -38,7 +36,7 @@ export function WizardPage() {
   const response = useResponse(id);
   // Response-bound: the server serves the version (and language) this response
   // uses, and accepts the response id as the credential for invited/account flows.
-  const definition = useSurveyDefinition(slug, response.data?.language, undefined, id);
+  const definition = useSurveyDefinition(slug, { lang: response.data?.language, responseId: id });
   const save = useSaveAnswer(id ?? "");
   const patch = usePatchResponse(id ?? "");
   const submit = useSubmitResponse(id ?? "");
@@ -88,7 +86,7 @@ export function WizardPage() {
       navigate(`/s/${slug}`, { replace: true });
       return;
     }
-    if (response.isError && (gone(response.error) || !response.data)) {
+    if (response.isError && (isGone(response.error) || !response.data)) {
       // A transient refetch error keeps the page (and its retry affordance): the
       // cached response is still good to work with.
       navigate(`/s/${slug}`, { replace: true });
@@ -139,7 +137,7 @@ export function WizardPage() {
         } catch (err) {
           // A newer save of this question is in flight: it reports for both.
           if (err instanceof SupersededError) return "superseded";
-          if (err instanceof ApiError && err.status === 410) {
+          if (isClosed(err)) {
             // The survey closed mid-response: nothing to retry, the footer explains.
             lastFailed.current = null;
             setSaveState("closed");
@@ -176,12 +174,23 @@ export function WizardPage() {
     [save, flashSaved, refetchResponse, navigate, slug, t],
   );
 
+  /** The latest save of the current question, if one is still in flight, must land before moving on. */
+  const settled = useCallback(async (): Promise<boolean> => {
+    const pending = pendingByKey.current.get(key);
+    return !pending || (await pending) !== "failed";
+  }, [key]);
+
   const goTo = useCallback(
-    (target: string) => {
+    async (target: string) => {
+      // Back and the overview jump wait like Next does: a PUT for the target (or
+      // for a question the current answer reveals) must not reach the server
+      // before the current question's PUT. A failed save keeps the participant
+      // here, with its error and retry.
+      if (!(await settled())) return;
       navigate(`/s/${slug}/q/${target}`);
       if (id) patch.mutate({ last_question_key: target });
     },
-    [navigate, slug, id, patch],
+    [settled, navigate, slug, id, patch],
   );
 
   if (!def || !response.data || !pos || !pos.current) {
@@ -197,7 +206,7 @@ export function WizardPage() {
   // ranking's displayed order); deriving it here rather than in the lazily loaded
   // renderer means Next cannot race the renderer's chunk.
   const draftValue = draftKey === key ? draft : (answers[key] ?? implicitAnswer(question));
-  const hasDraft = isAnswerable && draftValue !== undefined && (isAnswered(draftValue) || ("provided" in draftValue && !draftValue.provided));
+  const hasDraft = isAnswerable && hasStoredAnswer(draftValue);
   // An explicit clear (renderer sent `undefined`) means "no answer" even when a
   // value is stored: Next must then go through the skip flow, not keep the old value.
   const cleared = draftKey === key && draft === undefined;
@@ -236,12 +245,6 @@ export function WizardPage() {
     return persist(key, value);
   };
 
-  /** The latest save of the current question, if one is still in flight, must land before moving on. */
-  const settled = async (): Promise<boolean> => {
-    const pending = pendingByKey.current.get(key);
-    return !pending || (await pending) !== "failed";
-  };
-
   /**
    * Move on from `p` — the position *after* the value just saved, which may
    * have revealed or hidden questions; the render-time `pos` is stale by then.
@@ -261,7 +264,7 @@ export function WizardPage() {
       submit.mutate(undefined, {
         onSuccess: () => navigate(`/s/${slug}/complete`),
         onError: (err) => {
-          if (err instanceof ApiError && err.status === 410) {
+          if (isClosed(err)) {
             setSaveState("closed");
             return;
           }
@@ -274,7 +277,7 @@ export function WizardPage() {
           const missing = err instanceof ApiError ? err.body.missing : undefined;
           if (!missing?.length) return;
           if (missing[0] !== key) bouncedToMissing.current = true;
-          goTo(missing[0]);
+          void goTo(missing[0]);
         },
       });
       return;
@@ -285,7 +288,7 @@ export function WizardPage() {
       setInterstitial(next.sectionIndex);
       return;
     }
-    goTo(next.key);
+    await goTo(next.key);
   };
 
   const after = (value: AnswerValue) => position(def, { ...answers, [key]: value }, key);
@@ -294,7 +297,7 @@ export function WizardPage() {
     if (interstitial !== null) {
       const target = pos.visible.find((v) => v.sectionIndex === interstitial);
       setInterstitial(null);
-      if (target) goTo(target.key);
+      if (target) await goTo(target.key);
       return;
     }
     if (saveState === "error" || saveState === "closed") return;
@@ -347,7 +350,7 @@ export function WizardPage() {
       setInterstitial(null);
       return;
     }
-    if (pos.previousKey) goTo(pos.previousKey);
+    if (pos.previousKey) void goTo(pos.previousKey);
   };
 
   const onLanguage = (lang: string) => {

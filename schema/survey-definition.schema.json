@@ -16,12 +16,14 @@
     "slug": {
       "description": "Stable survey identity across versions.",
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*$"
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 120
     },
     "version": {
       "description": "Version of this survey's content. New wording or structure = new version; responses stay bound to the version they answered.",
       "type": "string",
-      "pattern": "^[0-9]+(\\.[0-9]+)*$"
+      "pattern": "^[0-9]+(\\.[0-9]+)*$",
+      "maxLength": 32
     },
     "status": { "enum": ["draft", "active", "archived"] },
     "default_language": { "$ref": "#/$defs/lang" },
@@ -50,7 +52,8 @@
     "theme": {
       "description": "Theme code resolved by the deployment (see theme.schema.json). Unknown or omitted = the runner's default theme.",
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*$"
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 64
     },
     "participation": { "$ref": "#/$defs/participation" },
     "presentation": { "$ref": "#/$defs/presentation" },
@@ -74,7 +77,7 @@
       "patternProperties": { "^[a-z]{2}(-[A-Za-z]{2,4})?$": { "type": "string" } },
       "additionalProperties": false
     },
-    "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$" },
+    "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$", "maxLength": 128 },
     "participation": {
       "description": "Who may respond and how a respondent is identified.",
       "type": "object",
@@ -143,7 +146,7 @@
       "required": ["version", "text"],
       "additionalProperties": false,
       "properties": {
-        "version": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
         "text": { "$ref": "#/$defs/i18n" },
         "required": {
           "description": "true (default) = the respondent must actively agree before starting.",

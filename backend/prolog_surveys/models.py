@@ -17,6 +17,8 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from .engine.localize import localize, resolve_language
+
 PARTICIPANT_MODEL = getattr(settings, "PROLOG_PARTICIPANT_MODEL", None)
 
 
@@ -48,6 +50,19 @@ class Survey(models.Model):
     @property
     def active_version(self) -> SurveyVersion | None:
         return self.versions.filter(status=LifecycleStatus.ACTIVE).first()
+
+    def closed_reason(self) -> str | None:
+        """Why the survey is outside its effective window today, or None if open.
+
+        ``effective_from``/``effective_to`` are calendar dates in the
+        deployment's TIME_ZONE, so compare with the local date, not the UTC one.
+        """
+        today = timezone.localdate()
+        if self.effective_from and self.effective_from > today:
+            return "survey is not yet open"
+        if self.effective_to and self.effective_to < today:
+            return "survey has closed"
+        return None
 
 
 class SurveyVersion(models.Model):
@@ -100,23 +115,44 @@ class SurveyVersion(models.Model):
         defer the JSON column and read it through here; the returned dict is
         shared and must not be mutated.
         """
-        key = (self.pk, self.checksum)
-        with _definition_lock:
-            doc = _definition_cache.get(key)
-            if doc is not None:
-                _definition_cache.move_to_end(key)
-                return doc
-        doc = self.definition  # a refresh query when the column was deferred
-        with _definition_lock:
-            _definition_cache[key] = doc
-            while len(_definition_cache) > _DEFINITION_CACHE_SIZE:
-                _definition_cache.popitem(last=False)
-        return doc
+        # ``self.definition`` is a refresh query when the column was deferred.
+        return _cached(_definition_cache, (self.pk, self.checksum), lambda: self.definition)
+
+    def localized(self, lang: str) -> dict:
+        """``cached_definition`` localised for ``lang`` (resolved to an offered
+        language), built once per process per (version, language). The
+        returned dict is shared and must not be mutated: copy before adding
+        per-request keys."""
+        definition = self.cached_definition
+        lang = resolve_language(definition, lang)
+        return _cached(
+            _localized_cache,
+            (self.pk, self.checksum, lang),
+            lambda: localize(definition, lang),
+        )
 
 
-_DEFINITION_CACHE_SIZE = 64
+_CACHE_SIZE = 64
 _definition_cache: OrderedDict[tuple, dict] = OrderedDict()
-_definition_lock = threading.Lock()
+_localized_cache: OrderedDict[tuple, dict] = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _cached(cache: OrderedDict[tuple, dict], key: tuple, compute) -> dict:
+    """Small per-process LRU: published versions are immutable and a draft's
+    checksum changes with its body, so a (pk, checksum) key never serves a
+    stale document."""
+    with _cache_lock:
+        doc = cache.get(key)
+        if doc is not None:
+            cache.move_to_end(key)
+            return doc
+    doc = compute()
+    with _cache_lock:
+        cache[key] = doc
+        while len(cache) > _CACHE_SIZE:
+            cache.popitem(last=False)
+    return doc
 
 
 class SurveyQuestion(models.Model):
@@ -213,7 +249,15 @@ class SurveyResponse(models.Model):
 
     class Meta:
         ordering = ["-started_at"]
-        indexes = [models.Index(fields=["survey_version", "status", "started_at"])]
+        indexes = [
+            models.Index(fields=["survey_version", "status", "started_at"]),
+            # ``purge_abandoned_responses`` scans in-progress rows by age.
+            models.Index(
+                fields=["updated_at"],
+                condition=Q(status="in_progress"),
+                name="prolog_response_inprogress_upd",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.id} ({self.status})"

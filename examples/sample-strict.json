@@ -1,0 +1,156 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-strict",
+  "version": "1.0",
+  "status": "draft",
+  "default_language": "en",
+  "languages": [
+    "en"
+  ],
+  "title": {
+    "en": "Strict check-in"
+  },
+  "participation": {
+    "anonymous": true
+  },
+  "presentation": {
+    "skip_policy": "hard"
+  },
+  "notes": "Minimal neutral instrument for the engine vectors: hard skip policy, a minimum selection count, a 'neq' gate, and a dynamic matrix that gates a later question (cascade fixed point).",
+  "sections": [
+    {
+      "key": "main",
+      "title": {
+        "en": "Check-in"
+      },
+      "questions": [
+        {
+          "key": "mood",
+          "type": "single",
+          "text": {
+            "en": "How are you today?"
+          },
+          "options": [
+            {
+              "key": "good",
+              "label": {
+                "en": "Good"
+              }
+            },
+            {
+              "key": "bad",
+              "label": {
+                "en": "Not so good"
+              }
+            },
+            {
+              "key": "unsure",
+              "label": {
+                "en": "Not sure"
+              }
+            }
+          ]
+        },
+        {
+          "key": "why_not_good",
+          "type": "text",
+          "required": false,
+          "text": {
+            "en": "What is on your mind?"
+          },
+          "visible_if": [
+            {
+              "question": "mood",
+              "op": "neq",
+              "value": "good"
+            }
+          ],
+          "config": {
+            "max_length": 200
+          }
+        },
+        {
+          "key": "areas",
+          "type": "multi",
+          "text": {
+            "en": "Which areas are affected? Choose at least two."
+          },
+          "options": [
+            {
+              "key": "sleep",
+              "label": {
+                "en": "Sleep"
+              }
+            },
+            {
+              "key": "energy",
+              "label": {
+                "en": "Energy"
+              }
+            },
+            {
+              "key": "pain",
+              "label": {
+                "en": "Pain"
+              }
+            },
+            {
+              "key": "mobility",
+              "label": {
+                "en": "Mobility"
+              }
+            }
+          ],
+          "config": {
+            "min_selections": 2,
+            "max_selections": 3
+          }
+        },
+        {
+          "key": "area_impact",
+          "type": "matrix",
+          "text": {
+            "en": "How much does each area affect you?"
+          },
+          "visible_if": [
+            {
+              "question": "areas",
+              "op": "answered"
+            }
+          ],
+          "config": {
+            "rows_from": "areas",
+            "scale": {
+              "min": 1,
+              "max": 3,
+              "min_label": {
+                "en": "A little"
+              },
+              "max_label": {
+                "en": "A lot"
+              }
+            }
+          }
+        },
+        {
+          "key": "impact_note",
+          "type": "text",
+          "required": false,
+          "text": {
+            "en": "Anything to add about these areas?"
+          },
+          "visible_if": [
+            {
+              "question": "area_impact",
+              "op": "answered"
+            }
+          ],
+          "config": {
+            "max_length": 200
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -14,6 +14,7 @@ export function ScaleControl({
   maxLabel,
   pointLabels,
   ariaLabel,
+  labelledBy,
 }: {
   min: number;
   max: number;
@@ -24,6 +25,8 @@ export function ScaleControl({
   maxLabel?: string;
   pointLabels?: string[];
   ariaLabel?: string;
+  /** Id of a visible label element; takes precedence over `ariaLabel`. */
+  labelledBy?: string;
 }) {
   const points = Array.from({ length: max - min + 1 }, (_, i) => min + i);
   return (
@@ -31,7 +34,8 @@ export function ScaleControl({
       <RadioGroupPrimitive.Root
         value={value === undefined ? "" : String(value)}
         onValueChange={(v) => onSelect(Number(v))}
-        aria-label={ariaLabel}
+        aria-labelledby={labelledBy}
+        aria-label={labelledBy ? undefined : ariaLabel}
         name={name}
         className="grid gap-2"
         // One column per point while they fit; every target stays ≥ 44 px wide

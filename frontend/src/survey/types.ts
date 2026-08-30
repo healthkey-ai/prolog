@@ -176,6 +176,16 @@ export function questionOptions(q: Question): Option[] {
   return q.options ?? [];
 }
 
+/** Keys of the options that take free text (the "Other" options). */
+export function freeTextKeys(q: Question): Set<string> {
+  return new Set(questionOptions(q).filter((o) => o.free_text).map((o) => o.key));
+}
+
+/** Keys of the options that cannot be combined with any other ("none of these"). */
+export function exclusiveKeys(q: Question): Set<string> {
+  return new Set(questionOptions(q).filter((o) => o.exclusive).map((o) => o.key));
+}
+
 /** An option's (localized) label by key; undefined when the key is not one of the question's own options. */
 export function optionLabel(q: Question, key: string): string | undefined {
   return questionOptions(q).find((o) => o.key === key)?.label as string | undefined;

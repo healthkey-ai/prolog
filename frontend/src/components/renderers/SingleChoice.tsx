@@ -2,17 +2,15 @@ import { OptionCard } from "../ui/OptionCard";
 import { RadioGroup } from "../ui/radio-group";
 import { OtherTextInput } from "./OtherTextInput";
 import type { RendererProps } from "./types";
-import type { OptionValue } from "@/survey/types";
+import { freeTextKeys, type OptionValue } from "@/survey/types";
 
 export function SingleChoice({ question, value, onChange }: RendererProps<OptionValue>) {
   const options = question.options ?? [];
+  const free = freeTextKeys(question);
   return (
     <RadioGroup
       value={value?.option ?? ""}
-      onValueChange={(key) => {
-        const o = options.find((x) => x.key === key);
-        onChange({ option: key }, { commit: !o?.free_text });
-      }}
+      onValueChange={(key) => onChange({ option: key }, { commit: !free.has(key) })}
       aria-label={question.text as string}
       className="gap-3"
     >

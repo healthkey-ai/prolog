@@ -86,27 +86,26 @@ def test_vector(vector_path: Path):
         assert given == expect["answers"]
         assert missing_keys(definition, given) == expect["missing"]
 
+    questions = question_by_key(definition)
     for case in vector.get("reject", []):
-        answers = dict(case.get("given", {}))
-        q = question_by_key(definition)[case["key"]]
         with pytest.raises(AnswerError):
             validate_answer(
-                q,
+                questions[case["key"]],
                 case["value"],
-                answers,
+                dict(case.get("given", {})),
                 presentation=definition["presentation"],
                 source_options=ISO_KEYS,
+                questions=questions,
             )
 
     for case in vector.get("accept", []):
-        answers = dict(case.get("given", {}))
-        q = question_by_key(definition)[case["key"]]
         value = validate_answer(
-            q,
+            questions[case["key"]],
             case["value"],
-            answers,
+            dict(case.get("given", {})),
             presentation=definition["presentation"],
             source_options=ISO_KEYS,
+            questions=questions,
         )
         if "canonical" in case:
             assert value == case["canonical"]

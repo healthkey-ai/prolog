@@ -26,12 +26,16 @@ export function Matrix({ question, value, onChange, answers, questions }: Props)
     return (source && optionLabel(source, row)) ?? row;
   };
 
-  // Only the current rows: while the source question's save is still in flight
-  // the cached value may hold rows it no longer selects, and committing them
-  // would fail validation ("unknown rows") for a matrix that looks complete.
-  const ratings = Object.fromEntries(Object.entries(value?.ratings ?? {}).filter(([r]) => rows.includes(r)));
+  // Only the current rows, in rows order: while the source question's save is
+  // still in flight the cached value may hold rows it no longer selects, and
+  // committing them would fail validation ("unknown rows") for a matrix that
+  // looks complete. Rows order is the server's canonical shape (and the one
+  // survey/answers.ts produces), so a matrix rated out of order still compares
+  // equal to the stored answer and Next does not re-save it.
+  const inRowOrder = (src: Record<string, number>): Record<string, number> => Object.fromEntries(rows.filter((r) => r in src).map((r) => [r, src[r]]));
+  const ratings = inRowOrder(value?.ratings ?? {});
   const rate = (row: string, v: number) => {
-    const next = { ...ratings, [row]: v };
+    const next = inRowOrder({ ...ratings, [row]: v });
     const complete = rows.every((r) => r in next);
     onChange({ ratings: next }, { commit: complete });
   };
@@ -49,7 +53,15 @@ export function Matrix({ question, value, onChange, answers, questions }: Props)
           <p className="mb-3 font-heading text-[1.05rem]" id={`${question.key}-${row}-label`}>
             {labelOf(row)}
           </p>
-          <ScaleControl min={scale.min} max={scale.max} value={ratings[row]} onSelect={(v) => rate(row, v)} name={`${question.key}-${row}`} ariaLabel={labelOf(row)} />
+          <ScaleControl
+            min={scale.min}
+            max={scale.max}
+            value={ratings[row]}
+            onSelect={(v) => rate(row, v)}
+            name={`${question.key}-${row}`}
+            labelledBy={`${question.key}-${row}-label`}
+            ariaLabel={labelOf(row)}
+          />
         </div>
       ))}
     </div>

@@ -34,6 +34,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The resource no longer exists for this participant: purged (404), or an
+ * account session that expired so the stored response id is refused (403).
+ */
+export const isGone = (e: unknown): boolean => e instanceof ApiError && (e.status === 403 || e.status === 404);
+/** The survey has closed (410): nothing to retry. */
+export const isClosed = (e: unknown): boolean => e instanceof ApiError && e.status === 410;
+
 const BASE = import.meta.env.VITE_API_BASE ?? "/api/run";
 
 /** Django's CSRF cookie; session-authenticated (account) participants must echo it on writes. */

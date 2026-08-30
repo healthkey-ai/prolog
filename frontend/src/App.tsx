@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes } from "react-router";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { CompletePage } from "./pages/CompletePage";
 import { IntroPage } from "./pages/IntroPage";
 import { WizardPage } from "./pages/WizardPage";
@@ -12,7 +12,7 @@ function Home() {
       <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">PROlog</p>
       <h1 className="mt-2 text-3xl">{t("app.title")}</h1>
       <p className="mt-4 text-ink-soft">
-        Open a survey at <code>/s/&lt;slug&gt;</code>.
+        <Trans i18nKey="app.hint" components={{ code: <code /> }} values={{ path: "/s/<slug>" }} />
       </p>
     </main>
   );

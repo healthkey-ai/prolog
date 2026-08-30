@@ -43,7 +43,8 @@ export function QuestionScreen(props: Props) {
             {question.text as string}
           </h1>
         </legend>
-        {question.help && question.type !== "email" && question.type !== "info" && <p className="mt-2 text-ink-soft">{question.help as string}</p>}
+        {/* QuestionScreen owns the help text for every type; the email renderer alone shows its own notice (the privacy alert, per spec). */}
+        {question.help && question.type !== "email" && <p className="mt-2 text-ink-soft">{question.help as string}</p>}
         <div className="mt-6">{renderControl(question, props)}</div>
       </fieldset>
     </div>

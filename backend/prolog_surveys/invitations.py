@@ -6,9 +6,11 @@ import calendar
 import datetime as dt
 import logging
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from django.core.mail import EmailMultiAlternatives, mailers
+from django.db.models import Q
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -73,6 +75,43 @@ def invitation_link(survey: Survey, administration: SurveyAdministration) -> str
     return f"{conf.get('PROLOG_PUBLIC_URL').rstrip('/')}/s/{survey.slug}?invite={administration.id}"
 
 
+@dataclass(frozen=True)
+class _Cycle:
+    """What one survey administers today: the due date of the current cycle,
+    the version it is bound to (None = whatever is active when answered) and
+    whether the schedule repeats (a one-off is administered once, ever)."""
+
+    survey: Survey
+    invitations: list[SurveyInvitation]
+    due_at: dt.date
+    version: SurveyVersion | None
+    repeats: bool
+
+
+def _current_cycle(
+    version: SurveyVersion, invitations: list[SurveyInvitation], today: dt.date
+) -> _Cycle | None:
+    survey = version.survey
+    if not takes_invitations(version.definition):
+        log.warning(
+            "survey %s is anonymous; its %d active invitation(s) are not scheduled",
+            survey.slug,
+            len(invitations),
+        )
+        return None
+    if reason := survey.closed_reason():
+        # Outside the effective window the link would be refused (410), so no
+        # administration is created; the cycle is not back-filled on reopening.
+        log.info("survey %s is not scheduled: %s", survey.slug, reason)
+        return None
+    repeat = version.definition["participation"].get("repeat")
+    current = current_due_date(repeat, today) if repeat else today
+    if current is None:
+        return None
+    scheduled_version = None if (repeat or {}).get("use_current_version") else version
+    return _Cycle(survey, invitations, current, scheduled_version, bool(repeat))
+
+
 def schedule_due(now: dt.date | None = None) -> list[SurveyAdministration]:
     """Create the administrations that are due today and do not exist yet.
 
@@ -90,39 +129,41 @@ def schedule_due(now: dt.date | None = None) -> list[SurveyAdministration]:
     by_survey: dict[Any, list[SurveyInvitation]] = {}
     for invitation in invitations:
         by_survey.setdefault(invitation.survey_id, []).append(invitation)
-    existing: dict[Any, set[dt.date]] = {}
-    for invitation_id, due_at in SurveyAdministration.objects.filter(
-        invitation__in=invitations
-    ).values_list("invitation_id", "due_at"):
-        existing.setdefault(invitation_id, set()).add(due_at)
 
-    pending: list[SurveyAdministration] = []
+    cycles: list[_Cycle] = []
     for version in versions:
-        survey = version.survey
-        survey_invitations = by_survey.get(survey.id, [])
+        survey_invitations = by_survey.get(version.survey_id, [])
         if not survey_invitations:
             continue
-        if not takes_invitations(version.definition):
-            log.warning(
-                "survey %s is anonymous; its %d active invitation(s) are not scheduled",
-                survey.slug,
-                len(survey_invitations),
-            )
+        try:
+            cycle = _current_cycle(version, survey_invitations, today)
+        except Exception:
+            # One malformed schedule must not stop every other survey's mail.
+            log.exception("could not schedule survey %s", version.survey.slug)
             continue
-        repeat = version.definition["participation"].get("repeat")
-        current = current_due_date(repeat, today) if repeat else today
-        if current is None:
-            continue
-        scheduled_version = None if (repeat or {}).get("use_current_version") else version
-        for invitation in survey_invitations:
-            done = existing.get(invitation.id, set())
-            if current in done or (not repeat and done):
-                continue
-            pending.append(
-                SurveyAdministration(
-                    invitation=invitation, survey_version=scheduled_version, due_at=current
-                )
-            )
+        if cycle is not None:
+            cycles.append(cycle)
+    if not cycles:
+        return []
+
+    # Only the administrations that would collide with today's cycle are read
+    # back: the current due date per repeating survey, any at all for a one-off.
+    scope = Q()
+    for cycle in cycles:
+        q = Q(invitation__survey_id=cycle.survey.id)
+        if cycle.repeats:
+            q &= Q(due_at=cycle.due_at)
+        scope |= q
+    done = set(SurveyAdministration.objects.filter(scope).values_list("invitation_id", flat=True))
+
+    pending = [
+        SurveyAdministration(
+            invitation=invitation, survey_version=cycle.version, due_at=cycle.due_at
+        )
+        for cycle in cycles
+        for invitation in cycle.invitations
+        if invitation.id not in done
+    ]
     return SurveyAdministration.objects.bulk_create(pending)
 
 
@@ -133,23 +174,38 @@ def send_pending() -> int:
         SurveyAdministration.objects.filter(sent_at__isnull=True, invitation__active=True)
         .exclude(invitation__email="")
         .select_related("invitation__survey", "survey_version")
+        .defer("survey_version__definition")
     )
+    # Definitions are decoded (through cached_definition) only for the versions
+    # that are actually sent, not for every active survey.
     active_versions = {
-        v.survey_id: v for v in SurveyVersion.objects.filter(status=LifecycleStatus.ACTIVE)
+        v.survey_id: v
+        for v in SurveyVersion.objects.filter(status=LifecycleStatus.ACTIVE).defer("definition")
     }
     skipped_anonymous: set[str] = set()
     mailer = mailers.default
     with mailer:  # one mail session for the whole batch
         for administration in pending:
-            version = version_for(administration, active_versions)
-            if version is None:
+            survey = administration.invitation.survey
+            try:
+                version = version_for(administration, active_versions)
+                if version is None:
+                    continue
+                if not takes_invitations(version.cached_definition):
+                    # The survey went anonymous after the administration was created:
+                    # the link would be refused, so the email must not go out.
+                    skipped_anonymous.add(survey.slug)
+                    continue
+                if reason := survey.closed_reason():
+                    # Left unsent (not marked): it goes out if the survey reopens.
+                    log.info("invitation for survey %s not sent (%s)", survey.slug, reason)
+                    continue
+                _send_one(mailer, administration, version)
+            except Exception:
+                log.exception(
+                    "could not send administration %s of survey %s", administration.pk, survey.slug
+                )
                 continue
-            if not takes_invitations(version.definition):
-                # The survey went anonymous after the administration was created:
-                # the link would be refused, so the email must not go out.
-                skipped_anonymous.add(administration.invitation.survey.slug)
-                continue
-            _send_one(mailer, administration, version)
             sent += 1
     for slug in sorted(skipped_anonymous):
         log.warning("survey %s is anonymous; its pending invitation(s) are not sent", slug)
@@ -159,8 +215,10 @@ def send_pending() -> int:
 def _send_one(mailer, administration: SurveyAdministration, version: SurveyVersion) -> None:
     invitation = administration.invitation
     survey = invitation.survey
-    lang = invitation.language or version.default_language
-    title = pick(version.definition["title"], lang, version.default_language)
+    definition = version.cached_definition
+    default = definition["default_language"]
+    lang = invitation.language or default
+    title = pick(definition["title"], lang, default)
     context = {
         "title": title,
         "link": invitation_link(survey, administration),

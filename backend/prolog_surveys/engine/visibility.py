@@ -92,16 +92,25 @@ def conditions_hold(conditions: list[dict[str, Any]], answers: Answers) -> bool:
     return all(evaluate_condition(c, answers) for c in conditions)
 
 
-def visible_questions(definition: dict[str, Any], answers: Answers) -> list[VisibleQuestion]:
+def visible_questions(
+    definition: dict[str, Any],
+    answers: Answers,
+    *,
+    questions: dict[str, dict[str, Any]] | None = None,
+) -> list[VisibleQuestion]:
     """One forward pass in presentation order (the DAG's topological order).
 
     Conditions see only the answers of questions that are themselves visible
     (``seen``): a hidden question's stale answer must not keep anything
     downstream open, otherwise a multi-hop cascade would stop after one hop.
+
+    ``questions`` accepts a caller's precomputed ``question_by_key`` so one
+    request does not index the definition several times.
     """
     out: list[VisibleQuestion] = []
     seen: Answers = {}
-    questions = question_by_key(definition)
+    if questions is None:
+        questions = question_by_key(definition)
     for si, section in enumerate(definition["sections"]):
         if not conditions_hold(section.get("visible_if", []), seen):
             continue
@@ -139,8 +148,13 @@ def _dynamic_rows_empty(
     )
 
 
-def visible_keys(definition: dict[str, Any], answers: Answers) -> list[str]:
-    return [v.key for v in visible_questions(definition, answers)]
+def visible_keys(
+    definition: dict[str, Any],
+    answers: Answers,
+    *,
+    questions: dict[str, dict[str, Any]] | None = None,
+) -> list[str]:
+    return [v.key for v in visible_questions(definition, answers, questions=questions)]
 
 
 def matrix_rows(

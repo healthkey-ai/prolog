@@ -4,6 +4,7 @@ import {
   type Condition,
   type Definition,
   type Question,
+  exclusiveKeys,
   questionConfig,
   questionRequired,
 } from "./types";
@@ -120,6 +121,6 @@ export function matrixRows(q: Question, answers: Answers, questions: Record<stri
   if (!isAnswered(source)) return [];
   if (!source || !("options" in source)) return [];
   const sourceQuestion = questions[sourceKey];
-  const exclusive = new Set((sourceQuestion?.options ?? []).filter((o) => o.exclusive).map((o) => o.key));
+  const exclusive = sourceQuestion ? exclusiveKeys(sourceQuestion) : new Set<string>();
   return source.options.filter((k) => !exclusive.has(k));
 }

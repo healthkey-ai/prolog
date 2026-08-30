@@ -8,7 +8,14 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from prolog_surveys.definitions.loader import load_definition
-from prolog_surveys.models import SurveyAnswer, SurveyConsent, SurveyContact, SurveyResponse
+from prolog_surveys.models import (
+    SurveyAdministration,
+    SurveyAnswer,
+    SurveyConsent,
+    SurveyContact,
+    SurveyInvitation,
+    SurveyResponse,
+)
 
 
 @pytest.fixture
@@ -49,11 +56,17 @@ def test_definition_localized_with_etag(api_client, active):
     assert "notes" not in body
     assert body["sections"][0]["questions"][2]["options"][0]["label"] == "Menos de 30"
     etag = r.headers["ETag"]
+    # Strong and weak validators both match (a proxy may weaken the ETag).
+    for validator in (etag, f"W/{etag}", f'"other", {etag}'):
+        r = api_client.get(
+            "/api/run/surveys/sample-wellbeing/?lang=es", HTTP_IF_NONE_MATCH=validator
+        )
+        assert r.status_code == 304 and r.headers["ETag"] == etag, validator
     assert (
         api_client.get(
-            "/api/run/surveys/sample-wellbeing/?lang=es", HTTP_IF_NONE_MATCH=etag
+            "/api/run/surveys/sample-wellbeing/?lang=es", HTTP_IF_NONE_MATCH='"stale"'
         ).status_code
-        == 304
+        == 200
     )
     assert api_client.get("/api/run/surveys/sample-wellbeing/?lang=xx").json()["language"] == "en"
 
@@ -183,12 +196,55 @@ def test_patch_progress_and_language(api_client, response_id):
     )
     assert r.status_code == 200
     assert r.json()["last_question_key"] == "overall" and r.json()["language"] == "es"
+    # A PATCH changes neither answers nor visibility, so the summary alone comes
+    # back (the runner merges only the fields it patched).
+    assert "answers" not in r.json() and "visible" not in r.json()
     assert (
         api_client.patch(
             f"/api/run/responses/{response_id}/", {"language": "de"}, format="json"
         ).status_code
         == 400
     )
+
+
+def test_deactivated_invitation_revokes_its_response_links(api_client, db, definition):
+    """The administration id in an invitation link is the credential for the
+    response it started, so deactivating the invitation must close that
+    response to the link's holder too (not only refuse new starts)."""
+    definition["participation"] = {"anonymous": False}
+    version = load_definition(definition, activate=True).version
+    invitation = SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    administration = SurveyAdministration.objects.create(
+        invitation=invitation, survey_version=version, due_at="2026-01-01"
+    )
+    r = api_client.post(
+        "/api/run/responses/",
+        {"slug": "sample-wellbeing", "language": "en", "invitation": str(administration.id)},
+        format="json",
+    )
+    assert r.status_code == 201, r.content
+    rid = r.json()["id"]
+    assert put_answer(api_client, rid, "country", {"option": "GB"}).status_code == 200
+    invitation.active = False
+    invitation.save()
+    calls = [
+        lambda: api_client.get(f"/api/run/responses/{rid}/"),
+        lambda: api_client.patch(
+            f"/api/run/responses/{rid}/", {"last_question_key": "country"}, format="json"
+        ),
+        lambda: put_answer(api_client, rid, "age_band", {"option": "30_49"}),
+        lambda: api_client.post(f"/api/run/responses/{rid}/submit/"),
+        lambda: api_client.get(f"/api/run/surveys/sample-wellbeing/?response={rid}"),
+        lambda: api_client.post(
+            "/api/run/responses/",
+            {"slug": "sample-wellbeing", "language": "en", "invitation": str(administration.id)},
+            format="json",
+        ),
+    ]
+    for call in calls:
+        r = call()
+        assert r.status_code == 403 and r.json()["detail"] == "invitation is no longer active"
+    assert SurveyAnswer.objects.filter(response_id=rid).count() == 1  # nothing was written
 
 
 # --- answers ---------------------------------------------------------------------

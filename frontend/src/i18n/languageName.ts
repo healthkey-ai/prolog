@@ -1,14 +1,13 @@
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  es: "Español",
-  pt: "Português",
-  fr: "Français",
-  de: "Deutsch",
-  it: "Italiano",
-  nl: "Nederlands",
-};
-
-/** A language's own name for pickers; the code itself when unknown. */
+/**
+ * A language's own name for pickers ("Español" for "es"), from the runtime's
+ * Intl.DisplayNames; the uppercased code when the runtime cannot name it.
+ */
 export function languageName(code: string): string {
-  return LANGUAGE_NAMES[code] ?? code.toUpperCase();
+  try {
+    const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
+    if (name && name !== code) return name.charAt(0).toLocaleUpperCase(code) + name.slice(1);
+  } catch {
+    // Unsupported locale tag or no Intl.DisplayNames: fall through to the code.
+  }
+  return code.toUpperCase();
 }

@@ -44,15 +44,15 @@ lives in code.
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | no (=1) | Format version this file targets. The loader refuses unsupported versions. |
-| `slug` | `^[a-z0-9][a-z0-9-]*$` | yes | Stable survey identity across versions; part of the runner URL `/s/<slug>`. |
-| `version` | `^[0-9]+(\.[0-9]+)*$` | yes | Content revision (`0.6`, `1.0`, `1.1`). Any wording or structure change responses must be interpreted against is a **new version**. |
+| `slug` | `^[a-z0-9][a-z0-9-]*$`, ≤ 120 chars | yes | Stable survey identity across versions; part of the runner URL `/s/<slug>`. |
+| `version` | `^[0-9]+(\.[0-9]+)*$`, ≤ 32 chars | yes | Content revision (`0.6`, `1.0`, `1.1`). Any wording or structure change responses must be interpreted against is a **new version**. |
 | `status` | `draft` · `active` · `archived` | yes | Advisory only. The loader always stores a file as a **draft**; activation is the explicit `--activate` step (see §9). |
 | `default_language` | language code | yes | Fallback for every text; must be listed in `languages`. |
 | `languages` | array of codes | yes | Languages offered on the intro page and in the header switch. Codes match `^[a-z]{2}(-[A-Za-z]{2,4})?$` (`en`, `pt-BR`). |
 | `translation_status` | `{lang: machine\|reviewed}` | for non-default languages | `machine` = placeholder that must not go live; `reviewed` = approved. **A version cannot be activated while any offered language is `machine`.** |
-| `title`, `intro`, `completion` | i18n text | `title` yes | Title (also `<title>`), intro-page paragraph, completion-page paragraph. |
+| `title`, `intro`, `completion` | i18n text | `title` yes | Title (also `<title>`; ≤ 255 characters in the default language), intro-page paragraph, completion-page paragraph. |
 | `estimated_minutes` | integer ≥ 1 | no | Shown as "About N minutes" on the intro page. |
-| `theme` | theme code | no | Resolved by the deployment; unknown or missing → `default` (logged). |
+| `theme` | theme code (≤ 64 chars) | no | Resolved by the deployment; unknown or missing → `default` (logged). |
 | `participation` | object | no | Who may respond and how they resume — §5. |
 | `presentation` | object | no | Wizard layout and skip policy — §6. |
 | `consent` | object | no | Versioned consent attestation shown before the first question — §7. |
@@ -77,7 +77,7 @@ keys for languages not listed in `languages` produce a warning.
 
 ```jsonc
 {
-  "key": "wellbeing",                       // ^[a-z0-9][a-z0-9_]*$, unique among sections
+  "key": "wellbeing",                       // ^[a-z0-9][a-z0-9_]*$ (≤ 128 chars), unique among sections
   "title": { "en": "How you have been feeling" },
   "description": { "en": "Think about the last two weeks." },   // optional
   "visible_if": [ … ],                      // optional; may only reference questions in EARLIER sections
@@ -142,7 +142,7 @@ selected/ranked, and it is limited to 500 characters.
 
 | Field | Meaning |
 | --- | --- |
-| `key` | `^[a-z0-9][a-z0-9_]*$`, unique within the question. Referenced by conditions, exports (`question.key` columns) and matrix rows. |
+| `key` | `^[a-z0-9][a-z0-9_]*$` (≤ 128 chars), unique within the question. Referenced by conditions, exports (`question.key` columns) and matrix rows. |
 | `label` | i18n text. |
 | `free_text` | Selecting (or ranking) this option reveals an inline text input stored as `other_text`. |
 | `exclusive` | `multi` only: selecting it clears every other option, and selecting another option clears it (e.g. "I am not sure"). Warned on other types. |
@@ -158,7 +158,7 @@ selected/ranked, and it is limited to 500 characters.
 | `ranking` | `optional_items: [keys]` | Items that may be left unranked; they sit in an "Add to ranking" tray. Everything else must be ranked exactly once. |
 | `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
-| `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. |
+| `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. Both must be real calendar dates (the schema only checks the digit pattern) with `min_date` ≤ `max_date`. |
 | `email` | `store_separately: true` **or** `link_identity: true` (mutually exclusive) | §8. |
 
 Keys not used by the type are reported as warnings.
@@ -243,7 +243,7 @@ reachable question; changing an answer re-runs the cascade forward.
 | --- | --- |
 | `anonymous` | `true`: no account; the response id held by the browser is the only credential (treated as a secret). `false`: participants need an authenticated account with a resolvable participant (integrated profile) **or** a personal invitation link. |
 | `resume` | `browser_token` (default for anonymous): the response id is kept in browser storage; the intro offers **Continue / Start again**. `account`: `POST /responses/` returns the participant's in-progress response. `none`: no resume. |
-| `repeat` | Repeat administration for invited participants: every `every` `weeks`/`months` from `start_date` (month-end dates clamp), until `end_date`; `use_current_version: true` lets each administration use the then-active version instead of the scheduled one. Off by default. |
+| `repeat` | Repeat administration for invited participants: every `every` `weeks`/`months` from `start_date` (month-end dates clamp), until `end_date`; `use_current_version: true` lets each administration use the then-active version instead of the scheduled one. Off by default. `start_date`/`end_date` must be real calendar dates with `end_date` ≥ `start_date` (validator errors). On an `anonymous` survey a `repeat` block is inert — the scheduler never administers anonymous surveys — and the validator warns. Nothing is scheduled or sent while the survey is outside its effective window (`effective_from`/`effective_to` on the survey record). |
 
 ---
 
@@ -267,7 +267,7 @@ Defaults reproduce the one-question-per-screen wizard.
 
 ```jsonc
 "consent": {
-  "version": "2026-01",
+  "version": "2026-01",                   // ≤ 64 chars
   "text": { "en": "We store your answers to …" },
   "required": true,              // default true
   "privacy_url": "https://example.org/privacy"
@@ -315,14 +315,19 @@ the **active** version; loading a draft cannot retarget a live survey.
 
 ## 10. What the server enforces
 
-- **Structure** (JSON Schema): types, patterns, required keys, enums.
+- **Structure** (JSON Schema): types, patterns, required keys, enums,
+  identifier lengths (`slug` ≤ 120, `version` ≤ 32, `theme` ≤ 64, keys ≤ 128,
+  `consent.version` ≤ 64 — the database columns behind them).
 - **Semantics** (`validate_definition`): unique keys; the DAG rule; condition
   operators/values fit the referenced question type; `rows_from` targets a
   `multi`; `max_selections` ≤ options; `min` ≤ `max`; `optional_items` are
   options; scale `min < max` and label counts; one `email` question;
-  `link_identity` only in the integrated profile; every non-default
-  language has a `translation_status`; every i18n object has the default
-  language; reachability warnings.
+  `link_identity` only in the integrated profile; `min_date`/`max_date` and
+  `repeat.start_date`/`end_date` are real calendar dates in order; `title`
+  in the default language ≤ 255 characters; every non-default language has
+  a `translation_status`; every i18n object has the default language;
+  warnings for unreachable questions and for `repeat` on an anonymous
+  survey.
 - **Answers** (per PUT): value shape per type, option keys, limits,
   exclusives, `other_text` rules, scale bounds, ranking completeness, matrix
   rows equal to the current row set, text/number/date bounds, the skip

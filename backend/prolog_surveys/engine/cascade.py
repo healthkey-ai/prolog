@@ -43,33 +43,41 @@ def apply_cascade(
     """Return the answers that survive, the keys invalidated, and the visible questions."""
     questions = questions or question_by_key(definition)
     surviving: Answers = dict(answers)
-    invalidated: list[str] = []
-    visible = visible_questions(definition, surviving)
-    visible_set = {v.key for v in visible}
+    invalidated: set[str] = set()
+    # Pruning a matrix can change what is visible (a question conditioned on
+    # it being ``answered``), and that can hide further answers, so walk the
+    # DAG again until a pass prunes nothing: the forward pass is then a fixed
+    # point. Presentation order is topological, so this converges quickly.
+    while True:
+        visible = visible_questions(definition, surviving, questions=questions)
+        visible_set = {v.key for v in visible}
 
-    for key in list(surviving):
-        if key not in visible_set and not retained_when_hidden(questions[key], surviving[key]):
-            del surviving[key]
-            invalidated.append(key)
-
-    for key, value in list(surviving.items()):
-        q = questions[key]
-        if q["type"] != "matrix" or not is_answered(value):
-            continue
-        rows = matrix_rows(q, surviving, questions)
-        ratings = {r: v for r, v in value.get("ratings", {}).items() if r in rows}
-        if ratings != value.get("ratings", {}):
-            if ratings:
-                surviving[key] = {"ratings": ratings}
-            else:
+        for key in list(surviving):
+            if key not in visible_set and not retained_when_hidden(questions[key], surviving[key]):
                 del surviving[key]
-            invalidated.append(key)
+                invalidated.add(key)
+
+        pruned = False
+        for key, value in list(surviving.items()):
+            q = questions[key]
+            if q["type"] != "matrix" or not is_answered(value):
+                continue
+            rows = matrix_rows(q, surviving, questions)
+            ratings = {r: v for r, v in value.get("ratings", {}).items() if r in rows}
+            if ratings != value.get("ratings", {}):
+                if ratings:
+                    surviving[key] = {"ratings": ratings}
+                else:
+                    del surviving[key]
+                invalidated.add(key)
+                pruned = True
+        if not pruned:
+            break
 
     order = {k: i for i, k in enumerate(questions)}
-    invalidated.sort(key=lambda k: order[k])
     return CascadeResult(
         answers=surviving,
-        invalidated=invalidated,
+        invalidated=sorted(invalidated, key=lambda k: order[k]),
         visible=[v.key for v in visible],
         visible_questions=visible,
     )
