@@ -264,6 +264,9 @@ export function WizardPage() {
             questionTotal={pos.questionTotal}
             answers={answers}
             questions={questions}
+            onDeclineEmail={async () => {
+              if (await persist(key, { provided: false })) advance();
+            }}
             onSubmitEmail={async (email) => {
               await contact.mutateAsync(email);
               setDraftKey(key);

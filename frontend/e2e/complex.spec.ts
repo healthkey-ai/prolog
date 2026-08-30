@@ -137,6 +137,21 @@ test.describe("complex question types", () => {
     await expect(page.getByTestId("option-fatigue")).not.toBeChecked();
   });
 
+  test("declining the contact step submits the survey", async ({ page, request }) => {
+    await startAndPrefill(page, request, {
+      ...BASE,
+      has_symptoms: { option: "not_sure" },
+      daily_activities: { ratings: { walking: 1, housework: 2, socialising: 3 } },
+      outcome_ranking: { order: ["energy", "independence", "fewer_visits", "side_effects"] },
+      support_wanted: { options: ["peer"] },
+      told_clinician: { option: "yes" },
+      anything_else: { skipped: true },
+    });
+    await page.goto(`/s/${SLUG}/q/contact_email`);
+    await page.getByTestId("email-skip").click();
+    await expect(page.getByTestId("complete")).toBeVisible();
+  });
+
   test("full completion including the contact step", async ({ page, request }) => {
     await startAndPrefill(page, request, {
       ...BASE,

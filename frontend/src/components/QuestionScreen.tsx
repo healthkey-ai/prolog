@@ -17,6 +17,7 @@ interface Props extends RendererProps {
   questionNumber: number;
   questionTotal: number;
   onSubmitEmail?: (email: string) => Promise<void>;
+  onDeclineEmail?: () => void;
   answers: Record<string, AnswerValue>;
   questions: Record<string, Question>;
 }
@@ -70,7 +71,7 @@ function renderControl(question: Question, props: Props) {
     case "date":
       return <DateInput {...p} />;
     case "email":
-      return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => {})} />;
+      return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => {})} onDecline={props.onDeclineEmail} />;
     default: {
       const Extra = extraRenderers[question.type];
       return Extra ? (
