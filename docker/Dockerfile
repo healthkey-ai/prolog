@@ -26,11 +26,13 @@ WORKDIR /app/backend
 # collectstatic only needs settings to import; the build-time key is never persisted.
 RUN SECRET_KEY=build-only-not-persisted python manage.py collectstatic --noinput
 # The app never writes to the image: run it as an unprivileged user that owns
-# nothing under /app (the build output is world-readable).
-RUN useradd --system --no-create-home --shell /usr/sbin/nologin app
+# nothing under /app (the build output is world-readable). It does get a home:
+# gunicorn keeps its control socket under $HOME and logs an error without one.
+RUN useradd --system --create-home --shell /usr/sbin/nologin app
 USER app
 EXPOSE 8000
-# A definition file that fails to load is reported and skipped (load_definitions
-# exits non-zero); the rest are served, so one bad file does not keep the whole
-# deployment down.
-CMD ["sh", "-c", "python manage.py migrate --noinput && { python manage.py load_definitions || echo 'load_definitions: some definitions were skipped (see above)' >&2; } && exec gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]
+# load_definitions exits non-zero when a file is skipped (reported above it) or
+# when it cannot run at all (unreadable /data mount, database gone); either way
+# the app starts with the definitions already in the database, so one bad file
+# does not keep the whole deployment down. The exit code is printed as is.
+CMD ["sh", "-c", "python manage.py migrate --noinput && { python manage.py load_definitions || echo \"load_definitions exited $? (see above); starting with the definitions already in the database\" >&2; } && exec gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]

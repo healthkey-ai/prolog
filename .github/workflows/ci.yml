@@ -117,10 +117,19 @@ jobs:
           docker run --rm $SMOKE_ENV prolog:ci sh -c 'test "$(id -u)" != 0'
           docker run --rm $SMOKE_ENV prolog:ci python manage.py check --deploy
       - name: Start chain (migrate, load_definitions, gunicorn) and health probe
+        # A real definition is mounted so the per-file loader path runs in the
+        # image (examples/deploy/surveys holds only a .gitkeep); the log line
+        # is asserted once the app answers, when load_definitions has finished.
         run: |
-          docker run -d --name app --network host             -v "$PWD/examples/deploy/surveys:/data/surveys:ro" -v "$PWD/examples/deploy/themes:/data/themes:ro"             $SMOKE_ENV prolog:ci
+          mkdir -p "$RUNNER_TEMP/surveys" && cp examples/sample-wellbeing.json "$RUNNER_TEMP/surveys/"
+          docker run -d --name app --network host \
+            -v "$RUNNER_TEMP/surveys:/data/surveys:ro" -v "$PWD/examples/deploy/themes:/data/themes:ro" \
+            $SMOKE_ENV prolog:ci
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8000/api/health/; then exit 0; fi
+            if curl -fsS http://localhost:8000/api/health/; then
+              docker logs app 2>&1 | grep -F 'created: sample-wellbeing@' && exit 0
+              echo "load_definitions did not create sample-wellbeing"; docker logs app; exit 1
+            fi
             sleep 2
           done
           echo "health probe never answered"; docker logs app; exit 1

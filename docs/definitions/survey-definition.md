@@ -130,7 +130,8 @@ description) when a participant enters a new section
 
 Option keys and `other_text` are stored exactly as canonicalised by the
 server: option lists are re-ordered to the definition's option order,
-free text is trimmed, `other_text` is only kept when a `free_text` option is
+free text is stripped of leading/trailing ASCII space, tab, CR and LF (other
+Unicode whitespace is kept and counted), `other_text` is only kept when a `free_text` option is
 selected/ranked, and it is limited to 500 characters.
 
 ### 3.2 Options
@@ -156,7 +157,7 @@ selected/ranked, and it is limited to 500 characters.
 | `scale` | `scale: {min, max, min_label?, max_label?, point_labels?}` | `min < max` and at most 101 points (`max − min ≤ 100`; the runner draws one control per point); `point_labels` (i18n each) must have exactly `max − min + 1` entries. |
 | `matrix` | `scale` (required) plus **either** `rows_from` (key of an earlier `multi` question — its selected options become the rows; an `exclusive` option never does, so a selection of only exclusive options hides the matrix) **or** `rows: [{key, label}]` (fixed rows) | Dynamic rows are labelled with the source option label, or with the participant's own `other_text` for a `free_text` option. Every current row must be rated. |
 | `ranking` | `optional_items: [keys]` | Items that may be left unranked; they sit in an "Add to ranking" tray. Everything else must be ranked exactly once, so at least one item must not be optional. |
-| `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. The limit is measured on the stored value (leading/trailing whitespace stripped). Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
+| `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. The limit is measured on the stored value: leading/trailing ASCII whitespace (space, tab, CR, LF) is stripped by both engines; other Unicode whitespace (e.g. U+00A0, U+FEFF) is kept and counted. Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
 | `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. Both must be real calendar dates (the schema only checks the digit pattern) with `min_date` ≤ `max_date`. |
 | `email` | `store_separately: true` **or** `link_identity: true` | **Exactly one is required**: the schema rejects both together and the validator rejects neither (`email_capture` — without a capture mode no endpoint could accept an address, so the step could only ever record a decline). §8. |

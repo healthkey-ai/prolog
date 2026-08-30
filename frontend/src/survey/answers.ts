@@ -74,6 +74,13 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_OTHER_TEXT = 500;
 /** Absolute cap on a text answer (code points), whatever the definition says; mirrors answers.py. */
 export const MAX_TEXT_LENGTH = 10_000;
+/**
+ * The one whitespace set both engines strip from text and other_text: ASCII
+ * space, tab, CR, LF. String.prototype.trim() and str.strip() disagree on
+ * U+FEFF and U+0085, which would make accept/reject at max_length depend on
+ * the engine. Mirrors STRIP_CHARS in answers.py.
+ */
+const STRIP_RE = /^[ \t\r\n]+|[ \t\r\n]+$/g;
 
 function fail(code: AnswerIssueCode, params: Record<string, unknown> = {}): never {
   throw new AnswerError([{ code, params }]);
@@ -89,6 +96,11 @@ function isStringArray(v: unknown): v is string[] {
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
+}
+
+/** Strips the engines' whitespace set (ASCII space, tab, CR, LF) — the renderers use it too, so what the field shows on blur is what is stored. */
+export function strip(text: string): string {
+  return text.replace(STRIP_RE, "");
 }
 
 /** Length in code points, as Python's len() counts (an emoji is 1, not 2). */
@@ -125,7 +137,7 @@ function otherText(raw: Record<string, unknown>, q: Question, selected: string[]
   const text = raw.other_text;
   if (text === undefined || text === null) return {};
   if (typeof text !== "string") fail("other_text_not_string");
-  const trimmed = text.trim();
+  const trimmed = strip(text);
   if (!trimmed) return {};
   const free = freeTextKeys(q);
   if (!selected.some((k) => free.has(k))) fail("other_text_without_free_option");
@@ -210,8 +222,10 @@ export function validateAnswer(
     if (!isRecord(ratings)) fail("ratings_not_object");
     // Without the source question its exclusive flags are invisible and an
     // exclusive selection would silently become a row: a caller bug, not a
-    // participant error (mirrors answers.py).
-    if (cfg.rows_from && !opts.questions) throw new Error("validateAnswer: rows_from matrix needs the questions map");
+    // participant error (mirrors answers.py). An empty map, or one lacking the
+    // source, is the same bug.
+    if (cfg.rows_from && !(opts.questions && Object.hasOwn(opts.questions, cfg.rows_from)))
+      throw new Error("validateAnswer: rows_from matrix needs the questions map");
     const rows = matrixRows(q, answers, opts.questions ?? {});
     if (!rows.length) fail("matrix_no_rows");
     const unknown = Object.keys(ratings).filter((r) => !rows.includes(r));
@@ -233,8 +247,8 @@ export function validateAnswer(
 
   if (q.type === "text") {
     const text = raw.text;
-    if (typeof text !== "string" || !text.trim()) fail("text_required");
-    const trimmed = text.trim();
+    if (typeof text !== "string" || !strip(text)) fail("text_required");
+    const trimmed = strip(text);
     // The limit applies to what is stored (the trimmed text), as for other_text.
     const limit = Math.min(cfg.max_length || MAX_TEXT_LENGTH, MAX_TEXT_LENGTH);
     if (length(trimmed) > limit) fail("text_too_long", { max: limit });

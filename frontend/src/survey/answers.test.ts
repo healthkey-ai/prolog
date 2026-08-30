@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AnswerError, defaultOrder, implicitAnswer, validateAnswer } from "./answers";
+import { type AnswerError, MAX_OTHER_TEXT, defaultOrder, implicitAnswer, validateAnswer } from "./answers";
 import type { Question } from "./types";
 
 const ranking: Question = {
@@ -118,5 +118,60 @@ describe("dynamic matrix rows", () => {
     };
     const answers = { src: { options: ["none"] } };
     expect(() => validateAnswer(q, { ratings: { none: 1 } }, answers)).toThrow(/questions map/);
+  });
+});
+
+describe("whitespace stripping (shared set)", () => {
+  // Both engines strip exactly space, tab, CR and LF. String.prototype.trim()
+  // and str.strip() disagree on U+FEFF and U+0085, so with max_length 3
+  // "\uFEFFabc" and "\x85abc" must be text_too_long in both, never one each.
+  const codesOf = (fn: () => unknown): string[] => {
+    try {
+      fn();
+    } catch (e) {
+      return (e as AnswerError).issues.map((i) => i.code);
+    }
+    return [];
+  };
+  it("text: strips the ASCII set and keeps other Unicode whitespace", () => {
+    const q: Question = { key: "t", type: "text", text: { en: "t" }, config: { max_length: 3 } };
+    expect(validateAnswer(q, { text: " \t\r\nabc\n\r\t " }, {})).toEqual({ text: "abc" });
+    for (const raw of ["\uFEFFabc", "\x85abc"]) {
+      expect(codesOf(() => validateAnswer(q, { text: raw }, {})), JSON.stringify(raw)).toEqual(["text_too_long"]);
+    }
+    expect(codesOf(() => validateAnswer(q, { text: " \t\r\n" }, {}))).toEqual(["text_required"]);
+  });
+  it("other_text: same set", () => {
+    const q: Question = {
+      key: "s",
+      type: "single",
+      text: { en: "s" },
+      options: [{ key: "other", label: { en: "other" }, free_text: true }],
+    };
+    expect(validateAnswer(q, { option: "other", other_text: " \t\r\nx\n\r\t " }, {})).toEqual({
+      option: "other",
+      other_text: "x",
+    });
+    for (const lead of ["\uFEFF", "\x85"]) {
+      const value = { option: "other", other_text: lead + "x".repeat(MAX_OTHER_TEXT) };
+      expect(codesOf(() => validateAnswer(q, value, {})), JSON.stringify(lead)).toEqual(["other_text_too_long"]);
+    }
+  });
+});
+
+describe("dynamic matrix rows (questions map contents)", () => {
+  const q: Question = {
+    key: "m",
+    type: "matrix",
+    text: { en: "m" },
+    config: { rows_from: "src", scale: { min: 1, max: 3 } },
+  };
+  const answers = { src: { options: ["none"] } };
+  it("refuses an empty questions map", () => {
+    expect(() => validateAnswer(q, { ratings: { none: 1 } }, answers, { questions: {} })).toThrow(/questions map/);
+  });
+  it("refuses a questions map that lacks the source question", () => {
+    const questions = { other: { key: "other", type: "text", text: { en: "o" } } as Question };
+    expect(() => validateAnswer(q, { ratings: { none: 1 } }, answers, { questions })).toThrow(/questions map/);
   });
 });

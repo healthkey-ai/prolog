@@ -39,7 +39,7 @@ EMAIL_STRINGS: dict[str, dict[str, str]] = {
     },
     "es": {
         "intro": "Le invitamos a completar:",
-        "open": "Abrir su cuestionario",
+        "open": "Abrir su encuesta",
         "footer": "Este enlace es personal. Si no esperaba este correo, puede ignorarlo.",
     },
     "fr": {
@@ -50,7 +50,7 @@ EMAIL_STRINGS: dict[str, dict[str, str]] = {
     },
     "pt": {
         "intro": "Convidamos você a preencher:",
-        "open": "Abrir o seu questionário",
+        "open": "Abrir a sua pesquisa",
         "footer": "Este link é pessoal. Se não esperava este e-mail, pode ignorá-lo.",
     },
 }

@@ -484,6 +484,21 @@ def test_unchanged_file_reloads_after_a_normaliser_change(example, monkeypatch):
         load_definition(example)
 
 
+@pytest.mark.django_db
+def test_version_stored_with_legacy_normalised_checksum_reloads(example):
+    """Rows written before the checksum moved to the source document carry
+    ``checksum(normalize(doc))``; an unchanged file must still re-load and
+    migrate the digest instead of refusing the active version as edited."""
+    version = load_definition(example, activate=True).version
+    SurveyVersion.objects.filter(pk=version.pk).update(checksum=checksum(normalize(example)))
+    result = load_definition(example)
+    assert not result.changed and not result.created
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.ACTIVE
+    assert version.checksum == source_checksum(example)
+    assert not load_definition(example).changed  # migrated: the plain path from now on
+
+
 def test_source_checksum_ignores_schema_pointer_only(example):
     with_pointer = {**example, "$schema": "../elsewhere/schema.json"}
     assert source_checksum(with_pointer) == source_checksum(example)

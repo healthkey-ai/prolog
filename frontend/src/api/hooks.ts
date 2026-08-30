@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
-import { ApiError, api } from "./client";
+import { ApiError, ApiTimeoutError, api } from "./client";
 import type { AnswerResult, OptionsSource, ResponseSummary, RunnerDefinition } from "./types";
 import type { AnswerValue } from "@/survey/types";
 import type { Theme } from "@/theme/types";
@@ -183,6 +183,13 @@ export function usePatchResponse(id: string) {
   });
 }
 
+/**
+ * Deadline for an answer PUT. Shorter than the default: a half-open socket
+ * must reach the footer's error state (and its Retry) within ~20 s, not after
+ * every retry has waited the full default.
+ */
+export const ANSWER_TIMEOUT_MS = 8_000;
+
 /** The cached value of `key` before an optimistic save, so a failed save can put it back. */
 export type SavedAnswerContext = { seq: number; previous: AnswerValue | undefined; had: boolean };
 
@@ -236,7 +243,7 @@ export function useSaveAnswer(id: string) {
         // it (and cascade) while the cache shows the newer one, so a superseded
         // save never reaches the wire.
         if (superseded()) throw new SupersededError();
-        const result = await api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value });
+        const result = await api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value }, { timeoutMs: ANSWER_TIMEOUT_MS });
         if (superseded()) {
           // Persisted, but a newer save is already queued: the caller must not
           // act on it. Its value is what a failure of that newer save reverts to.
@@ -252,7 +259,9 @@ export function useSaveAnswer(id: string) {
         if (inflight.current.get(vars.key) === run) inflight.current.delete(vars.key);
       }
     },
-    retry: (count, error) => count < 3 && !(error instanceof SupersededError) && !(error instanceof ApiError && error.status < 500),
+    // A timeout has already cost its deadline: one more try, then the footer
+    // takes over (2 x ANSWER_TIMEOUT_MS + the 1 s backoff stays under 20 s).
+    retry: (count, error) => count < (error instanceof ApiTimeoutError ? 1 : 3) && !(error instanceof SupersededError) && !(error instanceof ApiError && error.status < 500),
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     onMutate: async (vars): Promise<SavedAnswerContext> => {
       const { key, value } = vars;

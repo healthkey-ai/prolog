@@ -30,7 +30,11 @@ survey goes live only when a version is activated explicitly. A definition
 file that cannot be loaded (invalid, truncated, not UTF-8) is reported in
 the container log and skipped; the others load and the app still starts.
 The database is published on the host's loopback interface only, and the
-app runs as an unprivileged user with a read-only `/app`.
+app runs as an unprivileged user (`app`) with a read-only `/app`; the
+directories mounted under `/data` must be readable by that user (world-
+readable files, or owned by its uid: `docker compose exec app id -u`), or
+`load_definitions` cannot run and the container starts with the
+definitions already in the database (the exit code is in its log).
 
 ## Promotion flow (validate → load → review → activate)
 
@@ -58,7 +62,7 @@ Any wording or structure change after activation requires a **new
 | `POSTGRES_*` | database connection (no SQLite fallback). `POSTGRES_PASSWORD` has no default in the compose file: it must be set in `.env` |
 | `PROLOG_PROFILE` | `standalone` (default) or `integrated` |
 | `PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS` | path-separated directory lists |
-| `PROLOG_THROTTLE_CREATE/CAPTURE/ANSWER/READ/WRITE` | throttle rates per hashed client address (create `30/hour`, contact/identity capture `30/hour`, answer `600/hour` per response, read `1200/hour`, answer/submit writes `3000/hour` per client). Behind NAT (clinic Wi-Fi, mobile carriers) many participants share one address: raise `CREATE`/`CAPTURE` accordingly |
+| `PROLOG_THROTTLE_CREATE/CAPTURE/ANSWER/READ/WRITE` | throttle rates per hashed client address (create `30/hour`, contact/identity capture `30/hour`, answer `600/hour` per response, read `1200/hour`, answer/submit writes `3000/hour` per client). Behind NAT (clinic Wi-Fi, mobile carriers) many participants share one address: raise `CREATE`/`CAPTURE` (and `WRITE`, which counts every participant's saves) accordingly |
 | `CACHE_BACKEND`, `CACHE_LOCATION` | where throttle counters live. Default: an in-process cache, so each gunicorn worker counts separately and every rate is effectively multiplied by `WEB_CONCURRENCY`. For exact limits use a cache shared by all workers, e.g. `CACHE_BACKEND=django.core.cache.backends.redis.RedisCache CACHE_LOCATION=redis://cache:6379/1` |
 | `PROLOG_ABANDONED_RESPONSE_DAYS` | retention of in-progress responses in days (default 90, at least 1: `0` would delete every in-progress response and is refused) |
 | `TIME_ZONE` | IANA zone (default `UTC`) in which calendar dates are taken: a survey's `effective_from`/`effective_to`, the due dates of repeat schedules and the daily `send_due_invitations` cycle, and contacts' `captured_on`. Set the deployment's local zone; the integrated profile uses the host project's `TIME_ZONE` |
@@ -143,6 +147,10 @@ uv run python manage.py load_definition ../examples/sample-wellbeing.json --acti
 uv run python manage.py runserver 8000
 cd ../frontend && npm ci && npm run dev      # http://localhost:5173/s/sample-wellbeing
 ```
+
+Running PostgreSQL from the compose file instead (`docker compose up -d`,
+the `db` service alone) needs `POSTGRES_PASSWORD` set in `.env`, and
+exported in the shell for `pytest` and `manage.py` to reach it.
 
 Tests: `uv run pytest` (backend, needs PostgreSQL), `npm test` (frontend
 units + shared engine vectors), `npm run e2e` (Playwright against a real

@@ -22,6 +22,11 @@ MAX_OTHER_TEXT = 500
 # store request-sized bodies per PUT (sec.dos-unbounded). Mirrored in
 # frontend/src/survey/answers.ts.
 MAX_TEXT_LENGTH = 10_000
+# The one whitespace set both engines strip from text and other_text: ASCII
+# space, tab, CR, LF. str.strip() and String.prototype.trim() disagree on
+# U+FEFF and U+0085, which would make accept/reject at max_length depend on
+# the engine. Mirrored in frontend/src/survey/answers.ts.
+STRIP_CHARS = " \t\r\n"
 
 MESSAGES: dict[str, str] = {
     "info_no_answer": "info questions take no answer",
@@ -110,6 +115,10 @@ def _fail(code: str, **params: Any):
     raise AnswerError([issue(code, **params)])
 
 
+def _strip(text: str) -> str:
+    return text.strip(STRIP_CHARS)
+
+
 def _option_keys(question: dict[str, Any]) -> list[str]:
     return [o["key"] for o in question.get("options", [])]
 
@@ -126,7 +135,7 @@ def _other_text(
         return {}
     if not isinstance(text, str):
         _fail("other_text_not_string")
-    text = text.strip()
+    text = _strip(text)
     if not text:
         return {}
     if not (set(selected) & _free_text_keys(question)):
@@ -156,7 +165,8 @@ def validate_answer(
 
     ``answers`` are the response's other answers and ``questions`` the
     definition's questions by key (both required for a ``rows_from`` matrix;
-    omitting ``questions`` there is a ValueError).
+    a ``questions`` map missing there, or lacking the source question, is a
+    ValueError).
     ``source_options`` are the keys of a dropdown's ``options_source`` list
     when applicable.
     """
@@ -237,7 +247,8 @@ def validate_answer(
         ratings = raw.get("ratings")
         if not isinstance(ratings, dict):
             _fail("ratings_not_object")
-        if cfg.get("rows_from") and not questions:
+        rows_from = cfg.get("rows_from")
+        if rows_from and rows_from not in questions:
             # Without the source question its exclusive flags are invisible and an
             # exclusive selection would silently become a row; a caller bug, not
             # a participant error, so not an AnswerError.
@@ -261,9 +272,9 @@ def validate_answer(
 
     if t == "text":
         text = raw.get("text")
-        if not isinstance(text, str) or not text.strip():
+        if not isinstance(text, str) or not _strip(text):
             _fail("text_required")
-        text = text.strip()
+        text = _strip(text)
         # The limit applies to what is stored (the stripped text), as for other_text.
         limit = min(cfg.get("max_length") or MAX_TEXT_LENGTH, MAX_TEXT_LENGTH)
         if len(text) > limit:

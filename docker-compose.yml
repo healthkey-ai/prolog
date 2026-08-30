@@ -29,8 +29,9 @@ services:
       POSTGRES_USER: prolog
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       # Compose interpolates every service, profile or not, so `:?` here would
-      # also block the db-only `docker compose up -d`; an unset or placeholder
-      # key is refused by settings.py instead, and the container exits at start.
+      # make the db-only `docker compose up -d` (local development) demand a
+      # key it never uses; an unset or placeholder key is refused by
+      # settings.py instead, and the app container exits at start.
       SECRET_KEY: ${SECRET_KEY:-}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8000}
@@ -51,6 +52,7 @@ services:
       PROLOG_THROTTLE_CAPTURE: ${PROLOG_THROTTLE_CAPTURE:-30/hour}
       PROLOG_THROTTLE_ANSWER: ${PROLOG_THROTTLE_ANSWER:-600/hour}
       PROLOG_THROTTLE_READ: ${PROLOG_THROTTLE_READ:-1200/hour}
+      PROLOG_THROTTLE_WRITE: ${PROLOG_THROTTLE_WRITE:-3000/hour}
       # Throttle counters: per worker by default; see docs/deployment.md for a shared cache.
       CACHE_BACKEND: ${CACHE_BACKEND:-django.core.cache.backends.locmem.LocMemCache}
       CACHE_LOCATION: ${CACHE_LOCATION:-prolog}

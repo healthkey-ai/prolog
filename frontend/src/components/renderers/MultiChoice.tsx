@@ -23,7 +23,10 @@ export function MultiChoice({ question, value, onChange }: RendererProps<Options
     const ordered = options.map((o) => o.key).filter((k) => next.includes(k));
     const keepOther = ordered.some((k) => free.has(k));
     if (!ordered.length) {
-      onChange(undefined);
+      // Deselecting the last option is a clear like a dropdown's: it commits,
+      // so the wizard records the "no answer" (a skip) where it can, and Back
+      // or a reload cannot bring the old selection back.
+      onChange(undefined, { commit: true });
       return;
     }
     const otherText = keepOther ? value?.other_text : undefined;

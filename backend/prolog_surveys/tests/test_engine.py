@@ -346,3 +346,48 @@ def test_rows_from_matrix_requires_the_questions_map():
     with pytest.raises(AnswerError) as exc:
         validate_answer(matrix, {"ratings": {"none": 3}}, answers, questions=questions)
     assert exc.value.codes == ["matrix_no_rows"]
+
+
+def test_text_strips_the_shared_ascii_whitespace_set_only():
+    """Both engines strip exactly space, tab, CR and LF. str.strip() and
+    String.prototype.trim() disagree on U+FEFF and U+0085, so with max_length 3
+    '\\ufeffabc' and '\\x85abc' must be text_too_long in both, never one each."""
+    q = {"key": "t", "type": "text", "text": {"en": "t"}, "config": {"max_length": 3}}
+    assert validate_answer(q, {"text": " \t\r\nabc\n\r\t "}, {}) == {"text": "abc"}
+    for raw in ("\ufeffabc", "\x85abc"):
+        with pytest.raises(AnswerError) as exc:
+            validate_answer(q, {"text": raw}, {})
+        assert exc.value.codes == ["text_too_long"], repr(raw)
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"text": " \t\r\n"}, {})
+    assert exc.value.codes == ["text_required"]
+
+
+def test_other_text_strips_the_shared_ascii_whitespace_set_only():
+    from prolog_surveys.engine.answers import MAX_OTHER_TEXT
+
+    q = {
+        "key": "s",
+        "type": "single",
+        "text": {"en": "s"},
+        "options": [{"key": "other", "label": {"en": "other"}, "free_text": True}],
+    }
+    ok = validate_answer(q, {"option": "other", "other_text": " \t\r\nx\n\r\t "}, {})
+    assert ok == {"option": "other", "other_text": "x"}
+    for lead in ("\ufeff", "\x85"):
+        with pytest.raises(AnswerError) as exc:
+            validate_answer(q, {"option": "other", "other_text": lead + "x" * MAX_OTHER_TEXT}, {})
+        assert exc.value.codes == ["other_text_too_long"], repr(lead)
+
+
+def test_rows_from_matrix_requires_the_source_question_in_the_map():
+    """An empty map, or one lacking the source, is the same caller bug as no map."""
+    definition = load_definition("sample-wellbeing.json")
+    questions = question_by_key(definition)
+    matrix = questions["symptom_impact"]
+    answers = {"has_symptoms": {"option": "yes"}, "symptoms": {"options": ["none"]}}
+    with pytest.raises(ValueError, match="questions map"):
+        validate_answer(matrix, {"ratings": {"none": 3}}, answers, questions={})
+    without_source = {k: v for k, v in questions.items() if k != "symptoms"}
+    with pytest.raises(ValueError, match="questions map"):
+        validate_answer(matrix, {"ratings": {"none": 3}}, answers, questions=without_source)

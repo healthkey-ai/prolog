@@ -202,6 +202,45 @@ describe("WizardPage", () => {
     expect(server.of("PATCH").map((c) => c.body)).toEqual([{ language: "fr" }, { language: "fr" }]);
   });
 
+  it("records deselecting the last multi-choice option as a skip, like clearing a dropdown", async () => {
+    const multi = definition();
+    multi.sections[1].questions = [{ key: "q3", type: "multi", text: "Pick some", required: false, options: [{ key: "a", label: "A" }, { key: "b", label: "B" }] }];
+    const server = runnerServer(multi, response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { options: ["a"] } }, last_question_key: "q3" }));
+    server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value, "q3"));
+    m = mount(`/s/${SLUG}/q/q3`);
+    await m.flush(8); // the multi renderer is code-split
+    const a = m.$<HTMLButtonElement>("option-a")!;
+    expect(a.getAttribute("aria-checked")).toBe("true");
+    click(a);
+    await m.flush();
+    expect(server.of("PUT", ANSWERS).map((c) => c.body)).toEqual([{ value: { skipped: true } }]);
+    expect(m.$("option-a")!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("says so, with a retry, when the definition in the new language cannot be fetched after a language switch", async () => {
+    const server = runnerServer();
+    const fr = definition({ language: "fr" });
+    fr.sections[0].questions[0] = { ...fr.sections[0].questions[0], text: "Note facultative" };
+    let fail = true;
+    server.on("GET", `/surveys/${SLUG}/`, (call) => (call.path.includes("lang=fr") ? (fail ? { status: 503, body: {} } : { body: fr }) : { body: definition() }));
+    m = mount(`/s/${SLUG}/q/q1`);
+    await m.flush();
+    const { onLanguage } = findOnLanguage(m);
+    onLanguage("fr");
+    await m.flush();
+    expect(server.of("PATCH").map((c) => c.body)).toEqual([{ language: "fr" }]);
+    // keepPreviousData holds the old localisation only while the re-keyed GET is
+    // pending; once it fails there is no data, so the definition error (not a
+    // silent snap-back) takes the screen, with its retry.
+    expect(m.$("definition-error")?.textContent).toContain(t("app.error"));
+    fail = false;
+    click(m.$("definition-retry"));
+    await m.flush();
+    expect(m.$("definition-error")).toBeNull();
+    expect(m.$("question-q1")?.textContent).toContain("Note facultative");
+    expect(server.of("PATCH")).toHaveLength(1); // the retry refetches the definition; it does not PATCH again
+  });
+
   it("renders a step counter instead of the bar for presentation.progress: steps", async () => {
     runnerServer(definition({ presentation: { section_interstitials: false, progress: "steps" } }));
     m = mount(`/s/${SLUG}/q/q2`);

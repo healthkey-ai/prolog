@@ -13,7 +13,7 @@ from django.utils import timezone
 from .. import conf
 from ..engine.visibility import iter_questions
 from ..models import LifecycleStatus, Survey, SurveyOption, SurveyQuestion, SurveyVersion
-from .normalize import normalize, source_checksum
+from .normalize import checksum, normalize, source_checksum
 from .schema import Issue, read_json, validate_schema
 from .validate import has_errors, validate_semantics
 
@@ -91,6 +91,11 @@ def load_definition(
         },
     )
     changed = created
+    if not created and version.checksum != digest and version.checksum == checksum(definition):
+        # Row written while the checksum still covered the normalised document:
+        # the same source, so migrate the digest rather than report an edit.
+        version.checksum = digest
+        version.save(update_fields=["checksum", "updated_at"])
     if not created and version.checksum != digest:
         if not version.is_mutable:
             raise DefinitionError(

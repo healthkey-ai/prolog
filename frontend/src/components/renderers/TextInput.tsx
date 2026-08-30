@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { inputClass, type RendererProps } from "./types";
-import { MAX_TEXT_LENGTH } from "@/survey/answers";
+import { MAX_TEXT_LENGTH, strip } from "@/survey/answers";
 import type { TextValue } from "@/survey/types";
 
 export function TextInput({ question, value, onChange }: RendererProps<TextValue>) {
@@ -17,7 +17,7 @@ export function TextInput({ question, value, onChange }: RendererProps<TextValue
     maxLength: limit,
     "aria-label": question.text as string,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value ? { text: e.target.value } : undefined),
-    onBlur: () => onChange(text.trim() ? { text: text.trim() } : undefined, { commit: true }),
+    onBlur: () => onChange(strip(text) ? { text: strip(text) } : undefined, { commit: true }),
     "data-testid": "text-input",
   };
   return (

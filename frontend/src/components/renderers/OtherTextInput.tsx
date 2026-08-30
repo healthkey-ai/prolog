@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { MAX_OTHER_TEXT } from "@/survey/answers";
+import { MAX_OTHER_TEXT, strip } from "@/survey/answers";
 import type { AnswerValue } from "@/survey/types";
 import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
@@ -36,7 +36,7 @@ export function OtherTextInput<V extends AnswerValue>({ base, value, onChange, a
       maxLength={MAX_OTHER_TEXT}
       value={value ?? ""}
       onChange={(e) => onChange(withOtherText(base, e.target.value))}
-      onBlur={(e) => onChange(withOtherText(base, e.target.value.trim() || undefined), { commit: true })}
+      onBlur={(e) => onChange(withOtherText(base, strip(e.target.value) || undefined), { commit: true })}
       data-testid="other-text"
     />
   );

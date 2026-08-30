@@ -140,16 +140,16 @@ mirrors it:
 
 | Area | Keys |
 | --- | --- |
-| App | `app.title` `app.loading` `app.error` `app.retry` `app.notFound` `app.closed` `app.forbidden` `app.throttled` `app.hint` (`{{path}}`) |
+| App | `app.title` `app.loading` `app.error` `app.retry` `app.reload` `app.notFound` `app.closed` `app.forbidden` `app.throttled` `app.hint` (`{{path}}`) `app.pageTitle` (`{{survey}}`, `{{step}}`) |
 | Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` |
-| Header | `header.section` (`{{number}}`, `{{total}}`) `header.overview` `header.language` `header.progress` |
+| Header | `header.section` (`{{number}}`, `{{total}}`) `header.steps` (`{{number}}`, `{{total}}`) `header.overview` `header.language` `header.progress` |
 | Question | `question.eyebrow` (`{{number}}`, `{{total}}`) `question.optional` `question.info` |
 | Footer | `nav.back` `nav.next` `nav.finish` `nav.saving` `nav.saved` `nav.saveFailed` |
 | Skip prompt | `skip.prompt` `skip.skip` `skip.answer` `skip.hard` |
 | Overview | `overview.title` `overview.close` `overview.answered` `overview.skipped` `overview.current` `overview.unanswered` `overview.unreachable` `overview.noAnswer` |
 | Interstitial | `interstitial.eyebrow` (`{{number}}`) `interstitial.continue` |
 | Controls | `single.other` `dropdown.placeholder` `dropdown.noResults` `dropdown.clear` `dropdown.error` `dropdown.retry` `text.remaining` (`{{count}}`) `number.placeholder` `multi.counter` (`{{count}}`, `{{max}}`) `multi.limit` (`{{max}}`) `matrix.legend` |
-| Ranking | `ranking.help` `ranking.drag` (`{{label}}`) `ranking.moveUp` `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` `ranking.skipped` |
+| Ranking | `ranking.help` `ranking.srInstructions` `ranking.drag` (`{{label}}`) `ranking.moveUp` (`{{label}}`) `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragStart` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOver` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOutside` (`{{label}}`) `ranking.dragDropped` (`{{label}}`) `ranking.dragCancel` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` `ranking.skipped` |
 | Email step | `email.placeholder` `email.save` `email.skip` `email.saved` `email.invalid` `email.unavailable` |
 | Completion | `complete.eyebrow` `complete.title` `complete.body` `complete.readonly` `complete.missing` |
 | Common | `common.close` |

@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, ApiTimeoutError, api } from "./client";
-import { SupersededError, applyAnswerResult, keys, mergePatched, revertAnswer, usePatchResponse, useSaveAnswer, withEmailProvided } from "./hooks";
+import { ANSWER_TIMEOUT_MS, SupersededError, applyAnswerResult, keys, mergePatched, revertAnswer, usePatchResponse, useSaveAnswer, withEmailProvided } from "./hooks";
 import type { AnswerResult, ResponseSummary } from "./types";
 
 const base: ResponseSummary = {
@@ -137,7 +137,7 @@ describe("useSaveAnswer", () => {
     await expect(a).rejects.toBeInstanceOf(SupersededError);
     await settle();
     expect(put).toHaveBeenCalledTimes(2);
-    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "c" } });
+    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "c" } }, { timeoutMs: ANSWER_TIMEOUT_MS });
     second.resolve(result({ option: "c" }));
     await b;
     await settle();
@@ -193,7 +193,7 @@ describe("useSaveAnswer", () => {
     const b = save({ option: "c" }); // V2, issued while V1 waits for its retry
     await tick(0);
     expect(put).toHaveBeenCalledTimes(2);
-    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "c" } });
+    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "c" } }, { timeoutMs: ANSWER_TIMEOUT_MS });
     await tick(8000); // every backoff V1 could take: its retry must never reach the wire
     expect(put).toHaveBeenCalledTimes(2);
     second.resolve(result({ option: "c" }));
@@ -205,17 +205,20 @@ describe("useSaveAnswer", () => {
     vi.useRealTimers();
   });
 
-  it("surfaces a timed-out save as a failure once retries are exhausted", async () => {
+  it("gives a save a short deadline and retries a timeout only once, so Retry appears within ~20 s", async () => {
     vi.useFakeTimers();
-    const put = vi.spyOn(api, "put").mockRejectedValue(new ApiTimeoutError(1));
+    const put = vi.spyOn(api, "put").mockRejectedValue(new ApiTimeoutError(ANSWER_TIMEOUT_MS));
     const { save, tick, cached } = mount({ retry: true });
     const a = save({ option: "b" });
     const outcome = a.catch((e: unknown) => e);
     await tick(0);
+    expect(put).toHaveBeenLastCalledWith("/responses/r1/answers/q1/", { value: { option: "b" } }, { timeoutMs: ANSWER_TIMEOUT_MS });
     await tick(1000);
+    expect(put).toHaveBeenCalledTimes(2);
     await tick(2000);
     await tick(4000);
-    expect(put).toHaveBeenCalledTimes(4);
+    expect(put).toHaveBeenCalledTimes(2); // a half-open socket: 2 x 8 s + 1 s backoff, not 4 x 20 s + 7 s
+    expect(ANSWER_TIMEOUT_MS * 2 + 1000).toBeLessThanOrEqual(20_000);
     expect(await outcome).toBeInstanceOf(ApiTimeoutError);
     await tick(0);
     expect(cached()).toEqual({ option: "a" }); // reverted

@@ -434,3 +434,9 @@ def test_local_public_url_is_fine_under_debug(settings):
     schedule_due(dt.date(2026, 1, 1))
     assert send_pending() == 1
     assert "http://localhost:5173/s/sample-wellbeing?invite=" in mail.outbox[0].body
+
+
+@pytest.mark.parametrize(("lang", "noun"), [("es", "encuesta"), ("pt", "pesquisa")])
+def test_email_open_link_uses_the_runner_noun(lang, noun):
+    # frontend/src/i18n/<lang>.json heads the page Encuesta / Pesquisa.
+    assert noun in invitations.EMAIL_STRINGS[lang]["open"].lower()
