@@ -7,6 +7,7 @@ import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
 import { SectionInterstitial } from "@/components/SectionInterstitial";
 import { Shell, type SaveState } from "@/components/Shell";
+import { ErrorBanner } from "@/components/ErrorBanner";
 import { SkipConfirm } from "@/components/SkipConfirm";
 import i18n from "@/i18n";
 import { storedResponseId } from "@/lib/storage";
@@ -143,7 +144,8 @@ export function WizardPage() {
     try {
       validateAnswer(question, value, answers, { skipPolicy: policy, sourceOptions: new Set(Object.keys(countryLabels)) });
     } catch (e) {
-      setLocalErrors((e as { errors?: string[] }).errors ?? [String(e)]);
+      const errors = (e as { errors?: string[] }).errors ?? [String(e)];
+      setLocalErrors(question.type === "matrix" && errors.some((m) => m.startsWith("every row must be rated")) ? [t("matrix.incomplete")] : errors);
       return false;
     }
     return persist(key, value);
@@ -247,7 +249,7 @@ export function WizardPage() {
         nextDisabled={saveState === "error" || submit.isPending || (policy === "hard" && required && isAnswerable && !hasDraft && answers[key] === undefined)}
         saveState={saveState}
         onRetry={retry}
-        footerExtra={skipPrompt ? <SkipConfirm onSkip={onSkip} onAnswer={() => setSkipPrompt(false)} /> : null}
+        footerExtra={skipPrompt ? <SkipConfirm onSkip={onSkip} onAnswer={() => setSkipPrompt(false)} /> : localErrors.length ? <ErrorBanner errors={localErrors} /> : null}
         logo={logo}
       >
         {interstitial !== null ? (
@@ -261,7 +263,6 @@ export function WizardPage() {
             language={def.language}
             questionNumber={pos.questionNumber}
             questionTotal={pos.questionTotal}
-            errors={localErrors}
             answers={answers}
             questions={questions}
             onSubmitEmail={async (email) => {

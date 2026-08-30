@@ -71,5 +71,6 @@
   "complete.body": "Vos réponses ont été envoyées.",
   "complete.readonly": "Cette réponse a été envoyée et ne peut plus être modifiée.",
   "complete.missing": "Quelques questions attendent encore une réponse.",
-  "unsupported": "Ce type de question n'est pas pris en charge par cette version."
+  "unsupported": "Ce type de question n'est pas pris en charge par cette version.",
+  "matrix.incomplete": "Veuillez noter chaque ligne avant de continuer."
 }

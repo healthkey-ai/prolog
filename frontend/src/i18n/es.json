@@ -71,5 +71,6 @@
   "complete.body": "Sus respuestas se han enviado.",
   "complete.readonly": "Esta respuesta se ha enviado y ya no puede modificarse.",
   "complete.missing": "Todavía faltan algunas preguntas por responder.",
-  "unsupported": "Esta versión no admite este tipo de pregunta."
+  "unsupported": "Esta versión no admite este tipo de pregunta.",
+  "matrix.incomplete": "Valore todas las filas antes de continuar."
 }

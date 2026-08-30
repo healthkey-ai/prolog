@@ -23,7 +23,7 @@ interface Props extends RendererProps {
 
 export function QuestionScreen(props: Props) {
   const { t } = useTranslation();
-  const { question, questionNumber, questionTotal, errors } = props;
+  const { question, questionNumber, questionTotal } = props;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
@@ -45,13 +45,6 @@ export function QuestionScreen(props: Props) {
         </legend>
         {question.help && question.type !== "email" && question.type !== "info" && <p className="mt-2 text-ink-soft">{question.help as string}</p>}
         <div className="mt-6">{renderControl(question, props)}</div>
-        {errors && errors.length > 0 && (
-          <ul className="mt-3 text-sm text-error" role="alert">
-            {errors.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
       </fieldset>
     </div>
   );
