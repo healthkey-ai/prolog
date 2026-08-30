@@ -275,10 +275,36 @@ def test_one_failed_email_does_not_stop_the_batch(monkeypatch, caplog):
     def flaky(mailer, administration, version):
         if administration.invitation.email == "a@example.org":
             raise RuntimeError("mail server hiccup")
-        real_send(mailer, administration, version)
+        return real_send(mailer, administration, version)
 
     monkeypatch.setattr(invitations, "_send_one", flaky)
     assert send_pending() == 1
     assert [m.to for m in mail.outbox] == [["b@example.org"]]
     assert "could not send administration" in caplog.text
     assert SurveyAdministration.objects.filter(sent_at__isnull=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_unsent_message_is_not_marked_sent(monkeypatch, caplog):
+    # A backend that reports 0 sent without raising must leave the
+    # administration pending so the next run retries it.
+    import types
+
+    class _ZeroMailer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def send_messages(self, messages):
+            return 0
+
+    monkeypatch.setattr(invitations, "mailers", types.SimpleNamespace(default=_ZeroMailer()))
+    version = load_definition(definition(), activate=True).version
+    SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    schedule_due(dt.date(2026, 1, 1))
+    with caplog.at_level(logging.WARNING, logger="prolog_surveys.invitations"):
+        assert send_pending() == 0
+    assert SurveyAdministration.objects.get().sent_at is None
+    assert "not sent" in caplog.text

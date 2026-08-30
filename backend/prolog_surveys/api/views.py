@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -234,6 +235,24 @@ class SurveyDefinitionView(APIView):
         return Response(payload, headers={"ETag": etag, "Cache-Control": "private, max-age=60"})
 
 
+# BCP 47-ish language tag: language, optional script or region subtag.
+_LANG_TAG = re.compile(r"^([A-Za-z]{2,3})(?:-([A-Za-z]{2,4}))?$")
+
+
+def _language_tag(raw: str) -> str:
+    """Validate and normalise ``?lang=`` (``FR`` -> ``fr``, ``pt-br`` -> ``pt-BR``).
+
+    Only a well-formed tag reaches gettext and the per-language option cache.
+    """
+    m = _LANG_TAG.match(raw)
+    if m is None:
+        raise ValidationError({"lang": "not a language tag"})
+    lang, sub = m.group(1).lower(), m.group(2)
+    if sub:
+        lang += "-" + (sub.upper() if len(sub) == 2 else sub.title())
+    return lang
+
+
 class OptionsSourceView(APIView):
     throttle_classes = [ClientKeyThrottle]
 
@@ -241,7 +260,7 @@ class OptionsSourceView(APIView):
         provider = iso3166.SOURCES.get(source)
         if provider is None:
             raise NotFound("unknown option source")
-        lang = request.query_params.get("lang", "en")
+        lang = _language_tag(request.query_params.get("lang", "en"))
         return Response(
             {"source": source, "language": lang, "options": provider(lang)},
             headers={"Cache-Control": "public, max-age=86400"},
@@ -400,7 +419,10 @@ class ResponseDetailView(ResponseMixin, APIView):
                 raise ValidationError({"language": "not offered by this survey"})
             response.language = data["language"]
         if "last_question_key" in data:
-            response.last_question_key = data["last_question_key"]
+            key = data["last_question_key"]
+            if key and key not in question_by_key(response.definition):
+                raise ValidationError({"last_question_key": "not a question of this survey"})
+            response.last_question_key = key
         response.save(update_fields=["language", "last_question_key", "updated_at"])
         # The runner merges only the fields it patched (language, last question);
         # answers/visibility are unchanged by a PATCH, so they are not recomputed.

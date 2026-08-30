@@ -107,6 +107,16 @@ the admin, run an export.
 3. Deploy; the container migrates on start.
 4. Smoke test.
 
+### Migrations are append-only
+
+From the first release tag on, a shipped migration is never edited or
+deleted — a database that already applied it would report "no migrations
+to apply" while its tables no longer match the models. Schema changes add
+a new migration; CI (`scripts/check_migrations_append_only.sh`) fails a
+pull request that rewrites a released one. Before the first tag migrations
+may still be reshaped: recreate any pre-release database when they change
+(`dropdb prolog && createdb prolog && manage.py migrate`).
+
 ## Local development
 
 ```sh

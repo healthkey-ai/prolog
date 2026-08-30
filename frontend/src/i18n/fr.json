@@ -52,6 +52,8 @@
   "dropdown.placeholder": "Tapez pour rechercher…",
   "dropdown.noResults": "Aucun résultat",
   "dropdown.clear": "Effacer",
+  "dropdown.error": "Impossible de charger la liste.",
+  "dropdown.retry": "Réessayer",
   "text.remaining": "{{count}} caractères restants",
   "number.placeholder": "Saisissez un nombre",
   "email.placeholder": "vous@exemple.org",

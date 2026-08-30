@@ -536,3 +536,24 @@ def test_text_answer_cap_enforced_at_the_api(api_client, active, response_id):
         format="json",
     )
     assert r.status_code == 400
+
+
+def test_options_source_language_is_validated(api_client, active):
+    # Only a language tag reaches gettext and the per-language cache; the
+    # resolved (normalised) tag is echoed back.
+    r = api_client.get("/api/run/options/iso3166_countries/?lang=pt-BR")
+    assert r.status_code == 200 and r.json()["language"] == "pt-BR"
+    r = api_client.get("/api/run/options/iso3166_countries/?lang=FR")
+    assert r.status_code == 200 and r.json()["language"] == "fr"
+    for bad in ("../../etc", "en; drop", "x" * 50, ""):
+        r = api_client.get(f"/api/run/options/iso3166_countries/?lang={bad}")
+        assert r.status_code == 400, bad
+        assert "lang" in r.json()
+
+
+def test_patch_rejects_unknown_last_question_key(api_client, response_id):
+    r = api_client.patch(
+        f"/api/run/responses/{response_id}/", {"last_question_key": "nope"}, format="json"
+    )
+    assert r.status_code == 400 and "last_question_key" in r.json()
+    assert SurveyResponse.objects.get(pk=response_id).last_question_key == ""

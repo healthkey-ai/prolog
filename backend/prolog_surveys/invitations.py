@@ -200,7 +200,12 @@ def send_pending() -> int:
                     # Left unsent (not marked): it goes out if the survey reopens.
                     log.info("invitation for survey %s not sent (%s)", survey.slug, reason)
                     continue
-                _send_one(mailer, administration, version)
+                if not _send_one(mailer, administration, version):
+                    # Left pending: the next run retries it.
+                    log.warning(
+                        "invitation for survey %s not sent (mailer reported 0 sent)", survey.slug
+                    )
+                    continue
             except Exception:
                 log.exception(
                     "could not send administration %s of survey %s", administration.pk, survey.slug
@@ -212,7 +217,8 @@ def send_pending() -> int:
     return sent
 
 
-def _send_one(mailer, administration: SurveyAdministration, version: SurveyVersion) -> None:
+def _send_one(mailer, administration: SurveyAdministration, version: SurveyVersion) -> bool:
+    """Send one invitation; True when the mailer reports it sent (only then is it stamped)."""
     invitation = administration.invitation
     survey = invitation.survey
     definition = version.cached_definition
@@ -233,9 +239,11 @@ def _send_one(mailer, administration: SurveyAdministration, version: SurveyVersi
     message.attach_alternative(
         render_to_string("prolog_surveys/email/invitation.html", context), "text/html"
     )
-    mailer.send_messages([message])
+    if mailer.send_messages([message]) != 1:
+        return False
     administration.sent_at = timezone.now()
     administration.save(update_fields=["sent_at"])
+    return True
 
 
 def version_for(

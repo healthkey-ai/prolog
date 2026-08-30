@@ -2,7 +2,7 @@
 .PHONY: lint test test-backend test-backend-integrated test-frontend e2e build check
 
 lint:
-	cd backend && uv run ruff check . && uv run ruff format --check . && uv run python manage.py makemigrations --check --dry-run
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run python manage.py makemigrations --check --dry-run && cd .. && sh scripts/check_migrations_append_only.sh
 	cd frontend && npm run -s typecheck
 
 test: test-backend test-backend-integrated test-frontend

@@ -52,6 +52,8 @@
   "dropdown.placeholder": "Escriba para buscar…",
   "dropdown.noResults": "Sin resultados",
   "dropdown.clear": "Borrar",
+  "dropdown.error": "No se pudo cargar la lista.",
+  "dropdown.retry": "Reintentar",
   "text.remaining": "Quedan {{count}} caracteres",
   "number.placeholder": "Introduzca un número",
   "email.placeholder": "usted@ejemplo.org",

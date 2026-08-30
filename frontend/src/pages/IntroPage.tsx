@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
@@ -53,7 +53,9 @@ export function IntroPage() {
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);
   useDefinitionLanguage(definition.data?.language);
-  if (definition.data && (definition.data.participation?.resume === "none") !== noResume) setNoResume(!noResume);
+  useEffect(() => {
+    if (definition.data) setNoResume(definition.data.participation?.resume === "none");
+  }, [definition.data]);
 
   if (definition.isLoading) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
   if (definition.isError || !definition.data) {

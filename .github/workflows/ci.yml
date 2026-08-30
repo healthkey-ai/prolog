@@ -54,12 +54,14 @@ jobs:
     defaults: { run: { working-directory: backend } }
     steps:
       - uses: actions/checkout@v5
+        with: { fetch-depth: 0 } # release tags, for the append-only migrations guard
       - uses: astral-sh/setup-uv@v6
         with: { enable-cache: true }
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run python manage.py makemigrations --check --dry-run
+      - run: ../scripts/check_migrations_append_only.sh
       - run: uv run pytest
 
   backend-integrated:

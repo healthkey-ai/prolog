@@ -20,56 +20,69 @@ export function Dropdown({ question, value, onChange, language }: RendererProps<
   );
   const selected = options.find((o) => o.key === value?.option);
   const [open, setOpen] = useState(false);
+  // Without the remote list the participant could only pick the inline
+  // options (e.g. "Prefer not to say"), so the control stays closed and says why.
+  const failed = Boolean(source) && remote.isError;
 
   return (
-    <div className="flex items-center gap-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="surface"
-            size="runner"
-            role="combobox"
-            aria-expanded={open}
-            aria-label={question.text as string}
-            disabled={remote.isLoading}
-            className="w-full justify-between px-4 font-body text-[1.05rem] font-normal"
-            data-testid="combobox-trigger"
-          >
-            <span className={cn("truncate", !selected && "text-muted-foreground")}>{selected?.label ?? t("dropdown.placeholder")}</span>
-            <ChevronsUpDownIcon className="size-4 opacity-50" />
+    <div>
+      <div className="flex items-center gap-2">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="surface"
+              size="runner"
+              role="combobox"
+              aria-expanded={open}
+              aria-label={question.text as string}
+              disabled={remote.isLoading || failed}
+              className="w-full justify-between px-4 font-body text-[1.05rem] font-normal"
+              data-testid="combobox-trigger"
+            >
+              <span className={cn("truncate", !selected && "text-muted-foreground")}>{selected?.label ?? t("dropdown.placeholder")}</span>
+              <ChevronsUpDownIcon className="size-4 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+            <Command>
+              <CommandInput placeholder={t("dropdown.placeholder")} className="h-12 text-base" data-testid="combobox" />
+              <CommandList className="max-h-64">
+                <CommandEmpty>{t("dropdown.noResults")}</CommandEmpty>
+                <CommandGroup>
+                  {options.map((o) => (
+                    <CommandItem
+                      key={o.key}
+                      value={o.key}
+                      keywords={[o.label as string]}
+                      onSelect={() => {
+                        onChange({ option: o.key }, { commit: true });
+                        setOpen(false);
+                      }}
+                      className="min-h-[44px] text-base"
+                      data-testid={`combobox-option-${o.key}`}
+                    >
+                      <CheckIcon className={cn("size-4", o.key === value?.option ? "opacity-100" : "opacity-0")} />
+                      {o.label}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        {selected && (
+          <Button variant="text" size="runner-icon" onClick={() => onChange(undefined)} aria-label={t("dropdown.clear")}>
+            <XIcon className="size-4" />
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-          <Command>
-            <CommandInput placeholder={t("dropdown.placeholder")} className="h-12 text-base" data-testid="combobox" />
-            <CommandList className="max-h-64">
-              <CommandEmpty>{t("dropdown.noResults")}</CommandEmpty>
-              <CommandGroup>
-                {options.map((o) => (
-                  <CommandItem
-                    key={o.key}
-                    value={o.key}
-                    keywords={[o.label as string]}
-                    onSelect={() => {
-                      onChange({ option: o.key }, { commit: true });
-                      setOpen(false);
-                    }}
-                    className="min-h-[44px] text-base"
-                    data-testid={`combobox-option-${o.key}`}
-                  >
-                    <CheckIcon className={cn("size-4", o.key === value?.option ? "opacity-100" : "opacity-0")} />
-                    {o.label}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-      {selected && (
-        <Button variant="text" size="runner-icon" onClick={() => onChange(undefined)} aria-label={t("dropdown.clear")}>
-          <XIcon className="size-4" />
-        </Button>
+        )}
+      </div>
+      {failed && (
+        <p className="mt-2 text-sm text-error" role="alert" data-testid="combobox-error">
+          {t("dropdown.error")}{" "}
+          <Button variant="text" onClick={() => remote.refetch()} disabled={remote.isFetching}>
+            {t("dropdown.retry")}
+          </Button>
+        </p>
       )}
     </div>
   );

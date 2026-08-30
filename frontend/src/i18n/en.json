@@ -52,6 +52,8 @@
   "dropdown.placeholder": "Type to search…",
   "dropdown.noResults": "No matches",
   "dropdown.clear": "Clear",
+  "dropdown.error": "Could not load the list.",
+  "dropdown.retry": "Retry",
   "text.remaining": "{{count}} characters left",
   "number.placeholder": "Enter a number",
   "email.placeholder": "you@example.org",

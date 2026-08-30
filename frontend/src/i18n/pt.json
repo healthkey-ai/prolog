@@ -52,6 +52,8 @@
   "dropdown.placeholder": "Digite para pesquisar…",
   "dropdown.noResults": "Nenhum resultado",
   "dropdown.clear": "Limpar",
+  "dropdown.error": "Não foi possível carregar a lista.",
+  "dropdown.retry": "Tentar novamente",
   "text.remaining": "{{count}} caracteres restantes",
   "number.placeholder": "Digite um número",
   "email.placeholder": "voce@exemplo.org",

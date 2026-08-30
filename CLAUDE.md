@@ -81,6 +81,7 @@ Playwright.
 - WCAG 2.2 AA: real `fieldset`/`legend`, ≥44 px targets, `:focus-visible`
   rings, `prefers-reduced-motion`.
 - All runner chrome strings go through i18next (`frontend/src/i18n/`).
+- **Migrations are append-only** once a release tag exists: never edit or delete a shipped migration, add a new one (CI runs `scripts/check_migrations_append_only.sh`). Before the first tag, recreate pre-release databases when a migration changes.
 
 ## Code review loop
 
