@@ -110,7 +110,7 @@ class ResponseAdmin(ReadOnlyMixin, admin.ModelAdmin):
 
 @admin.register(SurveyContact)
 class ContactAdmin(ReadOnlyMixin, admin.ModelAdmin):
-    list_display = ("id", "survey_version", "language", "created_at")
+    list_display = ("id", "survey_version", "language", "captured_on")
     # The address is intentionally not shown in list views.
 
 

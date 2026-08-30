@@ -81,7 +81,9 @@ export function IntroPage() {
     try {
       response = await create.mutateAsync({
         slug,
-        language: def.language,
+        // The chosen language, not `def.language`: after a switch `def` is the
+        // previous localisation (keepPreviousData) until the new one arrives.
+        language: language ?? def.language,
         consent: consent && agreed ? { version: consent.version, agreed: true } : undefined,
         invitation: invite,
       });
@@ -188,7 +190,7 @@ export function IntroPage() {
               </div>
             )}
             <div>
-              <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={start} disabled={create.isPending} className="px-8" data-testid="start">
+              <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={start} disabled={create.isPending || definition.isPlaceholderData} className="px-8" data-testid="start">
                 {t("intro.start")}
               </Button>
               {create.isError && (

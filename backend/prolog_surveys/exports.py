@@ -129,16 +129,16 @@ def write_responses(version: SurveyVersion, out: IO[str], *, submitted_only: boo
 
 def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
     writer = csv.writer(out)
-    writer.writerow(["survey", "version", "email", "language", "created_at"])
+    writer.writerow(["survey", "version", "email", "language", "captured_on"])
     n = 0
-    for c in SurveyContact.objects.filter(survey_version=version).order_by("created_at"):
+    for c in SurveyContact.objects.filter(survey_version=version).order_by("captured_on", "email"):
         writer.writerow(
             [
                 version.survey.slug,
                 version.version,
                 safe_cell(c.email),
                 c.language,
-                c.created_at.isoformat(),
+                c.captured_on.isoformat(),
             ]
         )
         n += 1

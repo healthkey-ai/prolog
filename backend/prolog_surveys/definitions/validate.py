@@ -340,7 +340,11 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
         if t == "scale":
             scale = target.question["config"]["scale"]
             for v in values:
-                if not re.fullmatch(r"-?\d+", v) or not scale["min"] <= int(v) <= scale["max"]:
+                # The engine compares str(answer) == value, so only the canonical
+                # spelling can ever match ("03" or "-0" would validate yet never fire).
+                if not re.fullmatch(r"-?\d+", v) or str(int(v)) != v:
+                    err("condition_value", path, f"'{v}' must be a plain integer such as '3'")
+                elif not scale["min"] <= int(v) <= scale["max"]:
                     err(
                         "condition_value",
                         path,

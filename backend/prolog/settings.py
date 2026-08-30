@@ -32,7 +32,9 @@ _DEV_SECRET_KEY = "prolog-development-only-key"
 # start with one (the key also salts the hashed client keys).
 _PLACEHOLDER_SECRET_KEYS = {_DEV_SECRET_KEY, "change-me", ""}
 SECRET_KEY = os.environ.get("SECRET_KEY", _DEV_SECRET_KEY)
-DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
+# Off unless asked for: an unset variable must never leave a deployment serving
+# tracebacks with the public development key (set DEBUG=true for local work).
+DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 if not DEBUG and SECRET_KEY.strip() in _PLACEHOLDER_SECRET_KEYS:
     raise ImproperlyConfigured("SECRET_KEY must be set to a real secret when DEBUG is false")
 ALLOWED_HOSTS = _env_csv("ALLOWED_HOSTS", "localhost,127.0.0.1")

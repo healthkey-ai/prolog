@@ -215,6 +215,19 @@ def test_cycle_is_impossible_because_edges_only_point_backward(example):
             ),
             "condition_value",
         ),
+        # The engine compares str(answer) == value: only the canonical spelling can match.
+        (
+            lambda d: question(d, "symptoms")["visible_if"].append(
+                {"question": "overall", "op": "eq", "value": "03"}
+            ),
+            "condition_value",
+        ),
+        (
+            lambda d: question(d, "symptoms")["visible_if"].append(
+                {"question": "overall", "op": "in", "values": ["3", "-0"]}
+            ),
+            "condition_value",
+        ),
         (
             lambda d: question(d, "symptoms")["visible_if"].append(
                 {"question": "has_symptoms", "op": "contains", "value": "yes"}

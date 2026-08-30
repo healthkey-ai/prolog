@@ -50,6 +50,7 @@ Any wording or structure change after activation requires a **new
 | Variable | Purpose |
 | --- | --- |
 | `SECRET_KEY`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `PROLOG_PUBLIC_URL` | Django/CORS basics and the public origin used in links |
+| `DEBUG` | `false` unless set to `true`. Deployments never set it; locally `manage.py` and `pytest` use `prolog.settings_dev`, which turns it on (and accepts the development key) unless `DEBUG` is set in the environment |
 | `POSTGRES_*` | database connection (no SQLite fallback) |
 | `PROLOG_PROFILE` | `standalone` (default) or `integrated` |
 | `PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS` | path-separated directory lists |

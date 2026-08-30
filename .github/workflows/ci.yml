@@ -50,6 +50,7 @@ jobs:
       POSTGRES_USER: prolog
       POSTGRES_PASSWORD: prolog
       POSTGRES_HOST: localhost
+      DEBUG: "true"
     defaults: { run: { working-directory: backend } }
     steps:
       - uses: actions/checkout@v5
@@ -75,6 +76,7 @@ jobs:
       POSTGRES_USER: prolog
       POSTGRES_PASSWORD: prolog
       POSTGRES_HOST: localhost
+      DEBUG: "true"
       PROLOG_PROFILE: integrated
       PROLOG_PARTICIPANT_MODEL: auth.User
     defaults: { run: { working-directory: backend } }
@@ -111,6 +113,7 @@ jobs:
       POSTGRES_USER: prolog
       POSTGRES_PASSWORD: prolog
       POSTGRES_HOST: localhost
+      DEBUG: "true"
       CI: "true"
     steps:
       - uses: actions/checkout@v5

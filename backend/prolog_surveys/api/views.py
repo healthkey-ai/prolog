@@ -465,6 +465,15 @@ class SubmitView(ResponseMixin, APIView):
         return Response(_response_payload(response))
 
 
+def _mark_email_sensitive(request) -> None:
+    """Keep the address out of error reports (CON-3/4) should anything raise.
+
+    What ``django.views.decorators.debug.sensitive_post_parameters`` does, set on
+    the underlying HttpRequest (the decorator rejects DRF's request).
+    """
+    request._request.sensitive_post_parameters = ("email",)
+
+
 def _email_question(definition: dict) -> dict | None:
     for q in question_by_key(definition).values():
         if q["type"] == "email":
@@ -475,10 +484,13 @@ def _email_question(definition: dict) -> dict | None:
 class ContactView(ResponseMixin, APIView):
     """Contact capture (CON-3): the address is stored with no link to the response."""
 
-    throttle_classes = [ResponseThrottle]
+    # Per response *and* per client: an address is captured once per response, so
+    # the create budget bounds how many captures one caller can drive.
+    throttle_classes = [ResponseThrottle, CreateThrottle]
 
     @transaction.atomic
     def post(self, request, response_id):
+        _mark_email_sensitive(request)
         response = self.writable(response_id)
         ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -513,14 +525,13 @@ class ContactView(ResponseMixin, APIView):
 class IdentityView(ResponseMixin, APIView):
     """Identity capture (CON-4): the email goes to the host platform's identity service only."""
 
-    throttle_classes = [ResponseThrottle]
+    # The per-client create budget also caps how often a failing identity service
+    # can be re-invoked: the per-response bucket alone is fresh for every id.
+    throttle_classes = [ResponseThrottle, CreateThrottle]
 
     @transaction.atomic
     def post(self, request, response_id):
-        # Never let the address reach an error report (CON-4) should anything
-        # raise: what django.views.decorators.debug.sensitive_post_parameters
-        # does, set on the underlying HttpRequest (the decorator rejects DRF's).
-        request._request.sensitive_post_parameters = ("email",)
+        _mark_email_sensitive(request)
         response = self.writable(response_id)
         if not conf.is_integrated():
             raise NotFound("identity capture is only available in the integrated profile")

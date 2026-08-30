@@ -25,6 +25,7 @@ export default defineConfig({
         "cd ../backend && uv run python manage.py migrate --noinput && uv run python manage.py runserver 8765 --noreload",
       url: "http://localhost:8765/api/health/",
       env: {
+        DEBUG: "true", // the development key is fine for a local test backend
         PROLOG_THEME_DIRS: `${process.cwd()}/../themes:${process.cwd()}/e2e/fixtures/themes`,
         // Every e2e run shares one client key; never let the abuse throttles interfere.
         PROLOG_THROTTLE_CREATE: "100000/hour",

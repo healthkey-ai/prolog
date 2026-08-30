@@ -12,6 +12,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 
 PARTICIPANT_MODEL = getattr(settings, "PROLOG_PARTICIPANT_MODEL", None)
 
@@ -239,21 +240,28 @@ class SurveyAnswer(models.Model):
 
 
 class SurveyContact(models.Model):
-    """Contact capture (CON-3). Deliberately has NO reference to a response."""
+    """Contact capture (CON-3). Deliberately has NO reference to a response.
 
+    Nothing on the row may act as a join key to the response either: the pk is
+    random (a sequence would order contacts like the responses' answer rows)
+    and the capture time is kept to the day (a timestamp would pair each
+    contact with the ``{provided: true}`` marker written in the same request).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     survey_version = models.ForeignKey(
         SurveyVersion, on_delete=models.PROTECT, related_name="contacts"
     )
     email = models.EmailField()
     language = models.CharField(max_length=12, blank=True, default="")
     consent_text = models.TextField(help_text="The notice shown when the address was given.")
-    created_at = models.DateTimeField(auto_now_add=True)
+    captured_on = models.DateField(default=timezone.localdate)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-captured_on"]
 
     def __str__(self) -> str:
-        return f"contact #{self.pk}"
+        return f"contact {self.pk}"
 
 
 class SurveyConsent(models.Model):

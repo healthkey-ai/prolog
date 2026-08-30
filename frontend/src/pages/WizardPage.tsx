@@ -50,8 +50,9 @@ export function WizardPage() {
   // page's save state (an older PUT settling late must not raise an error the
   // newer, successful one has already superseded — nor offer to retry its value).
   const saveSeq = useRef(new Map<string, number>());
-  // The save in flight, so Finish waits for it instead of racing it on the server.
-  const pendingSave = useRef<Promise<boolean> | null>(null);
+  // Every save in flight (a blur commit on an earlier question may still be
+  // retrying), so Finish waits for all of them instead of racing them on the server.
+  const pendingSaves = useRef(new Set<Promise<boolean>>());
   // Field errors for a question the participant has already left, shown once
   // they are back on it (the key effect would otherwise clear them).
   const pendingErrors = useRef<{ key: string; errors: string[] } | null>(null);
@@ -151,11 +152,11 @@ export function WizardPage() {
           return false;
         }
       })();
-      pendingSave.current = run;
+      pendingSaves.current.add(run);
       try {
         return await run;
       } finally {
-        if (pendingSave.current === run) pendingSave.current = null;
+        pendingSaves.current.delete(run);
       }
     },
     [save, flashSaved, refetchResponse, navigate, slug, t],
@@ -220,10 +221,14 @@ export function WizardPage() {
   const advance = async (p: Position = pos) => {
     setSkipPrompt(false);
     if (p.isLast) {
-      // Finish must not race an autosave still in flight (a blur commit, or a
-      // click commit right before Finish): the server would read the answers
-      // before that PUT lands and report the question missing.
-      if (pendingSave.current && !(await pendingSave.current)) return;
+      // Finish must not race any autosave still in flight (a blur commit on an
+      // earlier question, or a click commit right before Finish): the server
+      // would read the answers before that PUT lands and report the question
+      // missing — or, for an optional one, submit without it.
+      while (pendingSaves.current.size) {
+        const outcomes = await Promise.all([...pendingSaves.current]);
+        if (outcomes.some((ok) => !ok)) return;
+      }
       submit.mutate(undefined, {
         onSuccess: () => navigate(`/s/${slug}/complete`),
         onError: (err) => {

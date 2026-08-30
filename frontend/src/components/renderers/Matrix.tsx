@@ -26,7 +26,10 @@ export function Matrix({ question, value, onChange, answers, questions, disabled
     return (option?.label as string) ?? row;
   };
 
-  const ratings = value?.ratings ?? {};
+  // Only the current rows: while the source question's save is still in flight
+  // the cached value may hold rows it no longer selects, and committing them
+  // would fail validation ("unknown rows") for a matrix that looks complete.
+  const ratings = Object.fromEntries(Object.entries(value?.ratings ?? {}).filter(([r]) => rows.includes(r)));
   const rate = (row: string, v: number) => {
     const next = { ...ratings, [row]: v };
     const complete = rows.every((r) => r in next);

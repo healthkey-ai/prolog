@@ -100,6 +100,13 @@ export function usePatchResponse(id: string) {
   });
 }
 
+/** Thrown (and never retried) when a newer save of the same key has started meanwhile. */
+export class SupersededError extends Error {
+  constructor() {
+    super("save superseded by a newer value");
+  }
+}
+
 /** The cached value of `key` before an optimistic save, so a failed save can put it back. */
 export type SavedAnswerContext = { seq: number; previous: AnswerValue | undefined; had: boolean };
 
@@ -136,13 +143,25 @@ export function useSaveAnswer(id: string) {
   // for the value to revert to when it fails.
   const baselines = useRef(new Map<string, Pick<SavedAnswerContext, "previous" | "had">>());
   const latest = (key: string, ctx: SavedAnswerContext | undefined): ctx is SavedAnswerContext => ctx !== undefined && ctx.seq === seqs.current.get(key);
+  // The sequence of each mutation's variables, so a retry (which re-runs
+  // mutationFn with the same object) can tell it has been superseded.
+  const seqOf = useRef(new WeakMap<object, number>());
   return useMutation({
-    mutationFn: ({ key, value }: { key: string; value: AnswerValue }) => api.put<AnswerResult>(`/responses/${id}/answers/${key}/`, { value }),
-    retry: (count, error) => count < 3 && !(error instanceof Error && "status" in error && (error as { status: number }).status < 500),
+    mutationFn: (vars: { key: string; value: AnswerValue }) => {
+      // The server stores PUTs in arrival order: an older value retried after a
+      // newer one succeeded would overwrite it (and cascade) while the cache
+      // shows the newer one, so a superseded save never reaches the wire again.
+      const seq = seqOf.current.get(vars);
+      if (seq !== undefined && seq !== seqs.current.get(vars.key)) throw new SupersededError();
+      return api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value });
+    },
+    retry: (count, error) => count < 3 && !(error instanceof SupersededError) && !(error instanceof Error && "status" in error && (error as { status: number }).status < 500),
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
-    onMutate: async ({ key, value }): Promise<SavedAnswerContext> => {
+    onMutate: async (vars): Promise<SavedAnswerContext> => {
+      const { key, value } = vars;
       const seq = (seqs.current.get(key) ?? 0) + 1;
       seqs.current.set(key, seq);
+      seqOf.current.set(vars, seq);
       await qc.cancelQueries({ queryKey: keys.response(id) });
       const previous = qc.getQueryData<ResponseSummary>(keys.response(id));
       const base = baselines.current.get(key) ?? { previous: previous?.answers[key], had: previous !== undefined && key in previous.answers };
