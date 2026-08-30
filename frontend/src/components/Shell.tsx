@@ -50,16 +50,15 @@ export function Shell(p: ShellProps) {
         <div className="mx-auto flex max-w-[var(--p-content-max)] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             {p.logo}
-            <p className="min-w-0 truncate text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              <span className="sm:hidden">
-                {p.sectionNumber}/{p.sectionTotal}
-                {p.sectionLabel ? ` · ${p.sectionLabel}` : ""}
-              </span>
-              <span className="hidden sm:inline">
-                {t("header.section", { number: p.sectionNumber, total: p.sectionTotal })}
-                {p.sectionLabel ? ` · ${p.sectionLabel}` : ""}
-              </span>
-            </p>
+            <div className="min-w-0">
+              <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                <span className="sm:hidden">
+                  {p.sectionNumber}/{p.sectionTotal}
+                </span>
+                <span className="hidden sm:inline">{t("header.section", { number: p.sectionNumber, total: p.sectionTotal })}</span>
+              </p>
+              {p.sectionLabel && <p className="line-clamp-2 text-[0.95rem] leading-tight text-foreground">{p.sectionLabel}</p>}
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             {p.languages.length > 1 && (
