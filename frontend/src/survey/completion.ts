@@ -14,7 +14,7 @@ export function missingKeys(def: Definition, answers: Answers): string[] {
     }
     const q = questions[v.key];
     if (q.type === "matrix" && isAnswered(value) && "ratings" in value) {
-      const rows = matrixRows(q, answers);
+      const rows = matrixRows(q, answers, questions);
       const rated = Object.keys(value.ratings);
       if (rows.length !== rated.length || !rows.every((r) => rated.includes(r))) missing.push(v.key);
     }

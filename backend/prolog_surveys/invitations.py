@@ -50,7 +50,7 @@ def invitation_link(survey: Survey, administration: SurveyAdministration) -> str
 
 def schedule_due(now: dt.date | None = None) -> list[SurveyAdministration]:
     """Create administrations that are due and not yet created; returns the new ones."""
-    today = now or timezone.now().date()
+    today = now or timezone.localdate()
     created: list[SurveyAdministration] = []
     for survey in Survey.objects.all():
         version = survey.active_version

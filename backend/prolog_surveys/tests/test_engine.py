@@ -32,10 +32,16 @@ def load_definition(name: str) -> dict:
 
 def store(definition: dict, answers: dict, key: str, raw: dict) -> dict:
     """Validate + store + cascade, as the API does. Returns the cascade result."""
-    q = question_by_key(definition)[key]
+    questions = question_by_key(definition)
+    q = questions[key]
     src = ISO_KEYS if q["type"] == "dropdown" else None
     value = validate_answer(
-        q, raw, answers, presentation=definition["presentation"], source_options=src
+        q,
+        raw,
+        answers,
+        presentation=definition["presentation"],
+        source_options=src,
+        questions=questions,
     )
     answers[key] = value
     result = apply_cascade(definition, answers)
@@ -213,6 +219,10 @@ def test_rows_from_matrix_hidden_until_its_source_has_a_selection():
     assert "symptom_impact" not in missing_keys(definition, answers)
     store(definition, answers, "symptoms", {"options": ["fatigue"]})
     assert "symptom_impact" in visible_keys(definition, answers)
+    store(definition, answers, "symptom_impact", {"ratings": {"fatigue": 3}})
     result = store(definition, answers, "symptoms", {"options": ["none"]})
-    assert "symptom_impact" in visible_keys(definition, answers)  # "none" is a row too
-    assert result.invalidated == []
+    # An exclusive option is not a row: nothing to rate, so the matrix hides
+    # again and its stale ratings are invalidated.
+    assert "symptom_impact" not in visible_keys(definition, answers)
+    assert result.invalidated == ["symptom_impact"]
+    assert "symptom_impact" not in answers

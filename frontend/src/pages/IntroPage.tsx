@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { OptionCard } from "@/components/ui/OptionCard";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { languageName } from "@/components/Shell";
-import { clearResponseId, storeResponseId, storedResponseId } from "@/lib/storage";
+import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { Decor } from "@/components/Decor";
@@ -22,16 +22,28 @@ export function IntroPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [language, setLanguage] = useState<string | undefined>(undefined);
-  const definition = useSurveyDefinition(slug, language, invite);
   const existingId = storedResponseId(slug);
   const existing = useResponse(existingId);
   const create = useCreateResponse();
   const [agreed, setAgreed] = useState(false);
   const [consentError, setConsentError] = useState(false);
-  // "Start a new response" on a consent survey: show the start form (with the
+  // "Start a new response" / "Start again": show the start form (with the
   // consent notice) instead of the resume card; the old id is only replaced
   // once the new response exists.
   const [fresh, setFresh] = useState(false);
+  // A stored response answers a different administration than the link's (a
+  // repeat administration, RUN-5): it is not the one to resume, so this visit
+  // starts the response for its own administration instead.
+  const otherAdministration = Boolean(invite && existing.data && existing.data.administration !== invite);
+  // The stored id no longer resolves: purged response, or an expired account session.
+  const existingGone = existing.error instanceof ApiError && (existing.error.status === 404 || existing.error.status === 403);
+  // Response-bound, like ThemeProvider and the wizard: the server serves the
+  // version this response uses and takes its id as the credential, so a
+  // returning invited/account participant without the token is not refused
+  // here, the resume point is computed against the right version, and the
+  // cache entry is shared. Falls back to the plain query for a fresh start.
+  const bound = existingId && !existing.isError && !fresh && !otherAdministration ? existingId : undefined;
+  const definition = useSurveyDefinition(slug, language ?? (bound ? existing.data?.language : undefined), invite, bound, { enabled: !existingId || !existing.isPending });
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);
   useDefinitionLanguage(definition.data?.language);
@@ -49,6 +61,16 @@ export function IntroPage() {
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
+  // A stored response that failed to load for any reason other than being gone
+  // (network, throttle, outage) must not show the start form either: Start would
+  // create a new response and replace the stored id, orphaning the unfinished one.
+  if (resumable && existingId && existing.isError && !existingGone && !fresh) {
+    return (
+      <p className="p-8 text-error" role="alert">
+        {t("app.error")}
+      </p>
+    );
+  }
 
   const start = async () => {
     if (consentRequired && !agreed) {
@@ -82,14 +104,17 @@ export function IntroPage() {
 
   const startAgain = () => {
     if (!window.confirm(t("intro.startAgainConfirm"))) return;
-    clearResponseId(slug);
-    void start();
+    // The stored id is replaced only once the new response exists (storeResponseId
+    // in start): clearing it first would orphan the unfinished response should
+    // the create fail. Consent surveys show the start form with the notice first.
+    if (consentRequired) setFresh(true);
+    else void start();
   };
 
   const immersive = layout.immersiveIntro;
   const ground = immersive ? "bg-primary text-on-primary" : "bg-ground text-ink";
   const soft = immersive ? "text-on-primary/80" : "text-ink-soft";
-  const hasExisting = resumable && existingId && existing.data && !existing.isError && !fresh;
+  const hasExisting = resumable && existingId && existing.data && !existing.isError && !fresh && !otherAdministration;
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>

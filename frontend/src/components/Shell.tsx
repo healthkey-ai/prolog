@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { cn } from "@/lib/utils";
 
-export type SaveState = "idle" | "saving" | "saved" | "error";
+export type SaveState = "idle" | "saving" | "saved" | "error" | "closed";
 
 interface ShellProps {
   sectionLabel: string;
@@ -108,6 +108,7 @@ export function Shell(p: ShellProps) {
           <p className="flex-1 text-center text-sm text-ink-soft" aria-live="polite">
             {p.saveState === "saving" && t("nav.saving")}
             {p.saveState === "saved" && <span className="text-success">✓ {t("nav.saved")}</span>}
+            {p.saveState === "closed" && <span className="text-error">{t("app.closed")}</span>}
             {p.saveState === "error" && (
               <span className="text-error">
                 {t("nav.saveFailed")}{" "}

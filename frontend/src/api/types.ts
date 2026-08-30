@@ -16,6 +16,8 @@ export interface ResponseSummary {
   started_at: string;
   submitted_at: string | null;
   last_question_key: string;
+  /** The invitation administration this response answers, if any (RUN-5). */
+  administration: string | null;
   answers: Answers;
   visible: string[];
   missing: string[];

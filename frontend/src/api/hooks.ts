@@ -131,6 +131,10 @@ export function revertAnswer(current: ResponseSummary, key: string, ctx: Pick<Sa
 export function useSaveAnswer(id: string) {
   const qc = useQueryClient();
   const seqs = useRef(new Map<string, number>());
+  // The cached value before the *first* of a run of outstanding saves of a key:
+  // a later save in the run must not take an earlier one's optimistic value
+  // for the value to revert to when it fails.
+  const baselines = useRef(new Map<string, Pick<SavedAnswerContext, "previous" | "had">>());
   const latest = (key: string, ctx: SavedAnswerContext | undefined): ctx is SavedAnswerContext => ctx !== undefined && ctx.seq === seqs.current.get(key);
   return useMutation({
     mutationFn: ({ key, value }: { key: string; value: AnswerValue }) => api.put<AnswerResult>(`/responses/${id}/answers/${key}/`, { value }),
@@ -141,8 +145,13 @@ export function useSaveAnswer(id: string) {
       seqs.current.set(key, seq);
       await qc.cancelQueries({ queryKey: keys.response(id) });
       const previous = qc.getQueryData<ResponseSummary>(keys.response(id));
+      const base = baselines.current.get(key) ?? { previous: previous?.answers[key], had: previous !== undefined && key in previous.answers };
+      baselines.current.set(key, base);
       if (previous) qc.setQueryData<ResponseSummary>(keys.response(id), { ...previous, answers: { ...previous.answers, [key]: value }, last_question_key: key });
-      return { seq, previous: previous?.answers[key], had: previous !== undefined && key in previous.answers };
+      return { seq, ...base };
+    },
+    onSettled: (_data, _err, { key }, ctx) => {
+      if (latest(key, ctx)) baselines.current.delete(key);
     },
     onError: (_err, { key }, ctx) => {
       if (!latest(key, ctx)) return;

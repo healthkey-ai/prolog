@@ -4,6 +4,7 @@
   "app.error": "Algo salió mal. Inténtelo de nuevo.",
   "app.retry": "Reintentar",
   "app.notFound": "Esta encuesta no está disponible.",
+  "app.closed": "Esta encuesta ha cerrado y ya no acepta respuestas.",
   "intro.eyebrow": "Encuesta",
   "intro.minutes": "Unos {{count}} minutos",
   "intro.anonymous": "Anónima",

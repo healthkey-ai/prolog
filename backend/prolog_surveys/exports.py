@@ -12,7 +12,7 @@ import csv
 from collections.abc import Iterable, Iterator
 from typing import IO, Any
 
-from .engine.visibility import iter_questions, question_by_key
+from .engine.visibility import iter_questions, question_by_key, visible_keys
 from .models import SurveyContact, SurveyResponse, SurveyVersion
 
 SKIPPED = "SKIPPED"
@@ -95,9 +95,14 @@ def response_rows(
     version: SurveyVersion, responses: Iterable[SurveyResponse]
 ) -> Iterator[list[str]]:
     """One row per response, streamed so an export never holds every row."""
-    cols = _columns(version.definition)
+    definition = version.definition
+    cols = _columns(definition)
     for r in responses:
         answers = r.answer_map()
+        # A row may survive for a question the answers later hid (a contact
+        # capture marker is kept so the address is never captured twice);
+        # the export reports the participant's visible path only.
+        visible = set(visible_keys(definition, answers))
         yield [
             str(r.id),
             version.survey.slug,
@@ -106,7 +111,7 @@ def response_rows(
             r.status,
             r.started_at.isoformat(),
             r.submitted_at.isoformat() if r.submitted_at else "",
-        ] + [_cell(answers.get(qk), sub) for _, qk, sub in cols]
+        ] + [_cell(answers.get(qk) if qk in visible else None, sub) for _, qk, sub in cols]
 
 
 def write_responses(version: SurveyVersion, out: IO[str], *, submitted_only: bool = True) -> int:

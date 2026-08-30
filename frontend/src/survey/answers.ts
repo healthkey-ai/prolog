@@ -76,6 +76,8 @@ export interface ValidateOptions {
   skipPolicy?: SkipPolicy;
   /** Keys provided by a dropdown's options_source (e.g. ISO country codes). */
   sourceOptions?: ReadonlySet<string>;
+  /** The definition's questions by key (needed for dynamic matrix rows). */
+  questions?: Record<string, Question>;
 }
 
 export function validateAnswer(
@@ -142,7 +144,7 @@ export function validateAnswer(
   if (q.type === "matrix") {
     const ratings = raw.ratings;
     if (!isRecord(ratings)) fail("ratings must be an object of row -> value");
-    const rows = matrixRows(q, answers);
+    const rows = matrixRows(q, answers, opts.questions ?? {});
     if (!rows.length) fail("this matrix currently has no rows");
     const unknown = Object.keys(ratings).filter((r) => !rows.includes(r));
     if (unknown.length) fail(`unknown rows ${unknown.join(", ")}`);

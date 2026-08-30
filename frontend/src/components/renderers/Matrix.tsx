@@ -14,7 +14,7 @@ export function Matrix({ question, value, onChange, answers, questions, disabled
   const { t } = useTranslation();
   const cfg = question.config ?? {};
   const scale = cfg.scale!;
-  const rows = matrixRows(question, answers);
+  const rows = matrixRows(question, answers, questions);
   const source = cfg.rows_from ? questions[cfg.rows_from] : undefined;
   const sourceAnswer = cfg.rows_from ? answers[cfg.rows_from] : undefined;
 

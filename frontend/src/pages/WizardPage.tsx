@@ -12,6 +12,7 @@ import { SkipConfirm } from "@/components/SkipConfirm";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
 import { implicitAnswer, validateAnswer } from "@/survey/answers";
+import { missingKeys } from "@/survey/completion";
 import { firstOpenKey, overview, position, progressFraction, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue } from "@/survey/types";
 import { isAnswered, questionByKey } from "@/survey/visibility";
@@ -42,6 +43,18 @@ export function WizardPage() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const savedTimer = useRef<number | null>(null);
   const lastFailed = useRef<{ key: string; value: AnswerValue } | null>(null);
+  // The route key at render time, so a save that settles after the participant
+  // moved on can tell whether its question is still on screen.
+  const keyRef = useRef(key);
+  // Per-question save sequence: only the latest save of a question may set the
+  // page's save state (an older PUT settling late must not raise an error the
+  // newer, successful one has already superseded — nor offer to retry its value).
+  const saveSeq = useRef(new Map<string, number>());
+  // The save in flight, so Finish waits for it instead of racing it on the server.
+  const pendingSave = useRef<Promise<boolean> | null>(null);
+  // Field errors for a question the participant has already left, shown once
+  // they are back on it (the key effect would otherwise clear them).
+  const pendingErrors = useRef<{ key: string; errors: string[] } | null>(null);
   // Set when a failed submit sends the participant to the first missing question:
   // that navigation must keep the "questions missing" alert, not clear it.
   const bouncedToMissing = useRef(false);
@@ -79,8 +92,11 @@ export function WizardPage() {
   // so no reset effect is needed.
   const resetSubmit = submit.reset;
   useEffect(() => {
+    keyRef.current = key;
     setSkipPrompt(false);
-    setLocalErrors([]);
+    const pending = pendingErrors.current;
+    pendingErrors.current = null;
+    setLocalErrors(pending && pending.key === key ? pending.errors : []);
     setInterstitial(null); // leaving an interstitial via the overview or browser history
     // A stale "questions missing" alert must not follow the participant, except on
     // the navigation that raised it; it clears on their next move.
@@ -97,25 +113,52 @@ export function WizardPage() {
 
   const persist = useCallback(
     async (qKey: string, value: AnswerValue): Promise<boolean> => {
+      const seq = (saveSeq.current.get(qKey) ?? 0) + 1;
+      saveSeq.current.set(qKey, seq);
+      const latest = () => saveSeq.current.get(qKey) === seq;
       setSaveState("saving");
-      try {
-        await save.mutateAsync({ key: qKey, value });
-        lastFailed.current = null;
-        flashSaved();
-        return true;
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 400) {
-          setLocalErrors(err.fieldErrors);
-          setSaveState("idle");
-        } else {
+      const run = (async () => {
+        try {
+          await save.mutateAsync({ key: qKey, value });
+          if (!latest()) return false; // superseded by a newer save of this question
+          lastFailed.current = null;
+          flashSaved();
+          return true;
+        } catch (err) {
+          if (!latest()) return false;
+          if (err instanceof ApiError && err.status === 410) {
+            // The survey closed mid-response: nothing to retry, the footer explains.
+            lastFailed.current = null;
+            setSaveState("closed");
+            return false;
+          }
+          if (err instanceof ApiError && err.status === 400) {
+            const errors = err.fieldErrors.length ? err.fieldErrors : [t("app.error")];
+            setSaveState("idle");
+            if (qKey === keyRef.current) {
+              setLocalErrors(errors);
+            } else {
+              // The participant moved on before the server refused this answer; its
+              // optimistic value is reverted, so bring them back to it with the message.
+              pendingErrors.current = { key: qKey, errors };
+              navigate(`/s/${slug}/q/${qKey}`);
+            }
+            return false;
+          }
           if (err instanceof ApiError) void refetchResponse(); // 409 submitted elsewhere / 404 gone: let the redirect effect take over
           lastFailed.current = { key: qKey, value };
           setSaveState("error");
+          return false;
         }
-        return false;
+      })();
+      pendingSave.current = run;
+      try {
+        return await run;
+      } finally {
+        if (pendingSave.current === run) pendingSave.current = null;
       }
     },
-    [save, flashSaved, refetchResponse],
+    [save, flashSaved, refetchResponse, navigate, slug, t],
   );
 
   const goTo = useCallback(
@@ -154,14 +197,14 @@ export function WizardPage() {
       // Blur on an unchanged text/number/date field must not PUT the same value again.
       const unchanged = JSON.stringify(value) === JSON.stringify(answers[key]);
       void (unchanged ? Promise.resolve(true) : commit(value)).then((ok) => {
-        if (ok && opts.advance) advance(after(value));
+        if (ok && opts.advance) void advance(after(value));
       });
     }
   };
 
   const commit = async (value: AnswerValue): Promise<boolean> => {
     try {
-      validateAnswer(question, value, answers, { skipPolicy: policy, sourceOptions: new Set(Object.keys(countryLabels)) });
+      validateAnswer(question, value, answers, { skipPolicy: policy, sourceOptions: new Set(Object.keys(countryLabels)), questions });
     } catch (e) {
       const errors = (e as { errors?: string[] }).errors ?? [String(e)];
       setLocalErrors(question.type === "matrix" && errors.some((m) => m.startsWith("every row must be rated")) ? [t("matrix.incomplete")] : errors);
@@ -174,12 +217,20 @@ export function WizardPage() {
    * Move on from `p` — the position *after* the value just saved, which may
    * have revealed or hidden questions; the render-time `pos` is stale by then.
    */
-  const advance = (p: Position = pos) => {
+  const advance = async (p: Position = pos) => {
     setSkipPrompt(false);
     if (p.isLast) {
+      // Finish must not race an autosave still in flight (a blur commit, or a
+      // click commit right before Finish): the server would read the answers
+      // before that PUT lands and report the question missing.
+      if (pendingSave.current && !(await pendingSave.current)) return;
       submit.mutate(undefined, {
         onSuccess: () => navigate(`/s/${slug}/complete`),
         onError: (err) => {
+          if (err instanceof ApiError && err.status === 410) {
+            setSaveState("closed");
+            return;
+          }
           const missing = err instanceof ApiError ? err.body.missing : undefined;
           if (!missing?.length) return;
           if (missing[0] !== key) bouncedToMissing.current = true;
@@ -206,26 +257,31 @@ export function WizardPage() {
       if (target) goTo(target.key);
       return;
     }
-    if (saveState === "error") return;
+    if (saveState === "error" || saveState === "closed") return;
     if (!isAnswerable) {
-      advance();
+      await advance();
       return;
     }
     const stored = cleared ? undefined : answers[key];
     if (hasDraft && draftValue !== undefined) {
       if (JSON.stringify(stored) !== JSON.stringify(draftValue)) {
         if (!(await commit(draftValue))) return;
+      } else if (missingKeys(def, answers).includes(key)) {
+        // Stored but no longer complete (a rows_from matrix whose source gained
+        // rows after it was rated): the server would bounce the submit back here.
+        setLocalErrors([t("matrix.incomplete")]);
+        return;
       }
-      advance(after(draftValue));
+      await advance(after(draftValue));
       return;
     }
     if (stored !== undefined) {
-      advance();
+      await advance();
       return;
     }
     // Unanswered.
     if (!required || policy === "none") {
-      if (await persist(key, { skipped: true })) advance(after({ skipped: true }));
+      if (await persist(key, { skipped: true })) await advance(after({ skipped: true }));
       return;
     }
     if (policy === "hard") {
@@ -237,7 +293,7 @@ export function WizardPage() {
 
   const onSkip = async () => {
     setSkipPrompt(false);
-    if (await persist(key, { skipped: true })) advance(after({ skipped: true }));
+    if (await persist(key, { skipped: true })) await advance(after({ skipped: true }));
   };
 
   const onBack = () => {
@@ -275,7 +331,7 @@ export function WizardPage() {
         onBack={pos.previousKey || interstitial !== null ? onBack : undefined}
         onNext={onNext}
         nextLabel={interstitial !== null ? t("interstitial.continue") : pos.isLast ? t("nav.finish") : t("nav.next")}
-        nextDisabled={saveState === "error" || submit.isPending || (policy === "hard" && required && isAnswerable && !hasDraft && answers[key] === undefined)}
+        nextDisabled={saveState === "error" || saveState === "closed" || submit.isPending || (policy === "hard" && required && isAnswerable && !hasDraft && answers[key] === undefined)}
         saveState={saveState}
         onRetry={retry}
         footerExtra={skipPrompt ? <SkipConfirm onSkip={onSkip} onAnswer={() => setSkipPrompt(false)} /> : localErrors.length ? <ErrorBanner errors={localErrors} /> : null}
@@ -303,7 +359,7 @@ export function WizardPage() {
             }}
           />
         )}
-        {submit.isError && (
+        {submit.isError && saveState !== "closed" && (
           <p className="mt-6 text-sm text-error" role="alert">
             {submit.error instanceof ApiError && submit.error.body.missing ? t("complete.missing") : t("app.error")}
           </p>

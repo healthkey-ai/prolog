@@ -25,7 +25,7 @@ export function applyCascade(def: Definition, answers: Answers): CascadeResult {
   for (const [key, value] of Object.entries(surviving)) {
     const q = questions[key];
     if (!q || q.type !== "matrix" || !isAnswered(value) || !("ratings" in value)) continue;
-    const rows = matrixRows(q, surviving);
+    const rows = matrixRows(q, surviving, questions);
     const ratings = Object.fromEntries(Object.entries(value.ratings).filter(([r]) => rows.includes(r)));
     if (Object.keys(ratings).length !== Object.keys(value.ratings).length) {
       if (Object.keys(ratings).length) surviving[key] = { ratings };

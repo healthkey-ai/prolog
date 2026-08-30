@@ -45,5 +45,6 @@ class ResponseSerializer(serializers.ModelSerializer):
             "started_at",
             "submitted_at",
             "last_question_key",
+            "administration",
         ]
         read_only_fields = fields

@@ -226,6 +226,12 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                     f"{qp}.config.min_selections",
                     "min_selections exceeds max_selections",
                 )
+            elif mn is not None and mn > n:
+                err(
+                    "min_selections",
+                    f"{qp}.config.min_selections",
+                    f"min_selections {mn} exceeds {n} options",
+                )
         if t == "ranking":
             for item in cfg.get("optional_items", []):
                 if item not in info.option_keys:
@@ -262,6 +268,14 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 "link_identity",
                 f"{qp}.config.link_identity",
                 "link_identity requires the integrated profile",
+            )
+        if t == "email" and not (cfg.get("store_separately") or cfg.get("link_identity")):
+            # Without a capture mode neither endpoint accepts an address, so the
+            # runner could only ever record a decline.
+            err(
+                "email_capture",
+                f"{qp}.config",
+                "an email question needs store_separately or link_identity",
             )
         if t == "number":
             lo, hi = cfg.get("min_value"), cfg.get("max_value")

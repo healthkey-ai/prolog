@@ -36,7 +36,7 @@ def apply_cascade(definition: dict[str, Any], answers: Answers) -> CascadeResult
         q = questions[key]
         if q["type"] != "matrix" or not is_answered(value):
             continue
-        rows = matrix_rows(q, surviving)
+        rows = matrix_rows(q, surviving, questions)
         ratings = {r: v for r, v in value.get("ratings", {}).items() if r in rows}
         if ratings != value.get("ratings", {}):
             if ratings:

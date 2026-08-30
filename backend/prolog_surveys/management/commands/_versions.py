@@ -15,5 +15,5 @@ def resolve_version(slug: str, version: str | None) -> SurveyVersion:
             raise CommandError(f"unknown version '{version}' of '{slug}'") from exc
     active = survey.active_version
     if active is None:
-        raise CommandError(f"'{slug}' has no active version; pass --version")
+        raise CommandError(f"'{slug}' has no active version; pass --survey-version")
     return active

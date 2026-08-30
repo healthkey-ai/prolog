@@ -10,6 +10,7 @@ export function MultiChoice({ question, value, onChange, disabled }: RendererPro
   const { t } = useTranslation();
   const options = question.options ?? [];
   const max = question.config?.max_selections;
+  const min = question.config?.min_selections ?? 1;
   const selected = value?.options ?? [];
   const atLimit = max !== undefined && selected.length >= max;
   const exclusiveKeys = new Set(options.filter((o) => o.exclusive).map((o) => o.key));
@@ -26,7 +27,11 @@ export function MultiChoice({ question, value, onChange, disabled }: RendererPro
       return;
     }
     const otherText = keepOther ? value?.other_text : undefined;
-    onChange({ options: ordered, ...(otherText ? { other_text: otherText } : {}) }, { commit: !keepOther || Boolean(otherText) });
+    // Below the minimum the selection is a draft only: committing it would fail
+    // validation ("select at least N") on an ordinary first click. Next
+    // validates the draft and reports the shortfall if the participant stops there.
+    const complete = ordered.length >= min;
+    onChange({ options: ordered, ...(otherText ? { other_text: otherText } : {}) }, { commit: complete && (!keepOther || Boolean(otherText)) });
   };
 
   return (

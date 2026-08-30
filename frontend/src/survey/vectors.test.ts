@@ -31,10 +31,12 @@ interface Vector {
 }
 
 function store(def: Definition, answers: Answers, key: string, raw: unknown) {
-  const q = questionByKey(def)[key];
+  const questions = questionByKey(def);
+  const q = questions[key];
   const value = validateAnswer(q, raw, answers, {
     skipPolicy: def.presentation?.skip_policy,
     sourceOptions: SOURCE_OPTIONS,
+    questions,
   });
   const result = applyCascade(def, { ...answers, [key]: value });
   for (const k of Object.keys(answers)) delete answers[k];

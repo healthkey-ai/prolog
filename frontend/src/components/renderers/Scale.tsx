@@ -37,7 +37,9 @@ export function ScaleControl({
         aria-label={ariaLabel}
         name={name}
         className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}
+        // One column per point while they fit; every target stays ≥ 44 px wide
+        // (WCAG 2.2) and a scale too wide for the viewport wraps instead.
+        style={{ gridTemplateColumns: `repeat(auto-fit, minmax(max(44px, calc((100% - ${(points.length - 1) * 8}px) / ${points.length})), 1fr))` }}
       >
         {points.map((p, i) => (
           <RadioGroupPrimitive.Item
@@ -45,7 +47,7 @@ export function ScaleControl({
             value={String(p)}
             data-testid={`scale-${name}-${p}`}
             className={cn(
-              "flex min-h-[56px] flex-col items-center justify-center rounded-[var(--p-radius-input)] border font-heading text-lg outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+              "flex min-h-[56px] min-w-[44px] flex-col items-center justify-center rounded-[var(--p-radius-input)] border font-heading text-lg outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
               "border-border bg-card hover:bg-accent data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
             )}
           >

@@ -80,8 +80,8 @@ class IdentityService:
 
 Guarantees: the email is never written to any PROlog table, log or API
 payload; the call is idempotent per response (a retry reuses the same
-key); on `IdentityServiceError` the endpoint answers 503 and the response
-stays anonymous; on success `participant` and `identity_linked_at` are set
+key); on `IdentityServiceError` — or any other exception your service lets
+escape — the endpoint answers 503 and the response stays anonymous; on success `participant` and `identity_linked_at` are set
 and the answer row records only `{"provided": true}`. Mapping execution
 (Phase 9) runs after this link exists.
 

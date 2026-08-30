@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -52,10 +53,16 @@ from .serializers import (
 )
 from .throttles import ClientKeyThrottle, CreateThrottle, ResponseThrottle
 
+log = logging.getLogger(__name__)
+
 
 def _effective_window_error(survey: Survey) -> str | None:
-    """Why ``survey`` is outside its effective window today, or None if open."""
-    today = timezone.now().date()
+    """Why ``survey`` is outside its effective window today, or None if open.
+
+    ``effective_from``/``effective_to`` are calendar dates in the deployment's
+    TIME_ZONE, so compare with the local date, not the UTC one.
+    """
+    today = timezone.localdate()
     if survey.effective_from and survey.effective_from > today:
         return "survey is not yet open"
     if survey.effective_to and survey.effective_to < today:
@@ -403,6 +410,7 @@ class AnswerView(ResponseMixin, APIView):
                 answers,
                 presentation=definition["presentation"],
                 source_options=source_options,
+                questions=questions,
             )
         except AnswerError as exc:
             raise ValidationError({"value": exc.errors}) from exc
@@ -509,6 +517,10 @@ class IdentityView(ResponseMixin, APIView):
 
     @transaction.atomic
     def post(self, request, response_id):
+        # Never let the address reach an error report (CON-4) should anything
+        # raise: what django.views.decorators.debug.sensitive_post_parameters
+        # does, set on the underlying HttpRequest (the decorator rejects DRF's).
+        request._request.sensitive_post_parameters = ("email",)
         response = self.writable(response_id)
         if not conf.is_integrated():
             raise NotFound("identity capture is only available in the integrated profile")
@@ -533,7 +545,17 @@ class IdentityView(ResponseMixin, APIView):
                         language=response.language,
                     )
                 )
-            except IdentityServiceError:
+            except Exception as exc:
+                # Any failure of the host's service (IdentityServiceError or a raw
+                # transport/HTTP error it did not wrap) is a 503, never a 500: an
+                # unhandled exception would carry the request body — the address —
+                # into the host's error reporting. Log the class only.
+                if not isinstance(exc, IdentityServiceError):
+                    log.warning(
+                        "identity service raised %s for response %s",
+                        type(exc).__name__,
+                        response.id,
+                    )
                 return Response(
                     {"detail": "identity service unavailable; you can still submit anonymously"},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,

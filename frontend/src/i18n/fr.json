@@ -4,6 +4,7 @@
   "app.error": "Une erreur est survenue. Veuillez réessayer.",
   "app.retry": "Réessayer",
   "app.notFound": "Ce questionnaire n'est pas disponible.",
+  "app.closed": "Ce questionnaire est clos et n'accepte plus de réponses.",
   "intro.eyebrow": "Questionnaire",
   "intro.minutes": "Environ {{count}} minutes",
   "intro.anonymous": "Anonyme",

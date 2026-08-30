@@ -71,11 +71,12 @@ export function conditionsHold(conditions: Condition[] | undefined, answers: Ans
 export function visibleQuestions(def: Definition, answers: Answers): VisibleQuestion[] {
   const out: VisibleQuestion[] = [];
   const seen: Answers = {};
+  const questions = questionByKey(def);
   def.sections.forEach((section, sectionIndex) => {
     if (!conditionsHold(section.visible_if, seen)) return;
     for (const q of section.questions) {
       if (!conditionsHold(q.visible_if, seen)) continue;
-      if (q.type === "matrix" && dynamicRowsEmpty(q, seen)) continue;
+      if (q.type === "matrix" && dynamicRowsEmpty(q, seen, questions)) continue;
       if (q.key in answers) seen[q.key] = answers[q.key];
       out.push({
         key: q.key,
@@ -96,20 +97,29 @@ export function visibleQuestions(def: Definition, answers: Answers): VisibleQues
  * it is hidden rather than left visible with zero rows (which could neither be
  * answered nor, under a hard skip policy, skipped). Mirrors visibility.py.
  */
-function dynamicRowsEmpty(q: Question, answers: Answers): boolean {
+function dynamicRowsEmpty(q: Question, answers: Answers, questions: Record<string, Question>): boolean {
   const cfg = questionConfig(q);
-  return Boolean(cfg.rows_from) && !(cfg.rows && cfg.rows.length) && matrixRows(q, answers).length === 0;
+  return Boolean(cfg.rows_from) && !(cfg.rows && cfg.rows.length) && matrixRows(q, answers, questions).length === 0;
 }
 
 export function visibleKeys(def: Definition, answers: Answers): string[] {
   return visibleQuestions(def, answers).map((v) => v.key);
 }
 
-/** Current rows of a matrix: fixed rows or the source question's selection. */
-export function matrixRows(q: Question, answers: Answers): string[] {
+/**
+ * Current rows of a matrix: fixed rows or the source question's selection.
+ * An `exclusive` source option ("none of these") is never a row: there is
+ * nothing to rate about it, so a selection of only exclusive options leaves
+ * the matrix with no rows (and hidden). Mirrors visibility.py.
+ */
+export function matrixRows(q: Question, answers: Answers, questions: Record<string, Question>): string[] {
   const cfg = questionConfig(q);
   if (cfg.rows && cfg.rows.length) return cfg.rows.map((r) => r.key);
-  const source = answers[cfg.rows_from ?? ""];
+  const sourceKey = cfg.rows_from ?? "";
+  const source = answers[sourceKey];
   if (!isAnswered(source)) return [];
-  return source && "options" in source ? [...source.options] : [];
+  if (!source || !("options" in source)) return [];
+  const sourceQuestion = questions[sourceKey];
+  const exclusive = new Set((sourceQuestion?.options ?? []).filter((o) => o.exclusive).map((o) => o.key));
+  return source.options.filter((k) => !exclusive.has(k));
 }

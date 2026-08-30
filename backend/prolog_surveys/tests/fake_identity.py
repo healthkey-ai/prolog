@@ -12,6 +12,8 @@ class FakeIdentityService:
         CALLS.append(request)
         if request.email.endswith("@fail.example"):
             raise IdentityServiceError("upstream down")
+        if request.email.endswith("@crash.example"):
+            raise RuntimeError("unwrapped transport error")
         user, _ = get_user_model().objects.get_or_create(
             username=f"p-{request.idempotency_key[:12]}", defaults={"email": ""}
         )

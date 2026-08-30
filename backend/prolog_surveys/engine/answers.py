@@ -66,14 +66,17 @@ def validate_answer(
     *,
     presentation: dict[str, Any] | None = None,
     source_options: set[str] | None = None,
+    questions: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Return the canonical value for ``raw`` or raise AnswerError.
 
-    ``answers`` are the response's other answers (needed for dynamic matrix
-    rows). ``source_options`` are the keys of a dropdown's ``options_source``
-    list when applicable.
+    ``answers`` are the response's other answers and ``questions`` the
+    definition's questions by key (both needed for dynamic matrix rows).
+    ``source_options`` are the keys of a dropdown's ``options_source`` list
+    when applicable.
     """
     presentation = presentation or {}
+    questions = questions or {}
     t = question["type"]
     if t == "info":
         _fail("info questions take no answer")
@@ -146,7 +149,7 @@ def validate_answer(
         ratings = raw.get("ratings")
         if not isinstance(ratings, dict):
             _fail("ratings must be an object of row -> value")
-        rows = matrix_rows(question, answers)
+        rows = matrix_rows(question, answers, questions)
         if not rows:
             _fail("this matrix currently has no rows")
         unknown = [r for r in ratings if r not in rows]

@@ -11,6 +11,7 @@ const base: ResponseSummary = {
   started_at: "2026-01-01T00:00:00Z",
   submitted_at: null,
   last_question_key: "q1",
+  administration: null,
   answers: { q1: { option: "a" }, q2: { text: "hello" } },
   visible: ["q1", "q2", "q3"],
   missing: ["q3"],

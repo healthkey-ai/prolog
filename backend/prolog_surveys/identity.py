@@ -32,7 +32,11 @@ class IdentityService(Protocol):
 
 
 class IdentityServiceError(Exception):
-    """Raised by a service when the participant record cannot be created."""
+    """Raised by a service when the participant record cannot be created.
+
+    Any other exception escaping ``create_or_link`` is treated the same way
+    (503, response stays anonymous); only its class name is logged.
+    """
 
 
 def get_identity_service() -> IdentityService | None:

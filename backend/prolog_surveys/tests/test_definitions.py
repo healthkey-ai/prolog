@@ -99,6 +99,8 @@ def test_schema_rejects_both_email_modes(example):
             "duplicate_key",
         ),
         (lambda d: question(d, "symptoms")["config"].update(max_selections=99), "max_selections"),
+        (lambda d: question(d, "symptoms")["config"].update(min_selections=99), "min_selections"),
+        (lambda d: question(d, "contact_email")["config"].pop("store_separately"), "email_capture"),
         (
             lambda d: question(d, "symptoms")["config"].update(min_selections=3, max_selections=2),
             "min_selections",

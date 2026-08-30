@@ -101,13 +101,14 @@ def visible_questions(definition: dict[str, Any], answers: Answers) -> list[Visi
     """
     out: list[VisibleQuestion] = []
     seen: Answers = {}
+    questions = question_by_key(definition)
     for si, section in enumerate(definition["sections"]):
         if not conditions_hold(section.get("visible_if", []), seen):
             continue
         for q in section["questions"]:
             if not conditions_hold(q.get("visible_if", []), seen):
                 continue
-            if q["type"] == "matrix" and _dynamic_rows_empty(q, seen):
+            if q["type"] == "matrix" and _dynamic_rows_empty(q, seen, questions):
                 continue
             if q["key"] in answers:
                 seen[q["key"]] = answers[q["key"]]
@@ -124,25 +125,42 @@ def visible_questions(definition: dict[str, Any], answers: Answers) -> list[Visi
     return out
 
 
-def _dynamic_rows_empty(question: dict[str, Any], answers: Answers) -> bool:
+def _dynamic_rows_empty(
+    question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
+) -> bool:
     """A ``rows_from`` matrix has nothing to ask while its source has no
     selection, so it is hidden rather than left visible with zero rows (which
     could neither be answered nor, under a hard skip policy, skipped)."""
     cfg = question.get("config", {})
-    return bool(cfg.get("rows_from")) and not cfg.get("rows") and not matrix_rows(question, answers)
+    return (
+        bool(cfg.get("rows_from"))
+        and not cfg.get("rows")
+        and not matrix_rows(question, answers, questions)
+    )
 
 
 def visible_keys(definition: dict[str, Any], answers: Answers) -> list[str]:
     return [v.key for v in visible_questions(definition, answers)]
 
 
-def matrix_rows(question: dict[str, Any], answers: Answers) -> list[str]:
-    """Current row keys of a matrix question: fixed rows or the source selection."""
+def matrix_rows(
+    question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Current row keys of a matrix question: fixed rows or the source selection.
+
+    An ``exclusive`` option of the source ("none of these") is never a row:
+    there is nothing to rate about it, so a selection of only exclusive
+    options leaves the matrix with no rows (and hidden, see
+    ``_dynamic_rows_empty``).
+    """
     cfg = question.get("config", {})
     if cfg.get("rows"):
         return [r["key"] for r in cfg["rows"]]
-    source = answers.get(cfg.get("rows_from", ""))
+    source_key = cfg.get("rows_from", "")
+    source = answers.get(source_key)
     if not is_answered(source):
         return []
     assert source is not None
-    return list(source.get("options", []))
+    source_question = questions.get(source_key) or {}
+    exclusive = {o["key"] for o in source_question.get("options", []) if o.get("exclusive")}
+    return [k for k in source.get("options", []) if k not in exclusive]

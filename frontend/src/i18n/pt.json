@@ -4,6 +4,7 @@
   "app.error": "Algo deu errado. Tente novamente.",
   "app.retry": "Tentar novamente",
   "app.notFound": "Esta pesquisa não está disponível.",
+  "app.closed": "Esta pesquisa foi encerrada e não aceita mais respostas.",
   "intro.eyebrow": "Pesquisa",
   "intro.minutes": "Cerca de {{count}} minutos",
   "intro.anonymous": "Anônima",

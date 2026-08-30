@@ -26,7 +26,7 @@ def missing_keys(definition: dict[str, Any], answers: Answers) -> list[str]:
             continue
         q = questions[v.key]
         if q["type"] == "matrix" and is_answered(value):
-            rows = matrix_rows(q, answers)
+            rows = matrix_rows(q, answers, questions)
             if set(value.get("ratings", {})) != set(rows):
                 missing.append(v.key)
     return missing

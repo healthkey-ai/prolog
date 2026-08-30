@@ -4,6 +4,7 @@
   "app.error": "Something went wrong. Please try again.",
   "app.retry": "Retry",
   "app.notFound": "This survey is not available.",
+  "app.closed": "This survey has closed and no longer accepts answers.",
   "intro.eyebrow": "Survey",
   "intro.minutes": "About {{count}} minutes",
   "intro.anonymous": "Anonymous",

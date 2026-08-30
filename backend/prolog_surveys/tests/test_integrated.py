@@ -95,6 +95,23 @@ def test_identity_failure_leaves_response_anonymous(
 
 
 @pytest.mark.django_db
+def test_identity_unwrapped_exception_is_503_not_500(
+    api_client, identity_service, linked_definition
+):
+    """A host service that lets a transport error escape must not turn into a
+    500 (whose error report would carry the address)."""
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    r = api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "x@crash.example"}, format="json"
+    )
+    assert r.status_code == 503
+    assert SurveyResponse.objects.get(pk=rid).participant is None
+
+
+@pytest.mark.django_db
 def test_identity_requires_link_identity_question(api_client, identity_service):
     load_definition(definition(), activate=True)  # store_separately, not link_identity
     rid = api_client.post(
