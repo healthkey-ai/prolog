@@ -6,7 +6,10 @@ values below document every setting the app reads (see ``prolog_surveys.conf``).
 """
 
 import os
+import re
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 REPO_ROOT = BASE_DIR.parent
@@ -19,8 +22,13 @@ def _env_list(name: str, default: list[str]) -> list[str]:
     return [item for item in raw.split(os.pathsep) if item]
 
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "prolog-development-only-key")
+_DEV_SECRET_KEY = "prolog-development-only-key"
+SECRET_KEY = os.environ.get("SECRET_KEY", _DEV_SECRET_KEY)
 DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
+if not DEBUG and SECRET_KEY == _DEV_SECRET_KEY:
+    # The default key is public (this repository is); it also salts the hashed
+    # client keys, so a production process must never start with it.
+    raise ImproperlyConfigured("SECRET_KEY must be set when DEBUG is false")
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 INSTALLED_APPS = [
@@ -74,6 +82,11 @@ DATABASES = {
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        # Reuse connections across requests (the runner autosaves per answer). Off
+        # under DEBUG: the threaded dev server keeps one connection per request
+        # thread and exhausts a local PostgreSQL. Override with CONN_MAX_AGE.
+        "CONN_MAX_AGE": int(os.environ.get("CONN_MAX_AGE", "0" if DEBUG else "60")),
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 
@@ -83,16 +96,21 @@ USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Static files: the built runner (frontend/dist) is served by WhiteNoise.
+# Static files. Django's own static files (admin) live under STATIC_URL; the
+# built runner (frontend/dist) is served by WhiteNoise at the site root, because
+# its index.html references /assets/* (Vite's default base), not /static/.
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 RUNNER_DIST = Path(os.environ.get("PROLOG_RUNNER_DIST", REPO_ROOT / "frontend" / "dist"))
-STATICFILES_DIRS = [RUNNER_DIST] if RUNNER_DIST.exists() else []
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
+WHITENOISE_ROOT = RUNNER_DIST if RUNNER_DIST.exists() else None
 WHITENOISE_INDEX_FILE = True
+# Vite names bundled assets <name>-<hash>.<ext>; they can be cached forever.
+_VITE_ASSET_RE = re.compile(r"/assets/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$")
+WHITENOISE_IMMUTABLE_FILE_TEST = lambda path, url: bool(_VITE_ASSET_RE.search(url))  # noqa: E731
 
 CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 

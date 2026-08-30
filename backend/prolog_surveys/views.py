@@ -1,5 +1,6 @@
 from django.conf import settings
-from django.db import ProgrammingError, connection
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 
 from . import conf
@@ -19,15 +20,17 @@ def health(request: HttpRequest) -> HttpResponse:
         status = "error"
         checks["database"] = f"error: {exc.__class__.__name__}"
     else:
-        try:
+        executor = MigrationExecutor(connection)
+        pending = executor.migration_plan(executor.loader.graph.leaf_nodes())
+        if pending:
+            # Reachable but not ready: `manage.py migrate` has not run yet.
+            status = "degraded"
+            checks["migrations"] = "pending"
+        else:
+            checks["migrations"] = "applied"
             checks["active_surveys"] = SurveyVersion.objects.filter(
                 status=LifecycleStatus.ACTIVE
             ).count()
-            checks["migrations"] = "applied"
-        except ProgrammingError:
-            # Tables not created yet: reachable but not ready (CI starts the server before migrating).
-            status = "degraded"
-            checks["migrations"] = "pending"
     themes = registry.all()
     checks["themes"] = sorted(themes)
     if "default" not in themes:

@@ -31,4 +31,26 @@ describe("multi-hop cascade", () => {
     expect(Object.keys(result.answers)).toEqual(["q1"]);
     expect(result.visible).toEqual(["q1"]);
   });
+
+  it("hides a rows_from matrix while its source has no selection", () => {
+    const def = {
+      ...chain,
+      sections: [
+        {
+          key: "s",
+          title: { en: "s" },
+          questions: [
+            { key: "m", type: "multi", text: { en: "m" }, required: false, options: [{ key: "x", label: { en: "x" } }, { key: "y", label: { en: "y" } }] },
+            { key: "mx", type: "matrix", text: { en: "mx" }, config: { rows_from: "m", scale: { min: 1, max: 3 } } },
+          ],
+        },
+      ],
+    } as unknown as Definition;
+    expect(visibleKeys(def, {})).toEqual(["m"]);
+    expect(visibleKeys(def, { m: { skipped: true } })).toEqual(["m"]);
+    expect(visibleKeys(def, { m: { options: ["x"] } })).toEqual(["m", "mx"]);
+    const r = applyCascade(def, { m: { skipped: true }, mx: { ratings: { x: 2 } } });
+    expect(r.invalidated).toEqual(["mx"]);
+    expect(r.answers).toEqual({ m: { skipped: true } });
+  });
 });

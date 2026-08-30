@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-
 from rest_framework.throttling import SimpleRateThrottle
 
 from .. import conf
@@ -24,8 +22,7 @@ def client_address(request) -> str:
 
 def client_key(request) -> str:
     """Salted hash of the caller's address; never persisted."""
-    raw = f"{conf.get('PROLOG_CLIENT_KEY_SALT')}|{client_address(request)}"
-    return hashlib.sha256(raw.encode()).hexdigest()
+    return conf.salted_hash(client_address(request))
 
 
 class ClientKeyThrottle(SimpleRateThrottle):

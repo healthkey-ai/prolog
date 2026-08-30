@@ -65,6 +65,7 @@
   --color-line: var(--p-line);
   --color-error: var(--p-error);
   --color-success: var(--p-success);
+  --color-scrim: var(--p-scrim);
   --font-heading: var(--p-font-heading);
   --font-body: var(--p-font-body);
   --radius-card: var(--p-radius-card);

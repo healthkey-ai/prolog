@@ -12,7 +12,7 @@ import csv
 from collections.abc import Iterable, Iterator
 from typing import IO, Any
 
-from .engine.visibility import iter_questions
+from .engine.visibility import iter_questions, question_by_key
 from .models import SurveyContact, SurveyResponse, SurveyVersion
 
 SKIPPED = "SKIPPED"
@@ -22,6 +22,7 @@ HIDDEN = ""
 def _columns(definition: dict[str, Any]) -> list[tuple[str, str, str | None]]:
     """(header, question_key, sub_key) triples in presentation order."""
     cols: list[tuple[str, str, str | None]] = []
+    by_key = question_by_key(definition)
     for _, _, q in iter_questions(definition):
         k, t, cfg = q["key"], q["type"], q.get("config", {})
         if t == "info":
@@ -34,10 +35,7 @@ def _columns(definition: dict[str, Any]) -> list[tuple[str, str, str | None]]:
         elif t == "matrix":
             rows = [r["key"] for r in cfg.get("rows", [])]
             if cfg.get("rows_from"):
-                source = next(
-                    q2 for _, _, q2 in iter_questions(definition) if q2["key"] == cfg["rows_from"]
-                )
-                rows = [o["key"] for o in source.get("options", [])]
+                rows = [o["key"] for o in by_key[cfg["rows_from"]].get("options", [])]
             for r in rows:
                 cols.append((f"{k}.{r}", k, r))
         elif t in ("single", "dropdown"):

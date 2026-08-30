@@ -71,7 +71,7 @@ export function Shell(p: ShellProps) {
                 </SelectTrigger>
                 <SelectContent>
                   {p.languages.map((l) => (
-                    <SelectItem key={l} value={l} data-testid={`language-${l}`}>
+                    <SelectItem key={l} value={l} className="min-h-[44px]" data-testid={`language-${l}`}>
                       {languageName(l)}
                     </SelectItem>
                   ))}

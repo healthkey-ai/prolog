@@ -197,3 +197,22 @@ def test_multi_hop_cascade_reaches_dependants_of_hidden_answers():
     assert result.invalidated == ["q2", "q3"]
     assert list(result.answers) == ["q1"]
     assert result.visible == ["q1"]
+
+
+def test_rows_from_matrix_hidden_until_its_source_has_a_selection():
+    """A dynamic-row matrix with zero rows can be neither answered nor (hard
+    policy) skipped, so it is not shown at all — even without an explicit
+    ``answered`` condition on its source."""
+    definition = load_definition("sample-wellbeing.json")
+    matrix = question_by_key(definition)["symptom_impact"]
+    matrix["visible_if"] = [c for c in matrix["visible_if"] if c["question"] != "symptoms"]
+    definition["presentation"]["skip_policy"] = "hard"
+    answers: dict = {}
+    store(definition, answers, "has_symptoms", {"option": "yes"})
+    assert "symptom_impact" not in visible_keys(definition, answers)
+    assert "symptom_impact" not in missing_keys(definition, answers)
+    store(definition, answers, "symptoms", {"options": ["fatigue"]})
+    assert "symptom_impact" in visible_keys(definition, answers)
+    result = store(definition, answers, "symptoms", {"options": ["none"]})
+    assert "symptom_impact" in visible_keys(definition, answers)  # "none" is a row too
+    assert result.invalidated == []

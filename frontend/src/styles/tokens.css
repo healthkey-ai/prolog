@@ -19,6 +19,7 @@
   --p-line: #d8e4df;
   --p-error: #b42318;
   --p-success: #067647;
+  --p-scrim: rgb(23 33 43 / 0.5);
 
   --p-font-heading: Inter, ui-sans-serif, system-ui, sans-serif;
   --p-font-body: Inter, ui-sans-serif, system-ui, sans-serif;

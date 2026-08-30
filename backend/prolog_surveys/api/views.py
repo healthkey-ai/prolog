@@ -167,9 +167,10 @@ class SurveyDefinitionView(APIView):
         else:
             survey, version = _active_version(slug)
             definition = version.definition
-            invited = False
-            if not definition["participation"]["anonymous"]:
-                invited = _administration(request, {}, survey=survey) is not None
+            invited = (
+                not definition["participation"]["anonymous"]
+                and _administration(request, {}, survey=survey) is not None
+            )
             _check_access(request, definition, invited=invited)
             lang = _language(request, definition)
         theme = theme_registry.resolve(survey.theme_code)
@@ -235,22 +236,18 @@ class ResponseCreateView(APIView):
                 return Response(_response_payload(existing), status=status.HTTP_200_OK)
 
         consent_cfg = definition.get("consent")
-        consent = data.get("consent")
-        if consent_cfg and consent_cfg.get("required", True):
-            if (
-                not consent
-                or consent.get("version") != consent_cfg["version"]
-                or not consent.get("agreed")
-            ):
-                raise ValidationError(
-                    {"consent": "agreement to the current consent notice is required"}
-                )
-        ua = request.META.get("HTTP_USER_AGENT", "")
-        ua_hash = (
-            hashlib.sha256(f"{conf.get('PROLOG_CLIENT_KEY_SALT')}|{ua}".encode()).hexdigest()
-            if ua
-            else ""
+        consent = data.get("consent") or {}
+        # Only an explicit agreement to the current notice is an attestation;
+        # anything else is recorded nowhere (CON-1).
+        agreed = bool(consent_cfg) and (
+            consent.get("version") == consent_cfg["version"] and consent.get("agreed") is True
         )
+        if consent_cfg and consent_cfg.get("required", True) and not agreed:
+            raise ValidationError(
+                {"consent": "agreement to the current consent notice is required"}
+            )
+        ua = request.META.get("HTTP_USER_AGENT", "")
+        ua_hash = conf.salted_hash(ua) if ua else ""
         fields = {"survey_version": version, "language": lang, "user_agent_hash": ua_hash}
         if administration is not None:
             fields["administration"] = administration
@@ -260,7 +257,7 @@ class ResponseCreateView(APIView):
         elif participant is not None:
             fields["participant_id"] = participant
         response = SurveyResponse.objects.create(**fields)
-        if consent_cfg and consent:
+        if agreed:
             text = pick(consent_cfg["text"], lang, definition["default_language"])
             SurveyConsent.objects.create(
                 response=response,
@@ -333,6 +330,23 @@ class AnswerView(ResponseMixin, APIView):
         answers = response.answer_map()
         if question_key not in visible_keys(definition, answers):
             raise ValidationError({"value": ["this question is not currently shown"]})
+        if (
+            question["type"] == "email"
+            and (answers.get(question_key) or {}).get("provided") is True
+        ):
+            # A recorded capture cannot be downgraded: the {provided: true} marker is
+            # what makes the contact endpoint idempotent (one address per response).
+            existing = answers[question_key]
+            return Response(
+                {
+                    "answer": {"key": question_key, "value": existing},
+                    "invalidated": [],
+                    "pruned": {},
+                    "visible": visible_keys(definition, answers),
+                    "missing": missing_keys(definition, answers),
+                    "progress": progress(definition, answers),
+                }
+            )
         source_options = None
         if question["type"] == "dropdown" and question["config"].get("options_source"):
             source_options = set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
@@ -356,18 +370,20 @@ class AnswerView(ResponseMixin, APIView):
         dead = [k for k in cascade.invalidated if k not in cascade.answers]
         if dead:
             SurveyAnswer.objects.filter(response=response, question_key__in=dead).delete()
-        for key in cascade.invalidated:
-            if key in cascade.answers:  # a pruned matrix keeps its surviving rows
-                survivor = cascade.answers[key]
-                SurveyAnswer.objects.filter(response=response, question_key=key).update(
-                    value=survivor, option_keys=option_keys_of(survivor)
-                )
+        # A pruned matrix keeps its surviving rows; the client gets them back so
+        # it never has to guess between "deleted" and "reduced".
+        pruned = {k: cascade.answers[k] for k in cascade.invalidated if k in cascade.answers}
+        for key, survivor in pruned.items():
+            SurveyAnswer.objects.filter(response=response, question_key=key).update(
+                value=survivor, option_keys=option_keys_of(survivor)
+            )
         response.last_question_key = question_key
         response.save(update_fields=["last_question_key", "updated_at"])
         return Response(
             {
                 "answer": {"key": question_key, "value": value},
                 "invalidated": cascade.invalidated,
+                "pruned": pruned,
                 "visible": cascade.visible,
                 "missing": missing_keys(definition, cascade.answers),
                 "progress": progress(definition, cascade.answers),
@@ -466,16 +482,10 @@ class IdentityView(ResponseMixin, APIView):
                         language=response.language,
                     )
                 )
-            except IdentityServiceError as exc:
-                return (
-                    Response(
-                        {
-                            "detail": "identity service unavailable; you can still submit anonymously"
-                        },
-                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    )
-                    if str(exc)
-                    else Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except IdentityServiceError:
+                return Response(
+                    {"detail": "identity service unavailable; you can still submit anonymously"},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
             response.participant_id = result.participant_pk
             response.identity_linked_at = timezone.now()

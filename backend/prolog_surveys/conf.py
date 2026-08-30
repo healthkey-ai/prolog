@@ -8,6 +8,7 @@ directly, so defaults apply uniformly.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,13 @@ def get(name: str) -> Any:
     if name not in DEFAULTS:
         raise KeyError(f"Unknown PROlog setting {name}")
     return getattr(settings, name, DEFAULTS[name])
+
+
+def salted_hash(*parts: str) -> str:
+    """SHA-256 of ``parts`` under PROLOG_CLIENT_KEY_SALT: the one recipe for
+    every hashed identifier (client address, user agent, idempotency key)."""
+    raw = "|".join((str(get("PROLOG_CLIENT_KEY_SALT")), *parts))
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def profile() -> str:

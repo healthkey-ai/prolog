@@ -75,6 +75,7 @@ export function visibleQuestions(def: Definition, answers: Answers): VisibleQues
     if (!conditionsHold(section.visible_if, seen)) return;
     for (const q of section.questions) {
       if (!conditionsHold(q.visible_if, seen)) continue;
+      if (q.type === "matrix" && dynamicRowsEmpty(q, seen)) continue;
       if (q.key in answers) seen[q.key] = answers[q.key];
       out.push({
         key: q.key,
@@ -88,6 +89,16 @@ export function visibleQuestions(def: Definition, answers: Answers): VisibleQues
     }
   });
   return out;
+}
+
+/**
+ * A `rows_from` matrix has nothing to ask while its source has no selection, so
+ * it is hidden rather than left visible with zero rows (which could neither be
+ * answered nor, under a hard skip policy, skipped). Mirrors visibility.py.
+ */
+function dynamicRowsEmpty(q: Question, answers: Answers): boolean {
+  const cfg = questionConfig(q);
+  return Boolean(cfg.rows_from) && !(cfg.rows && cfg.rows.length) && matrixRows(q, answers).length === 0;
 }
 
 export function visibleKeys(def: Definition, answers: Answers): string[] {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { firstOpenKey, overview, position } from "./navigation";
+import { firstOpenKey, overview, position, progressFraction } from "./navigation";
 import type { Definition } from "./types";
 
 const def = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "examples", "sample-wellbeing.json"), "utf-8")) as Definition;
@@ -36,5 +36,13 @@ describe("navigation", () => {
     expect(byKey.last_visit.status).toBe("unreachable");
     expect(byKey.last_visit.navigable).toBe(false);
     expect(byKey.welcome.navigable).toBe(true);
+  });
+
+  it("never reports negative progress on an info block", () => {
+    const p = position(def, {}, "welcome"); // info: questionNumber is 0
+    expect(progressFraction(p, false)).toBe(0);
+    const q = position(def, {}, "country");
+    expect(progressFraction(q, false)).toBe(0);
+    expect(progressFraction(q, true)).toBeCloseTo(1 / q.questionTotal);
   });
 });

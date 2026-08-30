@@ -44,6 +44,8 @@ export function IntroPage() {
   const def = definition.data;
   const consent = def.consent;
   const consentRequired = Boolean(consent && (consent.required ?? true));
+  // "none": no resume on a later visit (shared devices); the id lives only in this tab.
+  const resumable = def.participation?.resume !== "none";
 
   const start = async () => {
     if (consentRequired && !agreed) {
@@ -55,13 +57,13 @@ export function IntroPage() {
       response = await create.mutateAsync({
         slug,
         language: def.language,
-        consent: consent ? { version: consent.version, agreed } : undefined,
+        consent: consent && agreed ? { version: consent.version, agreed: true } : undefined,
         invitation: invite,
       });
     } catch {
       return; // create.isError renders the message
     }
-    storeResponseId(slug, response.id);
+    storeResponseId(slug, response.id, resumable);
     const key = firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
   };
@@ -84,7 +86,7 @@ export function IntroPage() {
   const immersive = layout.immersiveIntro;
   const ground = immersive ? "bg-primary text-on-primary" : "bg-ground text-ink";
   const soft = immersive ? "text-on-primary/80" : "text-ink-soft";
-  const hasExisting = existingId && existing.data && !existing.isError && !fresh;
+  const hasExisting = resumable && existingId && existing.data && !existing.isError && !fresh;
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
@@ -146,9 +148,9 @@ export function IntroPage() {
                     {consent.privacy_url}
                   </a>
                 )}
-                <div className="mt-4 flex items-start gap-3">
-                  <Checkbox id="consent" className="mt-1 size-5" checked={agreed} onCheckedChange={(c) => { setAgreed(c === true); setConsentError(false); }} data-testid="consent" />
-                  <Label htmlFor="consent" className="font-normal leading-snug">{t("intro.consentAgree")}</Label>
+                <div className="mt-2 flex min-h-[44px] items-center gap-3">
+                  <Checkbox id="consent" className="size-5" checked={agreed} onCheckedChange={(c) => { setAgreed(c === true); setConsentError(false); }} data-testid="consent" />
+                  <Label htmlFor="consent" className="flex min-h-[44px] items-center font-normal leading-snug">{t("intro.consentAgree")}</Label>
                 </div>
                 {consentError && (
                   <p className="mt-2 text-sm text-error" role="alert">

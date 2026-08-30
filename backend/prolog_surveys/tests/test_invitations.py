@@ -88,7 +88,9 @@ def test_use_current_version_leaves_version_open():
 @pytest.mark.django_db
 def test_send_pending_emails_link(settings):
     settings.PROLOG_PUBLIC_URL = "https://survey.example.org"
-    version = load_definition(definition(), activate=True).version
+    doc = definition()
+    doc["title"]["fr"] = "Bilan de bien-être & vous"  # plain text: no HTML escaping
+    version = load_definition(doc, activate=True).version
     inv = SurveyInvitation.objects.create(
         survey=version.survey, email="p@example.org", language="fr"
     )
@@ -97,7 +99,9 @@ def test_send_pending_emails_link(settings):
     assert send_pending() == 1
     assert send_pending() == 0
     message = mail.outbox[0]
-    assert message.subject == "Bilan de bien-être"
+    assert message.subject == "Bilan de bien-être & vous"
+    assert "Bilan de bien-être & vous" in message.body
+    assert "&amp; vous" in message.alternatives[0][0]
     admin_id = inv.administrations.get().id
     assert f"https://survey.example.org/s/sample-wellbeing?invite={admin_id}" in message.body
     assert message.alternatives[0][1] == "text/html"

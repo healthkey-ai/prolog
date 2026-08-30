@@ -2,13 +2,13 @@ import { MAX_OTHER_TEXT } from "@/survey/answers";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
-import { questionRequired, type Option, type RankingValue } from "@/survey/types";
+import type { Option, RankingValue } from "@/survey/types";
 import { cn } from "@/lib/utils";
 
 /** Ranking with drag **and** ▲▼ buttons, live position announcements, optional items (Q-6). */
@@ -19,14 +19,9 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
   const order = value?.order ?? options.filter((o) => !optional.has(o.key)).map((o) => o.key);
   const unranked = options.filter((o) => optional.has(o.key) && !order.includes(o.key));
   const [announce, setAnnounce] = useState("");
-
-  // The order shown is itself a valid answer: register it as the draft so Next
-  // accepts an untouched required ranking instead of treating it as unanswered.
-  // An optional ranking stays unanswered so it can still be skipped.
-  useEffect(() => {
-    if (value === undefined && questionRequired(question)) onChange({ order });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question.key]);
+  // An untouched required ranking already holds its displayed order as the
+  // draft (survey/answers.ts implicitAnswer), so `value` is only undefined for
+  // an optional ranking, which stays skippable.
   const labelOf = (key: string) => (options.find((o) => o.key === key)?.label as string) ?? key;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 

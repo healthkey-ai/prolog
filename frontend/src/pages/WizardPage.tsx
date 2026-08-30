@@ -11,8 +11,8 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { SkipConfirm } from "@/components/SkipConfirm";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
-import { validateAnswer } from "@/survey/answers";
-import { firstOpenKey, overview, position, type Position } from "@/survey/navigation";
+import { implicitAnswer, validateAnswer } from "@/survey/answers";
+import { firstOpenKey, overview, position, progressFraction, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue } from "@/survey/types";
 import { isAnswered, questionByKey } from "@/survey/visibility";
 import { useThemeLogo } from "@/theme/useTheme";
@@ -73,8 +73,7 @@ export function WizardPage() {
   }, [id, def, response.data, response.isError, pos, key, slug, navigate]);
 
   // The draft is keyed on the question: a stale draft from another question is ignored,
-  // so no reset effect is needed (a reset would race with renderers that register a
-  // default draft on mount, e.g. ranking).
+  // so no reset effect is needed.
   const resetSubmit = submit.reset;
   useEffect(() => {
     setSkipPrompt(false);
@@ -130,7 +129,10 @@ export function WizardPage() {
   const policy = skipPolicy(def);
   const required = questionRequired(question);
   const isAnswerable = ANSWERABLE.has(question.type);
-  const draftValue = draftKey === key ? draft : answers[key];
+  // Before any interaction a question may already hold a valid answer (a required
+  // ranking's displayed order); deriving it here rather than in the lazily loaded
+  // renderer means Next cannot race the renderer's chunk.
+  const draftValue = draftKey === key ? draft : (answers[key] ?? implicitAnswer(question));
   const hasDraft = isAnswerable && draftValue !== undefined && (isAnswered(draftValue) || ("provided" in draftValue && !draftValue.provided));
   // An explicit clear (renderer sent `undefined`) means "no answer" even when a
   // value is stored: Next must then go through the skip flow, not keep the old value.
@@ -143,8 +145,10 @@ export function WizardPage() {
     setSkipPrompt(false);
     setLocalErrors([]);
     if (opts?.commit && value !== undefined) {
-      void commit(value).then((ok) => {
-        if (ok && opts.advance) advance(position(def, { ...answers, [key]: value }, key));
+      // Blur on an unchanged text/number/date field must not PUT the same value again.
+      const unchanged = JSON.stringify(value) === JSON.stringify(answers[key]);
+      void (unchanged ? Promise.resolve(true) : commit(value)).then((ok) => {
+        if (ok && opts.advance) advance(after(value));
       });
     }
   };
@@ -246,7 +250,7 @@ export function WizardPage() {
 
   // The overview sheet is unmounted while closed; don't walk the DAG twice per keystroke for it.
   const rows = overviewOpen ? overview(def, answers, key, response.data.last_question_key) : [];
-  const progressValue = pos.questionTotal ? Math.min(1, (pos.questionNumber - (hasDraft || answers[key] ? 0 : 1)) / pos.questionTotal) : 0;
+  const progressValue = progressFraction(pos, hasDraft || answers[key] !== undefined);
 
   return (
     <>

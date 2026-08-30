@@ -24,7 +24,9 @@ export interface ResponseSummary {
 
 export interface AnswerResult {
   answer: { key: string; value: AnswerValue };
+  /** Downstream answers the save invalidated; those in `pruned` survive with a reduced value. */
   invalidated: string[];
+  pruned: Record<string, AnswerValue>;
   visible: string[];
   missing: string[];
   progress: { answered: number; total: number };

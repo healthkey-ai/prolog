@@ -7,7 +7,7 @@ import type { TextValue } from "@/survey/types";
 export function TextInput({ question, value, onChange, disabled }: RendererProps<TextValue>) {
   const { t } = useTranslation();
   const cfg = question.config ?? {};
-  const multiline = cfg.multiline ?? (cfg.max_length ?? 0) > 200;
+  const multiline = cfg.multiline ?? false; // the server fills the default (normalize.py)
   const text = value?.text ?? "";
   const common = {
     className: inputClass,
@@ -24,7 +24,7 @@ export function TextInput({ question, value, onChange, disabled }: RendererProps
       {multiline ? <Textarea rows={6} {...common} /> : <Input type="text" {...common} />}
       {cfg.max_length && (
         <p className="mt-1 text-right text-sm text-muted-foreground" aria-live="polite">
-          {t("text.remaining", { count: cfg.max_length - text.length })}
+          {t("text.remaining", { count: cfg.max_length - [...text].length })}
         </p>
       )}
     </div>

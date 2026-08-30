@@ -6,7 +6,6 @@ participant record; PROlog only ever stores the resulting participant link.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -45,8 +44,7 @@ def get_identity_service() -> IdentityService | None:
 
 
 def idempotency_key(response_id: Any) -> str:
-    raw = f"{conf.get('PROLOG_CLIENT_KEY_SALT')}|identity|{response_id}"
-    return hashlib.sha256(raw.encode()).hexdigest()
+    return conf.salted_hash("identity", str(response_id))
 
 
 def resolve_participant(request) -> Any | None:

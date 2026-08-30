@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 I18N_FIELDS = {
@@ -43,9 +42,7 @@ def localize(definition: dict[str, Any], lang: str) -> dict[str, Any]:
             return [walk(item, key) for item in node]
         return node
 
-    doc = copy.deepcopy(definition)
-    doc.pop("notes", None)
-    doc.pop("$schema", None)
-    localized = walk(doc)
+    # walk() rebuilds every container, so the source definition is never mutated.
+    localized = walk({k: v for k, v in definition.items() if k not in ("notes", "$schema")})
     localized["language"] = lang
     return localized

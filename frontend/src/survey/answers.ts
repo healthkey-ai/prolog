@@ -40,6 +40,22 @@ function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
 }
 
+/** Length in code points, as Python's len() counts (an emoji is 1, not 2). */
+function length(text: string): number {
+  return [...text].length;
+}
+
+/**
+ * The answer a question carries before the participant touches it, if any: a
+ * required ranking's displayed order is itself a valid answer, so Next accepts
+ * it (RUN-…/Q-6). Optional rankings stay unanswered so they can be skipped.
+ */
+export function implicitAnswer(q: Question): AnswerValue | undefined {
+  if (q.type !== "ranking" || !questionRequired(q)) return undefined;
+  const optional = new Set(questionConfig(q).optional_items ?? []);
+  return { order: questionOptions(q).filter((o) => !optional.has(o.key)).map((o) => o.key) };
+}
+
 function optionKeys(q: Question): string[] {
   return questionOptions(q).map((o) => o.key);
 }
@@ -52,7 +68,7 @@ function otherText(raw: Record<string, unknown>, q: Question, selected: string[]
   if (!trimmed) return {};
   const free = new Set(questionOptions(q).filter((o) => o.free_text).map((o) => o.key));
   if (!selected.some((k) => free.has(k))) fail("other_text requires a free-text option to be selected");
-  if (trimmed.length > MAX_OTHER_TEXT) fail(`other_text exceeds ${MAX_OTHER_TEXT} characters`);
+  if (length(trimmed) > MAX_OTHER_TEXT) fail(`other_text exceeds ${MAX_OTHER_TEXT} characters`);
   return { other_text: trimmed };
 }
 
@@ -146,7 +162,7 @@ export function validateAnswer(
   if (q.type === "text") {
     const text = raw.text;
     if (typeof text !== "string" || !text.trim()) fail("text is required");
-    if (cfg.max_length && text.length > cfg.max_length) fail(`text exceeds ${cfg.max_length} characters`);
+    if (cfg.max_length && length(text) > cfg.max_length) fail(`text exceeds ${cfg.max_length} characters`);
     return { text: text.trim() };
   }
 

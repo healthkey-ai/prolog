@@ -1,12 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type { AnswerResult, OptionsSource, ResponseSummary, RunnerDefinition } from "./types";
 import type { AnswerValue } from "@/survey/types";
+import type { Theme } from "@/theme/types";
 
 export const keys = {
   definition: (slug: string, lang?: string) => ["definition", slug, lang ?? ""] as const,
   response: (id: string) => ["response", id] as const,
   options: (source: string, lang: string) => ["options", source, lang] as const,
+  theme: (code: string) => ["theme", code] as const,
 };
 
 /**
@@ -27,6 +29,18 @@ export function useSurveyDefinition(slug: string | undefined, lang?: string, inv
     queryKey: [...keys.definition(slug ?? "", lang), invite ?? "", responseId ?? ""],
     queryFn: () => api.get<RunnerDefinition>(`/surveys/${slug}/${qs ? `?${qs}` : ""}`),
     enabled: Boolean(slug),
+    staleTime: Infinity,
+    // A language switch re-keys the query; keep rendering the previous
+    // localisation meanwhile instead of unmounting the page (and its state).
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useTheme(code: string | undefined) {
+  return useQuery({
+    queryKey: keys.theme(code ?? ""),
+    queryFn: () => api.get<Theme>(`/themes/${code}/`),
+    enabled: Boolean(code),
     staleTime: Infinity,
   });
 }
@@ -95,13 +109,12 @@ export function useSaveAnswer(id: string) {
       qc.setQueryData<ResponseSummary>(keys.response(id), (current) => {
         if (!current) return current;
         const answers = { ...current.answers, [key]: result.answer.value };
-        for (const k of result.invalidated) {
-          // A pruned matrix keeps a reduced value; a deleted answer disappears. Refetch settles both.
-          delete answers[k];
-        }
+        for (const k of result.invalidated) delete answers[k];
+        // A pruned matrix keeps its surviving rows; the server sends them back so the
+        // cache is settled here (a refetch could be cancelled by the next save).
+        Object.assign(answers, result.pruned);
         return { ...current, answers, visible: result.visible, missing: result.missing, progress: result.progress, last_question_key: key };
       });
-      if (result.invalidated.length) void qc.invalidateQueries({ queryKey: keys.response(id) });
     },
   });
 }

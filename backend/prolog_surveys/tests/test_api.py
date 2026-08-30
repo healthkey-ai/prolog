@@ -316,3 +316,59 @@ def test_no_ip_or_email_persisted(api_client, response_id):
     field_names = {f.name for f in SurveyResponse._meta.get_fields()}
     assert not {"ip", "ip_address", "email"} & field_names
     assert len(response.user_agent_hash) in (0, 64)
+
+
+def test_consent_not_required_records_only_an_agreement(api_client, db, definition):
+    definition["consent"] = {
+        "version": "2026-01",
+        "required": False,
+        "text": {"en": "We store answers.", "es": "x", "fr": "y"},
+    }
+    load_definition(definition, activate=True)
+    r = api_client.post(
+        "/api/run/responses/",
+        {
+            "slug": "sample-wellbeing",
+            "language": "en",
+            "consent": {"version": "2026-01", "agreed": False},
+        },
+        format="json",
+    )
+    assert r.status_code == 201
+    assert not SurveyConsent.objects.filter(response_id=r.json()["id"]).exists()
+    r = api_client.post(
+        "/api/run/responses/",
+        {
+            "slug": "sample-wellbeing",
+            "language": "en",
+            "consent": {"version": "old", "agreed": True},
+        },
+        format="json",
+    )
+    assert r.status_code == 201
+    assert not SurveyConsent.objects.filter(response_id=r.json()["id"]).exists()
+
+
+def test_contact_capture_is_recorded_once_per_response(api_client, response_id):
+    url = f"/api/run/responses/{response_id}/contact/"
+    assert api_client.post(url, {"email": "one@example.org"}, format="json").status_code == 204
+    # The {provided: true} marker cannot be reset through the answer endpoint...
+    r = put_answer(api_client, response_id, "contact_email", {"provided": False})
+    assert r.status_code == 200 and r.json()["answer"]["value"] == {"provided": True}
+    # ...so a second address is not stored.
+    assert api_client.post(url, {"email": "two@example.org"}, format="json").status_code == 204
+    assert list(SurveyContact.objects.values_list("email", flat=True)) == ["one@example.org"]
+
+
+def test_answer_reports_pruned_matrix_rows(api_client, response_id):
+    put_answer(api_client, response_id, "has_symptoms", {"option": "yes"})
+    put_answer(api_client, response_id, "symptoms", {"options": ["fatigue", "pain"]})
+    put_answer(api_client, response_id, "symptom_impact", {"ratings": {"fatigue": 2, "pain": 4}})
+    r = put_answer(api_client, response_id, "symptoms", {"options": ["fatigue"]})
+    assert r.status_code == 200
+    assert r.json()["invalidated"] == ["symptom_impact"]
+    assert r.json()["pruned"] == {"symptom_impact": {"ratings": {"fatigue": 2}}}
+    # Clearing the source hides the matrix entirely: deleted, not pruned.
+    r = put_answer(api_client, response_id, "symptoms", {"skipped": True})
+    assert r.json()["invalidated"] == ["symptom_impact"] and r.json()["pruned"] == {}
+    assert "symptom_impact" not in r.json()["visible"]

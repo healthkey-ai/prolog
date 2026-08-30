@@ -59,6 +59,16 @@ export function position(def: Definition, answers: Answers, currentKey: string |
 }
 
 /**
+ * Progress bar value (0..1): answerable questions completed so far, counting the
+ * current one only once it holds an answer or a draft.
+ */
+export function progressFraction(pos: Position, currentAnswered: boolean): number {
+  if (!pos.questionTotal) return 0;
+  const pending = pos.current && ANSWERABLE.has(pos.current.type) && !currentAnswered ? 1 : 0;
+  return Math.min(1, Math.max(0, (pos.questionNumber - pending) / pos.questionTotal));
+}
+
+/**
  * Where a participant should land: a fresh response starts at the first
  * visible question (info blocks included); a resumed one continues at the
  * first open question, or stays on the last reached one when nothing is open.

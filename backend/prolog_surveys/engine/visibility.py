@@ -107,6 +107,8 @@ def visible_questions(definition: dict[str, Any], answers: Answers) -> list[Visi
         for q in section["questions"]:
             if not conditions_hold(q.get("visible_if", []), seen):
                 continue
+            if q["type"] == "matrix" and _dynamic_rows_empty(q, seen):
+                continue
             if q["key"] in answers:
                 seen[q["key"]] = answers[q["key"]]
             out.append(
@@ -120,6 +122,14 @@ def visible_questions(definition: dict[str, Any], answers: Answers) -> list[Visi
                 )
             )
     return out
+
+
+def _dynamic_rows_empty(question: dict[str, Any], answers: Answers) -> bool:
+    """A ``rows_from`` matrix has nothing to ask while its source has no
+    selection, so it is hidden rather than left visible with zero rows (which
+    could neither be answered nor, under a hard skip policy, skipped)."""
+    cfg = question.get("config", {})
+    return bool(cfg.get("rows_from")) and not cfg.get("rows") and not matrix_rows(question, answers)
 
 
 def visible_keys(definition: dict[str, Any], answers: Answers) -> list[str]:

@@ -29,6 +29,16 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8000}
       PROLOG_PUBLIC_URL: ${PROLOG_PUBLIC_URL:-http://localhost:8000}
       SECURE_SSL_REDIRECT: "false"
+      # Operational settings from .env (compose only substitutes ${...}; it does
+      # not pass .env into the container by itself).
+      PROLOG_NUM_PROXIES: ${PROLOG_NUM_PROXIES:-0}
+      PROLOG_THROTTLE_CREATE: ${PROLOG_THROTTLE_CREATE:-30/hour}
+      PROLOG_THROTTLE_ANSWER: ${PROLOG_THROTTLE_ANSWER:-600/hour}
+      PROLOG_THROTTLE_READ: ${PROLOG_THROTTLE_READ:-1200/hour}
+      PROLOG_ABANDONED_RESPONSE_DAYS: ${PROLOG_ABANDONED_RESPONSE_DAYS:-90}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      PROLOG_EMAIL_FROM: ${PROLOG_EMAIL_FROM:-surveys@example.org}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ${PROLOG_DATA_DIR:-./examples/deploy}/surveys:/data/surveys:ro
       - ${PROLOG_DATA_DIR:-./examples/deploy}/themes:/data/themes:ro
