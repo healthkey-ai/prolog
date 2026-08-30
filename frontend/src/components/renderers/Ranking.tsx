@@ -1,7 +1,7 @@
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
@@ -18,6 +18,13 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
   const order = value?.order ?? options.filter((o) => !optional.has(o.key)).map((o) => o.key);
   const unranked = options.filter((o) => optional.has(o.key) && !order.includes(o.key));
   const [announce, setAnnounce] = useState("");
+
+  // The order shown is itself a valid answer: register it as the draft so Next
+  // accepts an untouched ranking instead of treating it as unanswered.
+  useEffect(() => {
+    if (value === undefined) onChange({ order });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.key]);
   const labelOf = (key: string) => (options.find((o) => o.key === key)?.label as string) ?? key;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 

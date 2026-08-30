@@ -74,13 +74,12 @@ export function WizardPage() {
     }
   }, [id, def, response.data, response.isError, pos, key, slug, navigate]);
 
-  // Reset the draft when the question changes.
+  // The draft is keyed on the question: a stale draft from another question is ignored,
+  // so no reset effect is needed (a reset would race with renderers that register a
+  // default draft on mount, e.g. ranking).
   useEffect(() => {
-    setDraftKey(key);
-    setDraft(answers[key]);
     setSkipPrompt(false);
     setLocalErrors([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const flashSaved = useCallback(() => {

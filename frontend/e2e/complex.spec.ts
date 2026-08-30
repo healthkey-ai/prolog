@@ -101,6 +101,15 @@ test.describe("complex question types", () => {
     expect((await serverAnswers(request, id)).answers.outcome_ranking).toEqual({ order: ["energy", "independence", "fewer_visits", "side_effects"] });
   });
 
+  test("an untouched ranking is accepted as-is on Next", async ({ page, request }) => {
+    const id = await startAndPrefill(page, request, { ...BASE, has_symptoms: { option: "no" }, daily_activities: { ratings: { walking: 1, housework: 2, socialising: 3 } } });
+    await page.goto(`/s/${SLUG}/q/outcome_ranking`);
+    await expect(page.getByTestId("ranking-list")).toBeVisible(); // lazily loaded renderer
+    await page.getByTestId("next").click();
+    await expect(page.getByTestId("question-support_wanted")).toBeVisible();
+    expect((await serverAnswers(request, id)).answers.outcome_ranking).toEqual({ order: ["energy", "fewer_visits", "side_effects", "independence"] });
+  });
+
   test("gate closes and reopens: downstream answers invalidated, overview updates", async ({ page, request }) => {
     const id = await startAndPrefill(page, request, {
       ...BASE,
