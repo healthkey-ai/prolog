@@ -23,4 +23,4 @@ ENV PATH="/app/backend/.venv/bin:$PATH" DEBUG=false PROLOG_PROFILE=standalone \
 WORKDIR /app/backend
 RUN python manage.py collectstatic --noinput
 EXPOSE 8000
-CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py load_definitions && gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]

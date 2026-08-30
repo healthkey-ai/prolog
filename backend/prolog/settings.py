@@ -122,7 +122,13 @@ PROLOG_ABANDONED_RESPONSE_DAYS = int(os.environ.get("PROLOG_ABANDONED_RESPONSE_D
 PROLOG_EMAIL_FROM = os.environ.get("PROLOG_EMAIL_FROM", "surveys@example.org")
 PROLOG_PUBLIC_URL = os.environ.get("PROLOG_PUBLIC_URL", "http://localhost:5173")
 
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+MAILERS = {
+    "default": {
+        "BACKEND": os.environ.get(
+            "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+        ),
+    }
+}
 
 if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000

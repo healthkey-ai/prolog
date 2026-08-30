@@ -1,0 +1,230 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-wellbeing",
+  "version": "1.0",
+  "status": "draft",
+  "default_language": "en",
+  "languages": ["en", "es", "fr"],
+  "translation_status": { "es": "reviewed", "fr": "machine" },
+  "title": { "en": "Wellbeing check-in", "es": "Chequeo de bienestar", "fr": "Bilan de bien-être" },
+  "intro": {
+    "en": "This short survey asks how you have been feeling and what support would help. It takes about five minutes. Your answers are anonymous.",
+    "es": "Esta breve encuesta pregunta cómo se ha sentido y qué apoyo le ayudaría. Dura unos cinco minutos. Sus respuestas son anónimas.",
+    "fr": "Ce court questionnaire porte sur votre ressenti et le soutien qui vous aiderait. Il prend environ cinq minutes. Vos réponses sont anonymes."
+  },
+  "completion": {
+    "en": "Thank you. Your answers have been recorded.",
+    "es": "Gracias. Sus respuestas han sido registradas.",
+    "fr": "Merci. Vos réponses ont été enregistrées."
+  },
+  "estimated_minutes": 5,
+  "theme": "default",
+  "participation": { "anonymous": true, "resume": "browser_token" },
+  "presentation": { "mode": "question", "overview": true, "section_interstitials": true, "skip_policy": "soft", "progress": "bar" },
+  "notes": "Neutral sample instrument used by tests and demos. It exercises every question type, branching in both directions, a dynamic matrix, a fixed matrix, ranking with an optional item, limits and exclusives, a section-level gate and contact capture.",
+  "sections": [
+    {
+      "key": "about",
+      "title": { "en": "About you", "es": "Sobre usted", "fr": "À propos de vous" },
+      "questions": [
+        {
+          "key": "welcome",
+          "type": "info",
+          "text": {
+            "en": "There are no right or wrong answers. You can go back and change any answer before you finish.",
+            "es": "No hay respuestas correctas o incorrectas. Puede volver atrás y cambiar cualquier respuesta antes de terminar.",
+            "fr": "Il n'y a pas de bonne ou de mauvaise réponse. Vous pouvez revenir en arrière et modifier toute réponse avant de terminer."
+          }
+        },
+        {
+          "key": "country",
+          "type": "dropdown",
+          "text": { "en": "Which country do you live in?", "es": "¿En qué país vive?", "fr": "Dans quel pays vivez-vous ?" },
+          "config": { "options_source": "iso3166_countries" },
+          "options": [{ "key": "prefer_not_to_say", "label": { "en": "Prefer not to say", "es": "Prefiero no decirlo", "fr": "Je préfère ne pas répondre" } }]
+        },
+        {
+          "key": "age_band",
+          "type": "single",
+          "text": { "en": "How old are you?", "es": "¿Cuántos años tiene?", "fr": "Quel âge avez-vous ?" },
+          "options": [
+            { "key": "under_30", "label": { "en": "Under 30", "es": "Menos de 30", "fr": "Moins de 30 ans" } },
+            { "key": "30_49", "label": { "en": "30–49", "es": "30–49", "fr": "30–49 ans" } },
+            { "key": "50_69", "label": { "en": "50–69", "es": "50–69", "fr": "50–69 ans" } },
+            { "key": "70_plus", "label": { "en": "70 or over", "es": "70 o más", "fr": "70 ans ou plus" } },
+            { "key": "prefer_not_to_say", "label": { "en": "Prefer not to say", "es": "Prefiero no decirlo", "fr": "Je préfère ne pas répondre" } }
+          ]
+        },
+        {
+          "key": "birth_year",
+          "type": "number",
+          "required": false,
+          "text": { "en": "What year were you born?", "es": "¿En qué año nació?", "fr": "En quelle année êtes-vous né(e) ?" },
+          "config": { "min_value": 1900, "max_value": 2026, "integer": true }
+        },
+        {
+          "key": "last_visit",
+          "type": "date",
+          "required": false,
+          "text": { "en": "When was your last clinic visit?", "es": "¿Cuándo fue su última visita a la clínica?", "fr": "À quand remonte votre dernière visite à la clinique ?" },
+          "config": { "min_date": "2000-01-01", "max_date": "2026-12-31" }
+        }
+      ]
+    },
+    {
+      "key": "wellbeing",
+      "title": { "en": "How you have been feeling", "es": "Cómo se ha sentido", "fr": "Votre ressenti" },
+      "description": { "en": "Think about the last two weeks.", "es": "Piense en las últimas dos semanas.", "fr": "Pensez aux deux dernières semaines." },
+      "questions": [
+        {
+          "key": "overall",
+          "type": "scale",
+          "text": { "en": "Overall, how would you rate your wellbeing?", "es": "En general, ¿cómo calificaría su bienestar?", "fr": "Globalement, comment évaluez-vous votre bien-être ?" },
+          "config": { "scale": { "min": 1, "max": 5, "min_label": { "en": "Very poor", "es": "Muy malo", "fr": "Très mauvais" }, "max_label": { "en": "Very good", "es": "Muy bueno", "fr": "Très bon" } } }
+        },
+        {
+          "key": "has_symptoms",
+          "type": "single",
+          "text": { "en": "Have you had any symptoms that bothered you?", "es": "¿Ha tenido síntomas que le hayan molestado?", "fr": "Avez-vous eu des symptômes gênants ?" },
+          "options": [
+            { "key": "yes", "label": { "en": "Yes", "es": "Sí", "fr": "Oui" } },
+            { "key": "no", "label": { "en": "No", "es": "No", "fr": "Non" } },
+            { "key": "not_sure", "label": { "en": "Not sure", "es": "No estoy seguro(a)", "fr": "Je ne sais pas" } }
+          ]
+        },
+        {
+          "key": "symptoms",
+          "type": "multi",
+          "text": { "en": "Which symptoms? Select up to three.", "es": "¿Qué síntomas? Seleccione hasta tres.", "fr": "Quels symptômes ? Sélectionnez-en trois au maximum." },
+          "visible_if": [{ "question": "has_symptoms", "op": "eq", "value": "yes" }],
+          "config": { "max_selections": 3 },
+          "options": [
+            { "key": "fatigue", "label": { "en": "Tiredness", "es": "Cansancio", "fr": "Fatigue" } },
+            { "key": "pain", "label": { "en": "Pain", "es": "Dolor", "fr": "Douleur" } },
+            { "key": "sleep", "label": { "en": "Trouble sleeping", "es": "Problemas para dormir", "fr": "Troubles du sommeil" } },
+            { "key": "worry", "label": { "en": "Worry or anxiety", "es": "Preocupación o ansiedad", "fr": "Inquiétude ou anxiété" } },
+            { "key": "other", "label": { "en": "Other", "es": "Otro", "fr": "Autre" }, "free_text": true },
+            { "key": "none", "label": { "en": "None of these", "es": "Ninguno de estos", "fr": "Aucun de ceux-ci" }, "exclusive": true }
+          ]
+        },
+        {
+          "key": "symptom_impact",
+          "type": "matrix",
+          "text": { "en": "How much did each symptom interfere with your daily life?", "es": "¿Cuánto interfirió cada síntoma en su vida diaria?", "fr": "Dans quelle mesure chaque symptôme a-t-il gêné votre vie quotidienne ?" },
+          "visible_if": [
+            { "question": "has_symptoms", "op": "eq", "value": "yes" },
+            { "question": "symptoms", "op": "answered" }
+          ],
+          "config": {
+            "rows_from": "symptoms",
+            "scale": {
+              "min": 1, "max": 5,
+              "point_labels": [
+                { "en": "Not at all", "es": "Nada", "fr": "Pas du tout" },
+                { "en": "A little", "es": "Un poco", "fr": "Un peu" },
+                { "en": "Moderately", "es": "Moderadamente", "fr": "Modérément" },
+                { "en": "Quite a lot", "es": "Bastante", "fr": "Beaucoup" },
+                { "en": "Extremely", "es": "Extremadamente", "fr": "Énormément" }
+              ]
+            }
+          }
+        },
+        {
+          "key": "daily_activities",
+          "type": "matrix",
+          "text": { "en": "How easy were these activities?", "es": "¿Qué tan fáciles fueron estas actividades?", "fr": "Ces activités ont-elles été faciles ?" },
+          "config": {
+            "rows": [
+              { "key": "walking", "label": { "en": "Walking", "es": "Caminar", "fr": "Marcher" } },
+              { "key": "housework", "label": { "en": "Housework", "es": "Tareas del hogar", "fr": "Tâches ménagères" } },
+              { "key": "socialising", "label": { "en": "Seeing friends", "es": "Ver a amigos", "fr": "Voir des amis" } }
+            ],
+            "scale": { "min": 1, "max": 3, "point_labels": [ { "en": "Hard", "es": "Difícil", "fr": "Difficile" }, { "en": "OK", "es": "Regular", "fr": "Moyen" }, { "en": "Easy", "es": "Fácil", "fr": "Facile" } ] }
+          }
+        }
+      ]
+    },
+    {
+      "key": "priorities",
+      "title": { "en": "What matters to you", "es": "Lo que le importa", "fr": "Ce qui compte pour vous" },
+      "questions": [
+        {
+          "key": "outcome_ranking",
+          "type": "ranking",
+          "text": { "en": "Rank these from most to least important.", "es": "Ordene estos de más a menos importante.", "fr": "Classez ces éléments du plus au moins important." },
+          "help": { "en": "Drag to reorder, or use the arrow buttons. 1 = most important.", "es": "Arrastre para reordenar o use los botones de flecha. 1 = más importante.", "fr": "Faites glisser pour réorganiser ou utilisez les boutons fléchés. 1 = le plus important." },
+          "config": { "optional_items": ["other"] },
+          "options": [
+            { "key": "energy", "label": { "en": "Having more energy", "es": "Tener más energía", "fr": "Avoir plus d'énergie" } },
+            { "key": "fewer_visits", "label": { "en": "Fewer hospital visits", "es": "Menos visitas al hospital", "fr": "Moins de visites à l'hôpital" } },
+            { "key": "side_effects", "label": { "en": "Fewer side effects", "es": "Menos efectos secundarios", "fr": "Moins d'effets secondaires" } },
+            { "key": "independence", "label": { "en": "Staying independent", "es": "Mantener la independencia", "fr": "Rester autonome" } },
+            { "key": "other", "label": { "en": "Other", "es": "Otro", "fr": "Autre" }, "free_text": true }
+          ]
+        },
+        {
+          "key": "support_wanted",
+          "type": "multi",
+          "text": { "en": "What support would help most?", "es": "¿Qué apoyo le ayudaría más?", "fr": "Quel soutien vous aiderait le plus ?" },
+          "config": { "max_selections": 2 },
+          "options": [
+            { "key": "information", "label": { "en": "Clear information", "es": "Información clara", "fr": "Des informations claires" } },
+            { "key": "peer", "label": { "en": "Talking to others with the same condition", "es": "Hablar con otras personas con la misma afección", "fr": "Parler à d'autres personnes atteintes de la même maladie" } },
+            { "key": "practical", "label": { "en": "Practical help at home", "es": "Ayuda práctica en casa", "fr": "Aide pratique à domicile" } },
+            { "key": "nothing", "label": { "en": "Nothing – I am fine", "es": "Nada – estoy bien", "fr": "Rien – tout va bien" }, "exclusive": true }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "symptom_followup",
+      "title": { "en": "A little more about your symptoms", "es": "Un poco más sobre sus síntomas", "fr": "Un peu plus sur vos symptômes" },
+      "visible_if": [{ "question": "has_symptoms", "op": "in", "values": ["yes", "not_sure"] }],
+      "questions": [
+        {
+          "key": "told_clinician",
+          "type": "single",
+          "text": { "en": "Have you told your care team about this?", "es": "¿Se lo ha contado a su equipo de atención?", "fr": "En avez-vous parlé à votre équipe soignante ?" },
+          "options": [
+            { "key": "yes", "label": { "en": "Yes", "es": "Sí", "fr": "Oui" } },
+            { "key": "no", "label": { "en": "No", "es": "No", "fr": "Non" } }
+          ]
+        },
+        {
+          "key": "worry_detail",
+          "type": "text",
+          "required": false,
+          "text": { "en": "If you selected worry or anxiety, what worries you most?", "es": "Si seleccionó preocupación o ansiedad, ¿qué es lo que más le preocupa?", "fr": "Si vous avez sélectionné inquiétude ou anxiété, qu'est-ce qui vous inquiète le plus ?" },
+          "visible_if": [{ "question": "symptoms", "op": "contains", "value": "worry" }],
+          "config": { "max_length": 1000 }
+        }
+      ]
+    },
+    {
+      "key": "closing",
+      "title": { "en": "Anything else", "es": "Algo más", "fr": "Autre chose" },
+      "questions": [
+        {
+          "key": "anything_else",
+          "type": "text",
+          "required": false,
+          "text": { "en": "Is there anything else you would like to tell us?", "es": "¿Hay algo más que quiera contarnos?", "fr": "Y a-t-il autre chose que vous souhaitez nous dire ?" },
+          "config": { "max_length": 5000 }
+        },
+        {
+          "key": "contact_email",
+          "type": "email",
+          "required": false,
+          "text": { "en": "Would you like to hear about future surveys?", "es": "¿Le gustaría recibir información sobre futuras encuestas?", "fr": "Souhaitez-vous être informé(e) des prochains questionnaires ?" },
+          "help": {
+            "en": "Leave your email if so. It is stored separately from your answers and is never linked to them.",
+            "es": "Deje su correo electrónico si lo desea. Se guarda por separado de sus respuestas y nunca se vincula a ellas.",
+            "fr": "Laissez votre e-mail si vous le souhaitez. Il est conservé séparément de vos réponses et n'y est jamais associé."
+          },
+          "config": { "store_separately": true }
+        }
+      ]
+    }
+  ]
+}
