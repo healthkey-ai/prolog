@@ -1,3 +1,3 @@
-from .registry import DEFAULT_THEME, Theme, ThemeError, registry, validate_theme
+from .registry import DEFAULT_THEME, Theme, registry, validate_theme
 
-__all__ = ["DEFAULT_THEME", "Theme", "ThemeError", "registry", "validate_theme"]
+__all__ = ["DEFAULT_THEME", "Theme", "registry", "validate_theme"]

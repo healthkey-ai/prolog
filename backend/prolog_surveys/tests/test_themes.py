@@ -141,3 +141,14 @@ def test_definition_reports_resolved_theme(api_client, db, caplog):
     doc["version"] = "1.1"
     load_definition(doc, activate=True)
     assert api_client.get("/api/run/surveys/sample-wellbeing/").json()["theme_code"] == "contrast"
+
+
+def test_malformed_theme_json_is_skipped(tmp_path, settings, caplog):
+    (tmp_path / "bad").mkdir()
+    (tmp_path / "bad" / "theme.json").write_text("{not json")
+    _, issues = validate_theme(tmp_path / "bad")
+    assert [i.code for i in issues] == ["json"] and issues[0].level == "error"
+    settings.PROLOG_THEME_DIRS = [str(THEMES), str(tmp_path)]
+    registry.reload()  # must not raise
+    assert "bad" not in registry.all() and "default" in registry.all()
+    assert "rejected" in caplog.text

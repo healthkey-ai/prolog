@@ -372,3 +372,66 @@ def test_answer_reports_pruned_matrix_rows(api_client, response_id):
     r = put_answer(api_client, response_id, "symptoms", {"skipped": True})
     assert r.json()["invalidated"] == ["symptom_impact"] and r.json()["pruned"] == {}
     assert "symptom_impact" not in r.json()["visible"]
+
+
+def test_closed_survey_rejects_writes_but_stays_readable(api_client, response_id, active):
+    put_answer(api_client, response_id, "country", {"option": "GB"})
+    survey = active.survey
+    survey.effective_to = "2000-01-01"
+    survey.save()
+    assert api_client.get(f"/api/run/responses/{response_id}/").status_code == 200
+    assert (
+        api_client.get(f"/api/run/surveys/sample-wellbeing/?response={response_id}").status_code
+        == 200
+    )
+    r = put_answer(api_client, response_id, "age_band", {"option": "30_49"})
+    assert r.status_code == 410 and r.json()["detail"] == "survey has closed"
+    for call in (
+        lambda: api_client.post(f"/api/run/responses/{response_id}/submit/"),
+        lambda: api_client.patch(
+            f"/api/run/responses/{response_id}/", {"language": "es"}, format="json"
+        ),
+        lambda: api_client.post(
+            f"/api/run/responses/{response_id}/contact/", {"email": "a@b.co"}, format="json"
+        ),
+    ):
+        assert call().status_code == 410
+    survey.effective_to = None
+    survey.effective_from = "2999-01-01"
+    survey.save()
+    r = put_answer(api_client, response_id, "age_band", {"option": "30_49"})
+    assert r.status_code == 410 and r.json()["detail"] == "survey is not yet open"
+
+
+def test_contact_marker_survives_hiding_the_email_question(api_client, db, definition):
+    for s in definition["sections"]:
+        for q in s["questions"]:
+            if q["type"] == "email":
+                q["visible_if"] = [{"question": "has_symptoms", "op": "eq", "value": "yes"}]
+    load_definition(definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    url = f"/api/run/responses/{rid}/contact/"
+    assert put_answer(api_client, rid, "has_symptoms", {"option": "yes"}).status_code == 200
+    assert api_client.post(url, {"email": "one@example.org"}, format="json").status_code == 204
+    # Hiding the question must not throw the marker away with the other answers.
+    r = put_answer(api_client, rid, "has_symptoms", {"option": "no"})
+    assert r.status_code == 200
+    assert "contact_email" not in r.json()["visible"]
+    assert "contact_email" not in r.json()["invalidated"]
+    assert SurveyAnswer.objects.get(response_id=rid, question_key="contact_email").value == {
+        "provided": True
+    }
+    assert api_client.post(url, {"email": "x@example.org"}, format="json").status_code == 400
+    # Re-shown: the marker is back and a second address is not stored.
+    r = put_answer(api_client, rid, "has_symptoms", {"option": "yes"})
+    assert r.json()["invalidated"] == []
+    assert api_client.get(f"/api/run/responses/{rid}/").json()["answers"]["contact_email"] == {
+        "provided": True
+    }
+    assert api_client.post(url, {"email": "two@example.org"}, format="json").status_code == 204
+    assert list(SurveyContact.objects.values_list("email", flat=True)) == ["one@example.org"]
+    assert SurveyResponse.objects.get(pk=rid).last_question_key == "has_symptoms"
+    put_answer(api_client, rid, "contact_email", {"provided": False})
+    assert SurveyResponse.objects.get(pk=rid).last_question_key == "contact_email"

@@ -11,6 +11,7 @@ from typing import Any
 
 from .. import conf
 from ..definitions.schema import Issue, theme_schema, validate_against
+from ..definitions.validate import has_errors
 from .contrast import palette_warnings
 
 log = logging.getLogger(__name__)
@@ -29,12 +30,6 @@ ASSET_EXTENSIONS = {
     ".otf",
 }
 ASSET_KEYS = ("logo", "logo_on_primary", "favicon")
-
-
-class ThemeError(Exception):
-    def __init__(self, issues: list[Issue]):
-        self.issues = issues
-        super().__init__("; ".join(str(i) for i in issues if i.level == "error"))
 
 
 @dataclass
@@ -84,10 +79,13 @@ def validate_theme(directory: Path) -> tuple[dict[str, Any], list[Issue]]:
     path = directory / "theme.json"
     if not path.is_file():
         return {}, [Issue("missing", "$", f"{path} not found")]
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        return {}, [Issue("json", "$", f"{path}: {exc}")]
     issues = validate_against(theme_schema(), data)
-    if any(i.level == "error" for i in issues):
+    if has_errors(issues):
         return data, issues
     theme = Theme(code=data["code"], directory=directory, data=data)
     for ref in theme.asset_references():
@@ -124,8 +122,8 @@ class ThemeRegistry:
                 if not (directory / "theme.json").is_file():
                     continue
                 data, issues = validate_theme(directory)
-                errors = [i for i in issues if i.level == "error"]
-                if errors:
+                if has_errors(issues):
+                    errors = [i for i in issues if i.level == "error"]
                     log.error("theme %s rejected: %s", directory, "; ".join(map(str, errors)))
                     continue
                 warnings = [i.message for i in issues if i.level == "warning"]

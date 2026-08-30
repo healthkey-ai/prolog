@@ -58,6 +58,7 @@
   "multi.counter": "{{count}} sur {{max}} sélectionné(s)",
   "multi.limit": "Sélectionnez-en {{max}} au maximum",
   "ranking.help": "Faites glisser pour réorganiser ou utilisez les boutons fléchés.",
+  "ranking.drag": "{{label}} : poignée de déplacement",
   "ranking.moveUp": "Monter {{label}}",
   "ranking.moveDown": "Descendre {{label}}",
   "ranking.position": "{{label}} est maintenant en position {{position}} sur {{total}}",

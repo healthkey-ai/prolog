@@ -58,6 +58,7 @@
   "multi.counter": "{{count}} de {{max}} selecionadas",
   "multi.limit": "Selecione até {{max}}",
   "ranking.help": "Arraste para reordenar ou use os botões de seta.",
+  "ranking.drag": "{{label}}: alça para arrastar",
   "ranking.moveUp": "Mover {{label}} para cima",
   "ranking.moveDown": "Mover {{label}} para baixo",
   "ranking.position": "{{label}} agora está na posição {{position}} de {{total}}",

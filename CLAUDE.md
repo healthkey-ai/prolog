@@ -66,11 +66,11 @@ Node 24 LTS (≥ 22) / Vite 8 / React 19 / TypeScript 7 / Tailwind CSS 4 /
 shadcn / TanStack React Query 5 / React Router 8 / i18next / Vitest /
 Playwright.
 
-- Backend deps: `uv` with `backend/pyproject.toml` (Phase 0 replaces
-  `requirements.txt`). Frontend: npm in `frontend/`.
+- Backend deps: `uv` with `backend/pyproject.toml` (no `requirements.txt`).
+  Frontend: npm in `frontend/`.
 - Local Postgres via `docker-compose up -d` (postgres:18). No SQLite, ever.
 - Validate a definition: `python -m jsonschema -i <file> schema/survey-definition.schema.json`
-  (or `manage.py validate_definition <file>` once Phase 1 lands).
+  or `manage.py validate_definition <file>` (schema + semantic rules).
 
 ## Conventions
 

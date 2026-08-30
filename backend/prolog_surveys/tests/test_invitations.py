@@ -170,3 +170,23 @@ def test_administration_uses_scheduled_version(api_client):
     assert r.status_code == 201
     # archived scheduled version falls back to the active one
     assert r.json()["version"] == v2.version
+
+
+@pytest.mark.django_db
+def test_anonymous_survey_takes_no_invitations(api_client, caplog):
+    version = load_definition(definition(anonymous=True), activate=True).version
+    SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
+    # Nothing is scheduled (so nothing is emailed) for an anonymous survey...
+    assert schedule_due(dt.date(2026, 1, 1)) == []
+    assert "anonymous" in caplog.text
+    # ...and a token, however obtained, is refused rather than linked to the answers.
+    admin = SurveyAdministration.objects.create(
+        invitation=version.survey.invitations.get(), survey_version=version, due_at="2026-01-01"
+    )
+    r = api_client.post(
+        "/api/run/responses/",
+        {"slug": "sample-wellbeing", "language": "en", "invitation": str(admin.id)},
+        format="json",
+    )
+    assert r.status_code == 400 and "invitation" in r.json()
+    assert not SurveyResponse.objects.exists()

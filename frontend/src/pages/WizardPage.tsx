@@ -42,6 +42,9 @@ export function WizardPage() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const savedTimer = useRef<number | null>(null);
   const lastFailed = useRef<{ key: string; value: AnswerValue } | null>(null);
+  // Set when a failed submit sends the participant to the first missing question:
+  // that navigation must keep the "questions missing" alert, not clear it.
+  const bouncedToMissing = useRef(false);
 
   const def = definition.data;
   const answers = response.data?.answers ?? {};
@@ -79,7 +82,10 @@ export function WizardPage() {
     setSkipPrompt(false);
     setLocalErrors([]);
     setInterstitial(null); // leaving an interstitial via the overview or browser history
-    resetSubmit(); // a stale "questions missing" alert must not follow the participant
+    // A stale "questions missing" alert must not follow the participant, except on
+    // the navigation that raised it; it clears on their next move.
+    if (bouncedToMissing.current) bouncedToMissing.current = false;
+    else resetSubmit();
   }, [key, resetSubmit]);
 
   const refetchResponse = response.refetch;
@@ -175,7 +181,9 @@ export function WizardPage() {
         onSuccess: () => navigate(`/s/${slug}/complete`),
         onError: (err) => {
           const missing = err instanceof ApiError ? err.body.missing : undefined;
-          if (missing?.length) goTo(missing[0]);
+          if (!missing?.length) return;
+          if (missing[0] !== key) bouncedToMissing.current = true;
+          goTo(missing[0]);
         },
       });
       return;
@@ -288,7 +296,7 @@ export function WizardPage() {
             questions={questions}
             onSubmitEmail={async (email) => {
               // Identity capture goes to the host's identity service; contact capture is stored unlinked.
-              await (question.config?.link_identity ? identity.mutateAsync(email) : contact.mutateAsync(email));
+              await (question.config?.link_identity ? identity.mutateAsync({ email, key }) : contact.mutateAsync({ email, key }));
               setDraftKey(key);
               setDraft({ provided: true });
               flashSaved();

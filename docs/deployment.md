@@ -59,6 +59,8 @@ Any wording or structure change after activation requires a **new
 | `EMAIL_BACKEND`, `PROLOG_EMAIL_FROM` | invitations (integrated profile) |
 | `SECURE_SSL_REDIRECT` | `true` by default when `DEBUG=false`; `/api/health/` is exempt |
 | `PROLOG_NUM_PROXIES` | number of reverse proxies in front of the app (default `0`). Set `1` behind a TLS-terminating proxy so its `X-Forwarded-Proto` / `X-Forwarded-For` are trusted; otherwise the HTTPS redirect loops and throttling keys on the proxy's address |
+| `CONN_MAX_AGE` | seconds a database connection is reused across requests (default `60`; `0` under `DEBUG`) |
+| `WEB_CONCURRENCY` | gunicorn worker count in the container (default `3`) |
 | `LOG_LEVEL` | default `INFO` |
 
 Put TLS termination and HTTP→HTTPS in front (Caddy, nginx, a cloud load

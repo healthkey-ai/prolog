@@ -33,7 +33,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // A stored id that no longer resolves (purged response, expired account
   // session) must not leave the survey unthemed: fall back to the plain query.
   const stale = response.isError;
-  const definition = useSurveyDefinition(slug, response.data?.language, invite, stale ? undefined : responseId);
+  // Wait for the response before asking for its definition: its language is part
+  // of the key, so fetching at language "" first would fetch the definition twice.
+  const definition = useSurveyDefinition(slug, response.data?.language, invite, stale ? undefined : responseId, { enabled: !responseId || !response.isPending });
   const code = definition.data?.theme_code;
   const theme = useTheme(code);
 

@@ -123,7 +123,7 @@ function SortableItem(p: {
           <span className="sr-only">{p.index + 1}. </span>
           {label}
         </span>
-        <Button variant="text" size="runner-icon" className="cursor-grab text-muted-foreground" aria-label={`${label}: drag`} {...attributes} {...listeners} disabled={p.disabled}>
+        <Button variant="text" size="runner-icon" className="cursor-grab text-muted-foreground" aria-label={t("ranking.drag", { label })} {...attributes} {...listeners} disabled={p.disabled}>
           <GripVerticalIcon className="size-5" />
         </Button>
         <Button variant="text" size="runner-icon" onClick={p.onUp} disabled={p.disabled || p.index === 0} aria-label={t("ranking.moveUp", { label })} data-testid={`ranking-up-${p.id}`}>

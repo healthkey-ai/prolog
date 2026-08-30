@@ -38,6 +38,7 @@ from ..models import (
     SurveyConsent,
     SurveyContact,
     SurveyResponse,
+    SurveyVersion,
 )
 from ..options import iso3166
 from ..themes import registry as theme_registry
@@ -52,16 +53,24 @@ from .serializers import (
 from .throttles import ClientKeyThrottle, CreateThrottle, ResponseThrottle
 
 
+def _effective_window_error(survey: Survey) -> str | None:
+    """Why ``survey`` is outside its effective window today, or None if open."""
+    today = timezone.now().date()
+    if survey.effective_from and survey.effective_from > today:
+        return "survey is not yet open"
+    if survey.effective_to and survey.effective_to < today:
+        return "survey has closed"
+    return None
+
+
 def _active_version(slug: str):
     survey = get_object_or_404(Survey, slug=slug)
     version = survey.active_version
-    today = timezone.now().date()
     if version is None:
         raise NotFound("survey is not active")
-    if survey.effective_from and survey.effective_from > today:
-        raise NotFound("survey is not yet open")
-    if survey.effective_to and survey.effective_to < today:
-        raise NotFound("survey has closed")
+    error = _effective_window_error(survey)
+    if error:
+        raise NotFound(error)
     return survey, version
 
 
@@ -211,6 +220,11 @@ class ResponseCreateView(APIView):
         if administration is not None:
             version = version_for(administration) or version
         definition = version.definition
+        if administration is not None and definition["participation"]["anonymous"]:
+            # Linking would join anonymous answers to the invitation's email address.
+            raise ValidationError(
+                {"invitation": "this survey is anonymous and takes no invitation"}
+            )
         _check_access(request, definition, invited=administration is not None)
         lang = data["language"]
         if lang not in definition["languages"]:
@@ -223,6 +237,9 @@ class ResponseCreateView(APIView):
         if administration is not None and getattr(administration, "response", None) is not None:
             return Response(_response_payload(administration.response), status=status.HTTP_200_OK)
         if participant is not None and definition["participation"].get("resume") == "account":
+            # Serialise concurrent starts by the same participant so the
+            # read-then-create below cannot produce two in-progress responses.
+            SurveyVersion.objects.select_for_update().get(pk=version.pk)
             existing = (
                 SurveyResponse.objects.filter(
                     survey_version=version,
@@ -274,6 +291,12 @@ class ReadOnly(APIException):
     default_code = "read_only"
 
 
+class SurveyClosed(APIException):
+    status_code = status.HTTP_410_GONE
+    default_detail = "survey is not open"
+    default_code = "survey_closed"
+
+
 class ResponseMixin:
     def get_response(self, response_id, *, lock: bool = False) -> SurveyResponse:
         qs = SurveyResponse.objects.select_related("survey_version__survey")
@@ -285,10 +308,17 @@ class ResponseMixin:
 
     def writable(self, response_id) -> SurveyResponse:
         """Lock the response row for the transaction so concurrent writes and
-        submit serialise (the status/answers read below stay consistent)."""
+        submit serialise (the status/answers read below stay consistent).
+
+        Writes stop once the survey leaves its effective window (410); the
+        response stays readable so the runner can explain why.
+        """
         response = self.get_response(response_id, lock=True)
         if response.is_submitted:
             raise ReadOnly()
+        error = _effective_window_error(response.survey_version.survey)
+        if error:
+            raise SurveyClosed(error)
         return response
 
 
@@ -314,6 +344,31 @@ class ResponseDetailView(ResponseMixin, APIView):
         return Response(_response_payload(response))
 
 
+def _answer_result(
+    definition: dict,
+    question_key: str,
+    value: dict,
+    answers: dict,
+    *,
+    invalidated: list[str] | None = None,
+    pruned: dict | None = None,
+    visible: list[str] | None = None,
+) -> dict:
+    return {
+        "answer": {"key": question_key, "value": value},
+        "invalidated": invalidated or [],
+        "pruned": pruned or {},
+        "visible": visible if visible is not None else visible_keys(definition, answers),
+        "missing": missing_keys(definition, answers),
+        "progress": progress(definition, answers),
+    }
+
+
+def _is_capture_marker(question: dict, value: dict | None) -> bool:
+    """``{provided: true}`` on an email question records a completed capture."""
+    return question["type"] == "email" and (value or {}).get("provided") is True
+
+
 class AnswerView(ResponseMixin, APIView):
     throttle_classes = [ResponseThrottle]
 
@@ -330,22 +385,13 @@ class AnswerView(ResponseMixin, APIView):
         answers = response.answer_map()
         if question_key not in visible_keys(definition, answers):
             raise ValidationError({"value": ["this question is not currently shown"]})
-        if (
-            question["type"] == "email"
-            and (answers.get(question_key) or {}).get("provided") is True
-        ):
+        if _is_capture_marker(question, answers.get(question_key)):
             # A recorded capture cannot be downgraded: the {provided: true} marker is
             # what makes the contact endpoint idempotent (one address per response).
-            existing = answers[question_key]
+            response.last_question_key = question_key
+            response.save(update_fields=["last_question_key", "updated_at"])
             return Response(
-                {
-                    "answer": {"key": question_key, "value": existing},
-                    "invalidated": [],
-                    "pruned": {},
-                    "visible": visible_keys(definition, answers),
-                    "missing": missing_keys(definition, answers),
-                    "progress": progress(definition, answers),
-                }
+                _answer_result(definition, question_key, answers[question_key], answers)
             )
         source_options = None
         if question["type"] == "dropdown" and question["config"].get("options_source"):
@@ -367,7 +413,11 @@ class AnswerView(ResponseMixin, APIView):
             question_key=question_key,
             defaults={"value": value, "option_keys": option_keys_of(value)},
         )
-        dead = [k for k in cascade.invalidated if k not in cascade.answers]
+        # A capture marker survives being hidden by visible_if: the address is
+        # already stored, so re-showing the question must not capture it twice.
+        kept = {k for k in cascade.invalidated if _is_capture_marker(questions[k], answers.get(k))}
+        invalidated = [k for k in cascade.invalidated if k not in kept]
+        dead = [k for k in invalidated if k not in cascade.answers]
         if dead:
             SurveyAnswer.objects.filter(response=response, question_key__in=dead).delete()
         # A pruned matrix keeps its surviving rows; the client gets them back so
@@ -380,14 +430,15 @@ class AnswerView(ResponseMixin, APIView):
         response.last_question_key = question_key
         response.save(update_fields=["last_question_key", "updated_at"])
         return Response(
-            {
-                "answer": {"key": question_key, "value": value},
-                "invalidated": cascade.invalidated,
-                "pruned": pruned,
-                "visible": cascade.visible,
-                "missing": missing_keys(definition, cascade.answers),
-                "progress": progress(definition, cascade.answers),
-            }
+            _answer_result(
+                definition,
+                question_key,
+                value,
+                cascade.answers,
+                invalidated=invalidated,
+                pruned=pruned,
+                visible=cascade.visible,
+            )
         )
 
 

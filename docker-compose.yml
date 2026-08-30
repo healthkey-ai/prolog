@@ -24,11 +24,17 @@ services:
       POSTGRES_DB: prolog
       POSTGRES_USER: prolog
       POSTGRES_PASSWORD: prolog
-      SECRET_KEY: ${SECRET_KEY:-change-me}
+      # Compose interpolates every service, profile or not, so `:?` here would
+      # also block the db-only `docker compose up -d`; an unset or placeholder
+      # key is refused by settings.py instead, and the container exits at start.
+      SECRET_KEY: ${SECRET_KEY:-}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8000}
       PROLOG_PUBLIC_URL: ${PROLOG_PUBLIC_URL:-http://localhost:8000}
-      SECURE_SSL_REDIRECT: "false"
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-false}
+      PROLOG_CLIENT_KEY_SALT: ${PROLOG_CLIENT_KEY_SALT:-${SECRET_KEY}}
+      CONN_MAX_AGE: ${CONN_MAX_AGE:-60}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
       # Operational settings from .env (compose only substitutes ${...}; it does
       # not pass .env into the container by itself).
       PROLOG_NUM_PROXIES: ${PROLOG_NUM_PROXIES:-0}

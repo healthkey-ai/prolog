@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import logging
 from collections.abc import Iterator
 from typing import Any
 
@@ -14,6 +15,8 @@ from django.utils import timezone
 from . import conf
 from .engine.localize import pick
 from .models import LifecycleStatus, Survey, SurveyAdministration
+
+log = logging.getLogger(__name__)
 
 
 def add_months(day: dt.date, months: int) -> dt.date:
@@ -53,10 +56,18 @@ def schedule_due(now: dt.date | None = None) -> list[SurveyAdministration]:
         version = survey.active_version
         if version is None:
             continue
-        repeat = version.definition["participation"].get("repeat")
         invitations = list(survey.invitations.filter(active=True))
         if not invitations:
             continue
+        if version.definition["participation"]["anonymous"]:
+            # An invitation would join the participant's email to their answers.
+            log.warning(
+                "survey %s is anonymous; its %d active invitation(s) are not scheduled",
+                survey.slug,
+                len(invitations),
+            )
+            continue
+        repeat = version.definition["participation"].get("repeat")
         dates = list(due_dates(repeat, today)) if repeat else [today]
         scheduled_version = None if (repeat or {}).get("use_current_version") else version
         for invitation in invitations:

@@ -58,6 +58,7 @@
   "multi.counter": "{{count}} of {{max}} selected",
   "multi.limit": "Select up to {{max}}",
   "ranking.help": "Drag to reorder, or use the arrow buttons.",
+  "ranking.drag": "{{label}}: drag handle",
   "ranking.moveUp": "Move {{label}} up",
   "ranking.moveDown": "Move {{label}} down",
   "ranking.position": "{{label}} is now at position {{position}} of {{total}}",

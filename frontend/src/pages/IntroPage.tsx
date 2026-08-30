@@ -46,6 +46,9 @@ export function IntroPage() {
   const consentRequired = Boolean(consent && (consent.required ?? true));
   // "none": no resume on a later visit (shared devices); the id lives only in this tab.
   const resumable = def.participation?.resume !== "none";
+  // A stored response still loading must not show the start form: Start would
+  // replace the stored id without the "start again" confirmation.
+  if (resumable && existingId && existing.isPending) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
 
   const start = async () => {
     if (consentRequired && !agreed) {

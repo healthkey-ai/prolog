@@ -7,6 +7,21 @@ from . import conf
 from .models import LifecycleStatus, SurveyVersion
 from .themes import registry
 
+# Building the migration graph on every probe is wasteful; once a process has
+# seen every migration applied that cannot change until it restarts.
+_migrations_applied = False
+
+
+def _migrations_pending() -> bool:
+    global _migrations_applied
+    if _migrations_applied:
+        return False
+    executor = MigrationExecutor(connection)
+    if executor.migration_plan(executor.loader.graph.leaf_nodes()):
+        return True
+    _migrations_applied = True
+    return False
+
 
 def health(request: HttpRequest) -> HttpResponse:
     """Liveness + readiness: database reachable, themes loaded, active surveys counted."""
@@ -20,9 +35,7 @@ def health(request: HttpRequest) -> HttpResponse:
         status = "error"
         checks["database"] = f"error: {exc.__class__.__name__}"
     else:
-        executor = MigrationExecutor(connection)
-        pending = executor.migration_plan(executor.loader.graph.leaf_nodes())
-        if pending:
+        if _migrations_pending():
             # Reachable but not ready: `manage.py migrate` has not run yet.
             status = "degraded"
             checks["migrations"] = "pending"

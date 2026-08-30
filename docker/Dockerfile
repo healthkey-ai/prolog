@@ -21,6 +21,7 @@ COPY --from=runner /app/frontend/dist ./frontend/dist
 ENV PATH="/app/backend/.venv/bin:$PATH" DEBUG=false PROLOG_PROFILE=standalone \
     PROLOG_THEME_DIRS=/app/themes:/data/themes PROLOG_DEFINITION_DIRS=/data/surveys
 WORKDIR /app/backend
-RUN python manage.py collectstatic --noinput
+# collectstatic only needs settings to import; the build-time key is never persisted.
+RUN SECRET_KEY=build-only-not-persisted python manage.py collectstatic --noinput
 EXPOSE 8000
 CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py load_definitions && gunicorn prolog.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-3}"]
