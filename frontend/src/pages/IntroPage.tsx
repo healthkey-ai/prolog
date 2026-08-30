@@ -3,8 +3,11 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError } from "@/api/client";
 import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { OptionCard } from "@/components/ui/OptionCard";
+import { RadioGroup } from "@/components/ui/radio-group";
 import { languageName } from "@/components/Shell";
 import { clearResponseId, storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
@@ -98,11 +101,11 @@ export function IntroPage() {
             <h2 className="text-lg">{t("intro.welcomeBack")}</h2>
             <p className="mt-1 text-ink-soft">{existing.data!.status === "submitted" ? t("intro.submitted") : t("intro.resumeHint")}</p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Button onClick={resume} data-testid="resume">
+              <Button variant="primary" size="runner" onClick={resume} data-testid="resume">
                 {t("intro.continue")}
               </Button>
               {existing.data!.status !== "submitted" && (
-                <Button variant="text" onClick={startAgain} data-testid="start-again">
+                <Button variant="text" size="runner" onClick={startAgain} data-testid="start-again">
                   {t("intro.startAgain")}
                 </Button>
               )}
@@ -113,11 +116,11 @@ export function IntroPage() {
             {def.languages.length > 1 && (
               <fieldset className="border-0 p-0">
                 <legend className={`mb-3 text-sm ${soft}`}>{t("intro.language")}</legend>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <RadioGroup value={def.language} onValueChange={(l) => setLanguage(l)} aria-label={t("intro.language")} className="grid gap-3 sm:grid-cols-3">
                   {def.languages.map((l) => (
-                    <OptionCard key={l} kind="radio" name="language" value={l} label={languageName(l)} checked={def.language === l} onChange={() => setLanguage(l)} className="text-ink" data-testid={`lang-${l}`} />
+                    <OptionCard key={l} kind="radio" value={l} label={languageName(l)} checked={def.language === l} className="text-foreground" data-testid={`lang-${l}`} />
                   ))}
-                </div>
+                </RadioGroup>
               </fieldset>
             )}
             {consent && (
@@ -128,10 +131,10 @@ export function IntroPage() {
                     {consent.privacy_url}
                   </a>
                 )}
-                <label className="mt-4 flex items-start gap-3">
-                  <input type="checkbox" className="mt-1 size-5 accent-primary" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); setConsentError(false); }} data-testid="consent" />
-                  <span>{t("intro.consentAgree")}</span>
-                </label>
+                <div className="mt-4 flex items-start gap-3">
+                  <Checkbox id="consent" className="mt-1 size-5" checked={agreed} onCheckedChange={(c) => { setAgreed(c === true); setConsentError(false); }} data-testid="consent" />
+                  <Label htmlFor="consent" className="font-normal leading-snug">{t("intro.consentAgree")}</Label>
+                </div>
                 {consentError && (
                   <p className="mt-2 text-sm text-error" role="alert">
                     {t("intro.consentRequired")}
@@ -140,7 +143,7 @@ export function IntroPage() {
               </div>
             )}
             <div>
-              <Button variant={immersive ? "onPrimary" : "primary"} onClick={start} disabled={create.isPending} className="px-8" data-testid="start">
+              <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={start} disabled={create.isPending} className="px-8" data-testid="start">
                 {t("intro.start")}
               </Button>
               {create.isError && (

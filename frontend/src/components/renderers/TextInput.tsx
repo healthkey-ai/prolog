@@ -1,4 +1,6 @@
 import { useTranslation } from "react-i18next";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import { inputClass, type RendererProps } from "./types";
 import type { TextValue } from "@/survey/types";
 
@@ -19,9 +21,9 @@ export function TextInput({ question, value, onChange, disabled }: RendererProps
   };
   return (
     <div>
-      {multiline ? <textarea rows={6} {...common} /> : <input type="text" {...common} />}
+      {multiline ? <Textarea rows={6} {...common} /> : <Input type="text" {...common} />}
       {cfg.max_length && (
-        <p className="mt-1 text-right text-sm text-ink-soft" aria-live="polite">
+        <p className="mt-1 text-right text-sm text-muted-foreground" aria-live="polite">
           {t("text.remaining", { count: cfg.max_length - text.length })}
         </p>
       )}

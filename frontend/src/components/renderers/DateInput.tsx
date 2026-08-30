@@ -1,10 +1,11 @@
+import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
 import type { DateValue } from "@/survey/types";
 
 export function DateInput({ question, value, onChange, disabled }: RendererProps<DateValue>) {
   const cfg = question.config ?? {};
   return (
-    <input
+    <Input
       type="date"
       className={inputClass}
       min={cfg.min_date}

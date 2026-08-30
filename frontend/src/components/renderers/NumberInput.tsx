@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
 import type { NumberValue } from "@/survey/types";
 
@@ -11,7 +12,7 @@ export function NumberInput({ question, value, onChange, disabled }: RendererPro
     return Number.isNaN(n) ? undefined : { number: n };
   };
   return (
-    <input
+    <Input
       type="number"
       inputMode={cfg.integer ? "numeric" : "decimal"}
       step={cfg.integer ? 1 : "any"}

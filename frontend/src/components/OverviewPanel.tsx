@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { Sheet } from "./ui/Sheet";
+import { Button } from "./ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import type { OverviewSection, QuestionStatus } from "@/survey/navigation";
 import type { AnswerValue, Question, Section } from "@/survey/types";
 import { cn } from "@/lib/utils";
@@ -41,26 +43,33 @@ export function OverviewPanel({ open, onClose, sections, definitionSections, ans
     unanswered: t("overview.unanswered"),
     unreachable: t("overview.unreachable"),
   };
+  const desktop = useMediaQuery("(min-width: 1024px)");
   return (
-    <Sheet open={open} onClose={onClose} title={t("overview.title")} closeLabel={t("overview.close")}>
-      <nav aria-label={t("overview.title")}>
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side={desktop ? "right" : "bottom"} className="max-h-[85vh] overflow-y-auto rounded-t-[var(--p-radius-sheet)] bg-card text-foreground lg:max-h-none lg:w-[420px] lg:rounded-none lg:rounded-l-[var(--p-radius-sheet)] sm:max-w-none" showCloseButton={false}>
+        <SheetHeader className="flex-row items-center justify-between border-b border-border">
+          <SheetTitle className="text-lg">{t("overview.title")}</SheetTitle>
+          <SheetDescription className="sr-only">{t("overview.title")}</SheetDescription>
+          <Button variant="text" size="runner-sm" onClick={onClose}>
+            {t("overview.close")}
+          </Button>
+        </SheetHeader>
+        <nav aria-label={t("overview.title")} className="px-4 pb-4">
         {sections.map((s) => (
           <section key={s.key} className="py-2">
             <h3 className="px-1 py-2 text-[13px] font-medium uppercase tracking-[0.08em] text-ink-soft">{definitionSections[s.sectionIndex].title as string}</h3>
             <ul className="divide-y divide-line">
               {s.rows.map((row) => (
                 <li key={row.key}>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
                     disabled={!row.navigable}
                     onClick={() => {
                       onNavigate(row.key);
                       onClose();
                     }}
                     aria-current={row.status === "current" ? "step" : undefined}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-[var(--p-radius-input)] px-1 py-3 text-left hover:bg-tint disabled:cursor-not-allowed disabled:opacity-50",
-                    )}
+                    className={cn("flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-[var(--p-radius-input)] px-1 py-3 text-left font-body text-base")}
                     data-testid={`overview-${row.key}`}
                   >
                     <span
@@ -69,7 +78,7 @@ export function OverviewPanel({ open, onClose, sections, definitionSections, ans
                         row.status === "answered" && "text-success",
                         row.status === "skipped" && "text-ink-soft",
                         row.status === "current" && "text-primary",
-                        (row.status === "unanswered" || row.status === "unreachable") && "text-line",
+                        (row.status === "unanswered" || row.status === "unreachable") && "text-border",
                       )}
                       aria-hidden
                     >
@@ -82,13 +91,14 @@ export function OverviewPanel({ open, onClose, sections, definitionSections, ans
                       </span>
                     </span>
                     <span className="sr-only">{statusLabel[row.status]}</span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
           </section>
         ))}
-      </nav>
+        </nav>
+      </SheetContent>
     </Sheet>
   );
 }

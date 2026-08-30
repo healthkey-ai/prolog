@@ -11,5 +11,5 @@ export interface RendererProps<V extends AnswerValue = AnswerValue> {
   errors?: string[];
 }
 
-export const inputClass =
-  "w-full min-h-[52px] rounded-[var(--p-radius-input)] border border-line bg-surface px-4 py-3 text-[1.05rem] text-ink placeholder:text-ink-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+/** Sizing applied to shadcn Input/Textarea in the runner (≥52px targets, 17px text). */
+export const inputClass = "min-h-[52px] rounded-[var(--p-radius-input)] bg-card px-4 py-3 text-[1.05rem] md:text-[1.05rem]";

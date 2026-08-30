@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "../ui/Button";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
 import type { EmailValue } from "@/survey/types";
 
@@ -34,14 +36,18 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, disable
 
   return (
     <div className="flex flex-col gap-4">
-      {question.help && <div className="rounded-[var(--p-radius-card)] bg-tint p-4 text-[0.95rem] text-ink">{question.help as string}</div>}
+      {question.help && (
+        <Alert role="note" className="bg-accent [&>svg]:hidden">
+          <AlertDescription className="text-[0.95rem] text-foreground">{question.help as string}</AlertDescription>
+        </Alert>
+      )}
       {provided ? (
         <p className="text-success" role="status">
           {t("email.saved")}
         </p>
       ) : (
         <>
-          <input
+          <Input
             type="email"
             autoComplete="email"
             className={inputClass}
@@ -54,15 +60,15 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, disable
             data-testid="email-input"
           />
           {error && (
-            <p className="text-sm text-error" role="alert">
-              {error}
-            </p>
+            <Alert variant="destructive" role="alert" className="[&>svg]:hidden">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
           <div className="flex flex-wrap gap-3">
-            <Button onClick={submit} disabled={disabled || busy || !email} data-testid="email-save">
+            <Button variant="primary" size="runner" onClick={submit} disabled={disabled || busy || !email} data-testid="email-save">
               {t("email.save")}
             </Button>
-            <Button variant="secondary" onClick={() => onChange({ provided: false }, { commit: true })} disabled={disabled || busy} data-testid="email-skip">
+            <Button variant="surface" size="runner" onClick={() => onChange({ provided: false }, { commit: true })} disabled={disabled || busy} data-testid="email-skip">
               {t("email.skip")}
             </Button>
           </div>

@@ -22,6 +22,7 @@ test.describe("runner core", () => {
     await page.getByTestId("next").click();
     await expect(page.getByTestId("question-country")).toBeVisible();
     await expectAccessible(page, "dropdown");
+    await page.getByTestId("combobox-trigger").click();
     await page.getByTestId("combobox").fill("United King");
     await page.getByTestId("combobox-option-GB").click();
     await page.getByTestId("next").click();
@@ -81,10 +82,12 @@ test.describe("runner core", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Chequeo de bienestar");
     await page.getByTestId("start").click();
     await page.getByTestId("next").click();
+    await page.getByTestId("combobox-trigger").click();
     await page.getByTestId("combobox").fill("Reino");
     await page.getByTestId("combobox-option-GB").click();
     await page.getByTestId("next").click();
-    await page.locator("#language-switch").selectOption("en");
+    await page.getByTestId("language-switch").click();
+    await page.getByRole("option", { name: "English" }).click();
     await expect(page.getByTestId("question-age_band")).toContainText("How old are you?");
     await page.getByRole("button", { name: "All questions" }).click();
     await expect(page.getByTestId("overview-country")).toContainText("United Kingdom");

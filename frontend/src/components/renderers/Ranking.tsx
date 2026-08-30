@@ -3,7 +3,9 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "../ui/Button";
+import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "lucide-react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
 import type { Option, RankingValue } from "@/survey/types";
 import { cn } from "@/lib/utils";
@@ -68,12 +70,12 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
         </SortableContext>
       </DndContext>
       {unranked.length > 0 && (
-        <div className="mt-4 rounded-[var(--p-radius-card)] border border-dashed border-line p-4">
-          <p className="text-sm text-ink-soft">{t("ranking.optional")}</p>
+        <div className="mt-4 rounded-[var(--p-radius-card)] border border-dashed border-border p-4">
+          <p className="text-sm text-muted-foreground">{t("ranking.optional")}</p>
           {unranked.map((o) => (
             <div key={o.key} className="mt-2 flex items-center justify-between gap-3">
               <span>{o.label as string}</span>
-              <Button variant="secondary" className="min-h-[44px] px-4 text-sm" onClick={() => commit([...order, o.key])} disabled={disabled} data-testid={`ranking-include-${o.key}`}>
+              <Button variant="surface" size="runner-sm" onClick={() => commit([...order, o.key])} disabled={disabled} data-testid={`ranking-include-${o.key}`}>
                 {t("ranking.include")}
               </Button>
             </div>
@@ -106,34 +108,34 @@ function SortableItem(p: {
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("rounded-[var(--p-radius-card)] border border-line bg-surface p-3", isDragging && "shadow-[var(--p-shadow)] opacity-90")}
+      className={cn("rounded-[var(--p-radius-card)] border border-border bg-card p-3", isDragging && "shadow-[var(--p-shadow)] opacity-90")}
       data-testid={`ranking-item-${p.id}`}
     >
       <div className="flex items-center gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-heading text-sm text-on-primary" aria-hidden>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-heading text-sm text-primary-foreground" aria-hidden>
           {p.index + 1}
         </span>
         <span className="flex-1">
           <span className="sr-only">{p.index + 1}. </span>
           {label}
         </span>
-        <button type="button" className="min-h-[44px] min-w-[44px] cursor-grab rounded text-ink-soft hover:bg-tint" aria-label={`${label}: drag`} {...attributes} {...listeners} disabled={p.disabled}>
-          ≡
-        </button>
-        <button type="button" className="min-h-[44px] min-w-[44px] rounded hover:bg-tint disabled:opacity-40" onClick={p.onUp} disabled={p.disabled || p.index === 0} aria-label={t("ranking.moveUp", { label })} data-testid={`ranking-up-${p.id}`}>
-          ▲
-        </button>
-        <button type="button" className="min-h-[44px] min-w-[44px] rounded hover:bg-tint disabled:opacity-40" onClick={p.onDown} disabled={p.disabled || p.index === p.total - 1} aria-label={t("ranking.moveDown", { label })} data-testid={`ranking-down-${p.id}`}>
-          ▼
-        </button>
+        <Button variant="text" size="runner-icon" className="cursor-grab text-muted-foreground" aria-label={`${label}: drag`} {...attributes} {...listeners} disabled={p.disabled}>
+          <GripVerticalIcon className="size-5" />
+        </Button>
+        <Button variant="text" size="runner-icon" onClick={p.onUp} disabled={p.disabled || p.index === 0} aria-label={t("ranking.moveUp", { label })} data-testid={`ranking-up-${p.id}`}>
+          <ChevronUpIcon className="size-5" />
+        </Button>
+        <Button variant="text" size="runner-icon" onClick={p.onDown} disabled={p.disabled || p.index === p.total - 1} aria-label={t("ranking.moveDown", { label })} data-testid={`ranking-down-${p.id}`}>
+          <ChevronDownIcon className="size-5" />
+        </Button>
         {p.onRemove && (
-          <button type="button" className="min-h-[44px] rounded px-2 text-sm text-ink-soft hover:bg-tint" onClick={p.onRemove} aria-label={t("ranking.exclude")} data-testid={`ranking-remove-${p.id}`}>
-            ✕
-          </button>
+          <Button variant="text" size="runner-icon" className="text-muted-foreground" onClick={p.onRemove} aria-label={t("ranking.exclude")} data-testid={`ranking-remove-${p.id}`}>
+            <XIcon className="size-4" />
+          </Button>
         )}
       </div>
       {p.option.free_text && (
-        <input
+        <Input
           type="text"
           className={`${inputClass} mt-3`}
           placeholder={t("single.other")}

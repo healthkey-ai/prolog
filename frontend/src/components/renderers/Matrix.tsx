@@ -42,7 +42,7 @@ export function Matrix({ question, value, onChange, answers, questions, disabled
         {labels ? points.map((p, i) => `${p} ${labels[i]}`).join(" · ") : `${scale.min} ${scale.min_label ?? ""} → ${scale.max} ${scale.max_label ?? ""}`}
       </p>
       {rows.map((row) => (
-        <div key={row} className="rounded-[var(--p-radius-card)] border border-line bg-surface p-4" data-testid={`matrix-row-${row}`}>
+        <div key={row} className="rounded-[var(--p-radius-card)] border border-border bg-card p-4" data-testid={`matrix-row-${row}`}>
           <p className="mb-3 font-heading text-[1.05rem]" id={`${question.key}-${row}-label`}>
             {labelOf(row)}
           </p>

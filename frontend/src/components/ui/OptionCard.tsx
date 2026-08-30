@@ -1,36 +1,49 @@
-import type { InputHTMLAttributes, ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Checkbox } from "./checkbox";
+import { Label } from "./label";
+import { RadioGroupItem } from "./radio-group";
 import { cn } from "@/lib/utils";
 
-interface OptionCardProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
+interface OptionCardProps {
   kind: "radio" | "checkbox";
+  value: string;
   label: ReactNode;
-  children?: ReactNode;
+  checked: boolean;
+  /** Checkbox only; radios change through their RadioGroup. */
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
   inert?: boolean;
+  children?: ReactNode;
+  className?: string;
+  "data-testid"?: string;
 }
 
-/** Large tappable option (≥52px) wrapping a real input for accessibility. */
-export function OptionCard({ kind, label, children, className, checked, inert, disabled, ...input }: OptionCardProps) {
+/** Large tappable option (≥52px) built on the shadcn RadioGroupItem / Checkbox primitives. */
+export function OptionCard({ kind, value, label, checked, onCheckedChange, disabled, inert, children, className, ...rest }: OptionCardProps) {
+  const id = `opt-${kind}-${value}`;
+  const control =
+    kind === "radio" ? (
+      <RadioGroupItem id={id} value={value} disabled={disabled || inert} className="mt-0.5 size-5 border-border data-[state=checked]:border-primary" data-testid={rest["data-testid"]} />
+    ) : (
+      <Checkbox id={id} checked={checked} disabled={disabled || inert} onCheckedChange={(c) => onCheckedChange?.(c === true)} className="mt-0.5 size-5 border-border" data-testid={rest["data-testid"]} />
+    );
   return (
-    <label
+    <div
       className={cn(
-        "block cursor-pointer rounded-[var(--p-radius-card)] border bg-surface p-4 transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus",
-        checked ? "border-2 border-primary bg-tint" : "border-line hover:bg-tint/60",
-        (inert || disabled) && "cursor-not-allowed opacity-50",
+        "rounded-[var(--p-radius-card)] border bg-card p-4 transition-colors has-[[data-state=checked]]:border-2 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+        checked ? "border-2 border-primary bg-accent" : "border-border hover:bg-accent/60",
+        (inert || disabled) && "opacity-50",
         className,
       )}
       data-checked={checked || undefined}
     >
-      <span className="flex min-h-[20px] items-start gap-3">
-        <input
-          type={kind}
-          className="mt-1 size-5 shrink-0 accent-primary"
-          checked={checked}
-          disabled={disabled || inert}
-          {...input}
-        />
-        <span className="flex-1 text-[1.05rem] leading-snug">{label}</span>
-      </span>
+      <div className="flex items-start gap-3">
+        {control}
+        <Label htmlFor={id} className={cn("flex-1 cursor-pointer text-[1.05rem] font-normal leading-snug", (inert || disabled) && "cursor-not-allowed")}>
+          {label}
+        </Label>
+      </div>
       {children}
-    </label>
+    </div>
   );
 }

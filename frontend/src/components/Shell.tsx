@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "./ui/Button";
+import { Button } from "./ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { cn } from "@/lib/utils";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
@@ -55,26 +56,21 @@ export function Shell(p: ShellProps) {
           </div>
           <div className="ml-auto flex items-center gap-2">
             {p.languages.length > 1 && (
-              <label className="sr-only" htmlFor="language-switch">
-                {t("header.language")}
-              </label>
-            )}
-            {p.languages.length > 1 && (
-              <select
-                id="language-switch"
-                value={p.language}
-                onChange={(e) => p.onLanguage(e.target.value)}
-                className="min-h-[44px] rounded-[var(--p-radius-input)] border border-line bg-surface px-2 text-sm"
-              >
-                {p.languages.map((l) => (
-                  <option key={l} value={l}>
-                    {languageName(l)}
-                  </option>
-                ))}
-              </select>
+              <Select value={p.language} onValueChange={p.onLanguage}>
+                <SelectTrigger id="language-switch" aria-label={t("header.language")} className="min-h-[44px] bg-card" data-testid="language-switch">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {p.languages.map((l) => (
+                    <SelectItem key={l} value={l} data-testid={`language-${l}`}>
+                      {languageName(l)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
             {p.onOverview && (
-              <Button variant="text" onClick={p.onOverview} className="min-h-[44px] px-3 text-sm">
+              <Button variant="text" size="runner-sm" onClick={p.onOverview}>
                 {t("header.overview")}
               </Button>
             )}
@@ -82,7 +78,7 @@ export function Shell(p: ShellProps) {
         </div>
         {p.showProgress && (
           <div className="h-1.5 w-full bg-tint" role="progressbar" aria-label={t("header.progress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.progress * 100)}>
-            <div className="h-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${Math.round(p.progress * 100)}%` }} />
+            <div className="h-full bg-brand-accent transition-[width] duration-300 ease-out" style={{ width: `${Math.round(p.progress * 100)}%` }} />
           </div>
         )}
       </header>
@@ -93,7 +89,7 @@ export function Shell(p: ShellProps) {
         {p.footerExtra}
         <div className="mx-auto flex max-w-[var(--p-content-max)] items-center gap-3 px-4 py-3">
           {p.onBack ? (
-            <Button variant="text" onClick={p.onBack}>
+            <Button variant="text" size="runner" onClick={p.onBack}>
               {t("nav.back")}
             </Button>
           ) : (
@@ -106,14 +102,14 @@ export function Shell(p: ShellProps) {
               <span className="text-error">
                 {t("nav.saveFailed")}{" "}
                 {p.onRetry && (
-                  <button type="button" onClick={p.onRetry} className="underline">
+                  <Button variant="link" size="xs" onClick={p.onRetry} className="text-error">
                     {t("app.retry")}
-                  </button>
+                  </Button>
                 )}
               </span>
             )}
           </p>
-          <Button onClick={p.onNext} disabled={p.nextDisabled} className={cn("min-w-28")} data-testid="next">
+          <Button variant="primary" size="runner" onClick={p.onNext} disabled={p.nextDisabled} className={cn("min-w-28")} data-testid="next">
             {p.nextLabel}
           </Button>
         </div>
