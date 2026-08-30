@@ -146,6 +146,17 @@ def _repeat(**overrides):
             lambda d: question(d, "overall")["config"]["scale"].update(min=0, max=10_000_000),
             "scale_range",
         ),
+        # a typo in the include list would silently shrink the offered options
+        (
+            lambda d: question(d, "country")["config"].update(options_source_include=["DE", "XX"]),
+            "options_source_include",
+        ),
+        (  # without options_source there is nothing to restrict
+            lambda d: question(d, "age_band").__setitem__(
+                "config", {"options_source_include": ["DE"]}
+            ),
+            "options_source_include",
+        ),
         # the runner renders privacy_url as a link: only absolute http(s) URLs
         (
             lambda d: d.setdefault("consent", {"version": "1", "text": {"en": "x"}}).update(

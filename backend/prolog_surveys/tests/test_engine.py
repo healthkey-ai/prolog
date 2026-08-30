@@ -391,3 +391,22 @@ def test_rows_from_matrix_requires_the_source_question_in_the_map():
     without_source = {k: v for k, v in questions.items() if k != "symptoms"}
     with pytest.raises(ValueError, match="questions map"):
         validate_answer(matrix, {"ratings": {"none": 3}}, answers, questions=without_source)
+
+
+def test_options_source_include_restricts_what_a_dropdown_accepts():
+    # A survey that only covers some countries: the excluded key is refused by
+    # the engine, not merely hidden by the renderer.
+    definition = load_definition("sample-wellbeing.json")
+    q = dict(question_by_key(definition)["country"])
+    q["config"] = {**q["config"], "options_source_include": ["DE", "FR"]}
+    source = {"DE", "FR", "US", "GB"}
+    assert validate_answer(q, {"option": "DE"}, {}, source_options=source) == {"option": "DE"}
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"option": "US"}, {}, source_options=source)
+    assert exc.value.codes == ["option_unknown"]
+    # Inline options (e.g. "prefer not to say") are unaffected by the restriction.
+    inline = q["options"][0]["key"]
+    assert validate_answer(q, {"option": inline}, {}, source_options=source) == {"option": inline}
+    # Without the restriction the whole source is still accepted.
+    del q["config"]["options_source_include"]
+    assert validate_answer(q, {"option": "US"}, {}, source_options=source) == {"option": "US"}

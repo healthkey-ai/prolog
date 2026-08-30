@@ -32,7 +32,7 @@ MAX_SCALE_POINTS = 101
 CONFIG_BY_TYPE: dict[str, set[str]] = {
     "info": set(),
     "single": set(),
-    "dropdown": {"options_source"},
+    "dropdown": {"options_source", "options_source_include"},
     "multi": {"max_selections", "min_selections"},
     "scale": {"scale"},
     "ranking": {"optional_items"},
@@ -90,6 +90,14 @@ def _walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
 
 def has_errors(issues: list[Issue]) -> bool:
     return any(i.level == "error" for i in issues)
+
+
+def source_option_keys(source: str) -> frozenset[str] | None:
+    """Keys of a built-in option source, or None when the runner has no such source."""
+    from ..options import iso3166
+
+    provider = iso3166.SOURCE_KEYS.get(source)
+    return provider() if provider else None
 
 
 def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone") -> list[Issue]:
@@ -237,6 +245,25 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
         for k in cfg:
             if k not in allowed:
                 warn("config_mismatch", f"{qp}.config.{k}", f"'{k}' is not used by type '{t}'")
+        include = cfg.get("options_source_include")
+        if include is not None:
+            source = cfg.get("options_source")
+            if not source:
+                err(
+                    "options_source_include",
+                    f"{qp}.config.options_source_include",
+                    "only applies with options_source",
+                )
+            else:
+                # A typo here would silently shrink the list the respondent sees,
+                # so unknown keys are refused at load rather than dropped.
+                known = source_option_keys(source)
+                if known is not None and (unknown := [k for k in include if k not in known]):
+                    err(
+                        "options_source_include",
+                        f"{qp}.config.options_source_include",
+                        f"not in '{source}': {', '.join(sorted(unknown)[:5])}",
+                    )
         if t == "info" and q.get("options"):
             warn("info_options", f"{qp}.options", "info questions do not use options")
         if t != "multi":

@@ -3,6 +3,16 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
 import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -35,6 +45,9 @@ export function IntroPage() {
   // consent notice) instead of the resume card; the old id is only replaced
   // once the new response exists.
   const [fresh, setFresh] = useState(false);
+  // Discarding an unfinished response is destructive, so it is confirmed in an
+  // alert dialog (focus-trapped, themed) rather than a browser confirm box.
+  const [confirmingStartAgain, setConfirmingStartAgain] = useState(false);
   // A stored response answers a different administration than the link's (a
   // repeat administration, RUN-5): it is not the one to resume, so this visit
   // starts the response for its own administration instead.
@@ -123,7 +136,7 @@ export function IntroPage() {
   };
 
   const startAgain = () => {
-    if (!window.confirm(t("intro.startAgainConfirm"))) return;
+    setConfirmingStartAgain(false);
     // The stored id is replaced only once the new response exists (storeResponseId
     // in start): clearing it first would orphan the unfinished response should
     // the create fail. Consent surveys show the start form with the notice first.
@@ -161,7 +174,7 @@ export function IntroPage() {
               </Button>
               {existing.data!.status !== "submitted" ? (
                 canStartAgain && (
-                  <Button variant="text" size="runner" onClick={startAgain} data-testid="start-again">
+                  <Button variant="text" size="runner" onClick={() => setConfirmingStartAgain(true)} data-testid="start-again">
                     {t("intro.startAgain")}
                   </Button>
                 )
@@ -179,6 +192,20 @@ export function IntroPage() {
                 </Button>
               )}
             </div>
+            <AlertDialog open={confirmingStartAgain} onOpenChange={setConfirmingStartAgain}>
+              <AlertDialogContent data-testid="start-again-dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("intro.startAgain")}</AlertDialogTitle>
+                  <AlertDialogDescription>{t("intro.startAgainConfirm")}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="start-again-cancel">{t("common.cancel")}</AlertDialogCancel>
+                  <AlertDialogAction onClick={startAgain} data-testid="start-again-confirm">
+                    {t("intro.startAgainAction")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         ) : (
           <>

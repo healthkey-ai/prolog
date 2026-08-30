@@ -141,7 +141,7 @@ mirrors it:
 | Area | Keys |
 | --- | --- |
 | App | `app.title` `app.loading` `app.error` `app.retry` `app.reload` `app.notFound` `app.closed` `app.forbidden` `app.throttled` `app.hint` (`{{path}}`) `app.pageTitle` (`{{survey}}`, `{{step}}`) |
-| Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` |
+| Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainAction` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` |
 | Header | `header.section` (`{{number}}`, `{{total}}`) `header.steps` (`{{number}}`, `{{total}}`) `header.overview` `header.language` `header.progress` |
 | Question | `question.eyebrow` (`{{number}}`, `{{total}}`) `question.optional` `question.info` |
 | Footer | `nav.back` `nav.next` `nav.finish` `nav.saving` `nav.saved` `nav.saveFailed` |
@@ -152,7 +152,7 @@ mirrors it:
 | Ranking | `ranking.help` `ranking.srInstructions` `ranking.drag` (`{{label}}`) `ranking.moveUp` (`{{label}}`) `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragStart` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOver` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOutside` (`{{label}}`) `ranking.dragDropped` (`{{label}}`) `ranking.dragCancel` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` `ranking.skipped` |
 | Email step | `email.placeholder` `email.save` `email.skip` `email.saved` `email.invalid` `email.unavailable` |
 | Completion | `complete.eyebrow` `complete.title` `complete.body` `complete.readonly` `complete.missing` |
-| Common | `common.close` |
+| Common | `common.close` `common.cancel` |
 | Validation | `error.generic` (fallback for an unknown code) and one `error.<code>` per answer-validation code shared by both engines (see the survey manual §10): `value_not_object` `skip_shape` `other_text_not_string` `options_not_list` `options_duplicate` `order_not_list` `order_duplicate` `ratings_not_object` `email_via_endpoint` `unsupported_type` `info_no_answer` `skip_not_allowed` `not_visible` `other_text_without_free_option` `other_text_too_long` (`{{max}}`) `option_required` `option_unknown` `options_unknown` `min_selections` (`{{min}}`) `max_selections` (`{{max}}`) `exclusive_combined` `value_not_integer` `value_out_of_range` (`{{min}}`, `{{max}}`) `order_unknown` `order_incomplete` `matrix_no_rows` `rows_unknown` `rows_incomplete` `rating_not_integer` `rating_out_of_range` (`{{min}}`, `{{max}}`) `text_required` `text_too_long` (`{{max}}`) `number_required` `number_not_finite` `number_not_integer` `number_too_small` (`{{min}}`) `number_too_large` (`{{max}}`) `date_format` `date_invalid` `date_too_early` (`{{min}}`) `date_too_late` (`{{max}}`) |
 
 Keep the same `{{placeholders}}` as the default string.

@@ -152,6 +152,21 @@ def _skip(question: dict[str, Any], presentation: dict[str, Any]) -> dict[str, A
     return {"skipped": True}
 
 
+def source_keys(config: dict, source_options: set[str] | None) -> set[str]:
+    """The option-source keys a dropdown accepts, honouring ``options_source_include``.
+
+    A definition may restrict a built-in source to part of its list (a survey
+    that only covers some countries). The restriction is authoritative here,
+    not only in the renderer, so a client cannot submit an excluded key.
+    Mirrored in frontend/src/survey/answers.ts.
+    """
+    keys = source_options or set()
+    include = config.get("options_source_include")
+    if include is None:
+        return set(keys)
+    return {k for k in keys if k in set(include)}
+
+
 def validate_answer(
     question: dict[str, Any],
     raw: Any,
@@ -189,7 +204,7 @@ def validate_answer(
             _fail("option_required")
         allowed = set(_option_keys(question))
         if t == "dropdown" and cfg.get("options_source"):
-            allowed |= source_options or set()
+            allowed |= source_keys(cfg, source_options)
         if option not in allowed:
             _fail("option_unknown", option=option)
         return {"option": option, **_other_text(raw, question, [option])}

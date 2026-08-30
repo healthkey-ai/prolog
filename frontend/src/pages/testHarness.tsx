@@ -159,6 +159,8 @@ export interface Mounted {
   navigate: (to: string) => Promise<void>;
   unmount: () => void;
   $: <T extends HTMLElement = HTMLElement>(testId: string) => T | null;
+  /** Like `$`, but searches the whole document: Radix portals (dialogs, popovers) render outside the container. */
+  $doc: <T extends HTMLElement = HTMLElement>(testId: string) => T | null;
   text: () => string;
 }
 
@@ -197,6 +199,7 @@ export function mount(path: string, element: ReactNode = runnerRoutes()): Mounte
       container.remove();
     },
     $: (testId) => container.querySelector(`[data-testid="${testId}"]`),
+    $doc: (testId) => document.body.querySelector(`[data-testid="${testId}"]`),
     text: () => container.textContent ?? "",
   };
 }

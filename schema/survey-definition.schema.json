@@ -302,6 +302,13 @@
           "description": "dropdown: named built-in option list provided by the runner (inline options, if present, are appended after it).",
           "enum": ["iso3166_countries"]
         },
+        "options_source_include": {
+          "description": "dropdown: restrict options_source to these keys (a survey that only covers some countries). Keys must exist in the source; the runner offers and accepts no others. Inline options are unaffected.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
         "scale": {
           "type": "object",
           "required": ["min", "max"],
