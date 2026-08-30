@@ -94,9 +94,17 @@ h1, h2, h3, .font-heading {
   text-wrap: balance;
 }
 
-:focus-visible {
-  outline: 2px solid var(--p-focus);
-  outline-offset: 2px;
+@layer base {
+  /* shadcn base: tokens for borders and focus outlines on every element */
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  /* Fallback focus ring for non-shadcn elements; shadcn components use their own ring utilities */
+  :focus-visible {
+    outline: 2px solid var(--p-focus);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
