@@ -1,0 +1,37 @@
+{
+  "definition": "sample-wellbeing.json",
+  "description": "Answers the engine must reject (per-type validation) — each 'reject' entry is applied to an empty response unless 'given' answers are set first.",
+  "reject": [
+    { "key": "welcome", "value": { "text": "x" } },
+    { "key": "age_band", "value": { "option": "teen" } },
+    { "key": "age_band", "value": { "option": "30_49", "other_text": "no free text option" } },
+    { "key": "country", "value": { "option": "XX" } },
+    { "key": "overall", "value": { "value": 6 } },
+    { "key": "overall", "value": { "value": "4" } },
+    { "key": "birth_year", "value": { "number": 1850 } },
+    { "key": "birth_year", "value": { "number": 1990.5 } },
+    { "key": "last_visit", "value": { "date": "01/05/2025" } },
+    { "key": "last_visit", "value": { "date": "1999-12-31" } },
+    { "key": "anything_else", "value": { "text": "   " } },
+    { "key": "contact_email", "value": { "provided": true } },
+    { "key": "support_wanted", "value": { "options": ["information", "peer", "practical"] } },
+    { "key": "support_wanted", "value": { "options": ["nothing", "peer"] } },
+    { "key": "support_wanted", "value": { "options": [] } },
+    { "key": "support_wanted", "value": { "options": ["peer", "peer"] } },
+    { "key": "outcome_ranking", "value": { "order": ["energy", "independence", "side_effects"] } },
+    { "key": "outcome_ranking", "value": { "order": ["energy", "independence", "side_effects", "fewer_visits", "energy"] } },
+    { "key": "daily_activities", "value": { "ratings": { "walking": 2 } } },
+    { "key": "daily_activities", "value": { "ratings": { "walking": 2, "housework": 1, "socialising": 9 } } },
+    { "given": { "has_symptoms": { "option": "yes" }, "symptoms": { "options": ["fatigue"] } }, "key": "symptom_impact", "value": { "ratings": { "fatigue": 3, "pain": 2 } } },
+    { "given": { "has_symptoms": { "option": "yes" } }, "key": "symptoms", "value": { "options": ["fatigue", "pain", "sleep", "worry"] } }
+  ],
+  "accept": [
+    { "key": "country", "value": { "option": "prefer_not_to_say" } },
+    { "key": "country", "value": { "option": "FR" } },
+    { "key": "outcome_ranking", "value": { "order": ["energy", "independence", "side_effects", "fewer_visits", "other"], "other_text": "Sleeping well" }, "canonical": { "order": ["energy", "independence", "side_effects", "fewer_visits", "other"], "other_text": "Sleeping well" } },
+    { "given": { "has_symptoms": { "option": "yes" } }, "key": "symptoms", "value": { "options": ["other", "pain"], "other_text": "  Dizziness " }, "canonical": { "options": ["pain", "other"], "other_text": "Dizziness" } },
+    { "given": { "has_symptoms": { "option": "yes" } }, "key": "symptoms", "value": { "options": ["pain"], "other_text": "" }, "canonical": { "options": ["pain"] } },
+    { "key": "birth_year", "value": { "number": 1990 }, "canonical": { "number": 1990 } },
+    { "key": "anything_else", "value": { "text": "  Thanks  " }, "canonical": { "text": "Thanks" } }
+  ]
+}

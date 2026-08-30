@@ -1,0 +1,24 @@
+{
+  "definition": "sample-wellbeing.json",
+  "description": "Complete run with skips, an optional ranking item left out, a fixed matrix and a declined contact step.",
+  "steps": [
+    { "answer": { "key": "country", "value": { "option": "GB" } }, "expect": { "invalidated": [] } },
+    { "answer": { "key": "age_band", "value": { "option": "30_49" } }, "expect": {} },
+    { "answer": { "key": "birth_year", "value": { "skipped": true } }, "expect": {} },
+    { "answer": { "key": "last_visit", "value": { "date": "2025-05-01" } }, "expect": {} },
+    { "answer": { "key": "overall", "value": { "value": 4 } }, "expect": {} },
+    {
+      "answer": { "key": "has_symptoms", "value": { "option": "not_sure" } },
+      "expect": {
+        "visible": ["welcome", "country", "age_band", "birth_year", "last_visit", "overall", "has_symptoms", "daily_activities", "outcome_ranking", "support_wanted", "told_clinician", "anything_else", "contact_email"]
+      }
+    },
+    { "answer": { "key": "daily_activities", "value": { "ratings": { "walking": 2, "housework": 1, "socialising": 3 } } }, "expect": {} },
+    { "answer": { "key": "outcome_ranking", "value": { "order": ["energy", "independence", "side_effects", "fewer_visits"] } }, "expect": {} },
+    { "answer": { "key": "support_wanted", "value": { "options": ["peer", "information"] } }, "expect": { "answers_subset": { "support_wanted": { "options": ["information", "peer"] } } } },
+    { "answer": { "key": "told_clinician", "value": { "option": "yes" } }, "expect": {} },
+    { "answer": { "key": "anything_else", "value": { "skipped": true } }, "expect": { "missing": ["contact_email"] } },
+    { "answer": { "key": "contact_email", "value": { "provided": false } }, "expect": { "missing": [] } }
+  ],
+  "final": { "missing": [], "progress": { "answered": 12, "total": 12 } }
+}

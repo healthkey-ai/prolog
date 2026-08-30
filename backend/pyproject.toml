@@ -34,6 +34,7 @@ DJANGO_SETTINGS_MODULE = "prolog.settings"
 python_files = ["test_*.py"]
 testpaths = ["prolog_surveys/tests"]
 addopts = "-q --reuse-db"
+filterwarnings = ["ignore:No directory at:UserWarning"]
 
 [tool.ruff]
 line-length = 100

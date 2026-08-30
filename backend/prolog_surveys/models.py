@@ -134,3 +134,110 @@ class SurveyOption(models.Model):
 
     def __str__(self) -> str:
         return f"{self.question.key}:{self.key}"
+
+
+class ResponseStatus(models.TextChoices):
+    IN_PROGRESS = "in_progress", "In progress"
+    SUBMITTED = "submitted", "Submitted"
+
+
+class SurveyResponse(models.Model):
+    """One participant attempt (RUN-2, RUN-4). The UUID is the capability token."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    survey_version = models.ForeignKey(
+        SurveyVersion, on_delete=models.PROTECT, related_name="responses"
+    )
+    language = models.CharField(max_length=12)
+    status = models.CharField(
+        max_length=16, choices=ResponseStatus.choices, default=ResponseStatus.IN_PROGRESS
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    last_question_key = models.CharField(max_length=128, blank=True, default="")
+    user_agent_hash = models.CharField(
+        max_length=64, blank=True, default="", help_text="Salted hash; never the raw user agent."
+    )
+
+    class Meta:
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["survey_version", "status", "started_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.id} ({self.status})"
+
+    @property
+    def is_submitted(self) -> bool:
+        return self.status == ResponseStatus.SUBMITTED
+
+    @property
+    def definition(self) -> dict:
+        return self.survey_version.definition
+
+    def answer_map(self) -> dict[str, dict]:
+        return {a.question_key: a.value for a in self.answers.all()}
+
+
+class SurveyAnswer(models.Model):
+    """Authoritative raw answer for one question (Q-1…Q-12)."""
+
+    response = models.ForeignKey(SurveyResponse, on_delete=models.CASCADE, related_name="answers")
+    question_key = models.CharField(max_length=128)
+    value = models.JSONField(help_text="Canonical value shape for the question type.")
+    option_keys = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Selected option keys (single/multi/ranking) for querying.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["response", "question_key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["response", "question_key"], name="prolog_answer_unique"
+            )
+        ]
+        indexes = [models.Index(fields=["question_key"])]
+
+    def __str__(self) -> str:
+        return f"{self.response_id}:{self.question_key}"
+
+    @property
+    def is_skipped(self) -> bool:
+        return bool(self.value.get("skipped"))
+
+
+class SurveyContact(models.Model):
+    """Contact capture (CON-3). Deliberately has NO reference to a response."""
+
+    survey_version = models.ForeignKey(
+        SurveyVersion, on_delete=models.PROTECT, related_name="contacts"
+    )
+    email = models.EmailField()
+    language = models.CharField(max_length=12, blank=True, default="")
+    consent_text = models.TextField(help_text="The notice shown when the address was given.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"contact #{self.pk}"
+
+
+class SurveyConsent(models.Model):
+    """Versioned consent attestation (CON-1); never an answer."""
+
+    response = models.OneToOneField(
+        SurveyResponse, on_delete=models.CASCADE, related_name="consent"
+    )
+    consent_version = models.CharField(max_length=64)
+    text_hash = models.CharField(max_length=64, help_text="SHA-256 of the notice shown.")
+    language = models.CharField(max_length=12)
+    agreed_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"consent {self.consent_version} for {self.response_id}"
