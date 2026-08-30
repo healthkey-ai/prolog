@@ -17,3 +17,6 @@ frontend/playwright-report/
 .env
 .env.*
 !.env.example
+
+# converging-code-review ledger (local)
+.review/

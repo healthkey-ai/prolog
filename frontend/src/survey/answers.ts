@@ -72,6 +72,8 @@ export class AnswerError extends Error {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_OTHER_TEXT = 500;
+/** Absolute cap on a text answer (code points), whatever the definition says; mirrors answers.py. */
+export const MAX_TEXT_LENGTH = 10_000;
 
 function fail(code: AnswerIssueCode, params: Record<string, unknown> = {}): never {
   throw new AnswerError([{ code, params }]);
@@ -225,7 +227,8 @@ export function validateAnswer(
   if (q.type === "text") {
     const text = raw.text;
     if (typeof text !== "string" || !text.trim()) fail("text_required");
-    if (cfg.max_length && length(text) > cfg.max_length) fail("text_too_long", { max: cfg.max_length });
+    const limit = Math.min(cfg.max_length || MAX_TEXT_LENGTH, MAX_TEXT_LENGTH);
+    if (length(text) > limit) fail("text_too_long", { max: limit });
     return { text: text.trim() };
   }
 

@@ -516,3 +516,23 @@ def test_contact_marker_survives_hiding_the_email_question(api_client, db, defin
     assert SurveyResponse.objects.get(pk=rid).last_question_key == "has_symptoms"
     put_answer(api_client, rid, "contact_email", {"provided": False})
     assert SurveyResponse.objects.get(pk=rid).last_question_key == "contact_email"
+
+
+def test_text_answer_cap_enforced_at_the_api(api_client, active, response_id):
+    """Verification of the P1 fix: an oversized text is refused end to end (code + params)."""
+    from prolog_surveys.engine.answers import MAX_TEXT_LENGTH
+
+    # anything_else has max_length 5000, which is below the cap, so it applies as before
+    r = put_answer(api_client, response_id, "anything_else", {"text": "a" * 5001})
+    assert r.status_code == 400 and r.json()["value"][0] == {
+        "code": "text_too_long",
+        "params": {"max": 5000},
+        "message": "text exceeds 5000 characters",
+    }
+    # a request body larger than the API's upload cap is refused outright
+    r = api_client.put(
+        f"/api/run/responses/{response_id}/answers/anything_else/",
+        {"value": {"text": "a" * (MAX_TEXT_LENGTH * 30)}},
+        format="json",
+    )
+    assert r.status_code == 400

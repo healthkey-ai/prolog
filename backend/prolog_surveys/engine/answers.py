@@ -17,6 +17,11 @@ from .visibility import Answers, matrix_rows
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MAX_OTHER_TEXT = 500
+# Absolute cap on a text answer (code points), whatever the definition says:
+# the answer endpoint is unauthenticated, so without it one client could
+# store request-sized bodies per PUT (sec.dos-unbounded). Mirrored in
+# frontend/src/survey/answers.ts.
+MAX_TEXT_LENGTH = 10_000
 
 MESSAGES: dict[str, str] = {
     "info_no_answer": "info questions take no answer",
@@ -249,8 +254,8 @@ def validate_answer(
         text = raw.get("text")
         if not isinstance(text, str) or not text.strip():
             _fail("text_required")
-        limit = cfg.get("max_length")
-        if limit and len(text) > limit:
+        limit = min(cfg.get("max_length") or MAX_TEXT_LENGTH, MAX_TEXT_LENGTH)
+        if len(text) > limit:
             _fail("text_too_long", max=limit)
         return {"text": text.strip()}
 

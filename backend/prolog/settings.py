@@ -124,6 +124,12 @@ WHITENOISE_IMMUTABLE_FILE_TEST = lambda path, url: bool(_VITE_ASSET_RE.search(ur
 
 CORS_ALLOWED_ORIGINS = _env_csv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
 
+# The runner API only ever receives small JSON bodies (an answer, an email);
+# Django's 2.5 MB default would let an anonymous client push request-sized
+# payloads at the unauthenticated endpoints. Definitions/themes are loaded
+# from files, never uploaded.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get("DATA_UPLOAD_MAX_MEMORY_SIZE", str(256 * 1024)))
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],

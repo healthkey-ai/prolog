@@ -156,7 +156,7 @@ selected/ranked, and it is limited to 500 characters.
 | `scale` | `scale: {min, max, min_label?, max_label?, point_labels?}` | `min < max`; `point_labels` (i18n each) must have exactly `max − min + 1` entries. |
 | `matrix` | `scale` (required) plus **either** `rows_from` (key of an earlier `multi` question — its selected options become the rows; an `exclusive` option never does, so a selection of only exclusive options hides the matrix) **or** `rows: [{key, label}]` (fixed rows) | Dynamic rows are labelled with the source option label, or with the participant's own `other_text` for a `free_text` option. Every current row must be rated. |
 | `ranking` | `optional_items: [keys]` | Items that may be left unranked; they sit in an "Add to ranking" tray. Everything else must be ranked exactly once. |
-| `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. |
+| `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
 | `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. Both must be real calendar dates (the schema only checks the digit pattern) with `min_date` ≤ `max_date`. |
 | `email` | `store_separately: true` **or** `link_identity: true` (mutually exclusive) | §8. |

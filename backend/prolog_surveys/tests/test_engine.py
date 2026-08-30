@@ -281,3 +281,20 @@ def test_answer_errors_carry_codes_and_params():
         {"code": "text_too_long", "params": {"max": 6}, "message": "text exceeds 6 characters"}
     ]
     assert str(exc.value) == "text exceeds 6 characters"
+
+
+def test_text_answers_have_an_absolute_cap():
+    """A text question without max_length must not accept megabytes (sec.dos-unbounded)."""
+    from prolog_surveys.engine.answers import MAX_TEXT_LENGTH
+
+    q = {"key": "free", "type": "text", "text": {"en": "x"}, "config": {}}
+    ok = validate_answer(q, {"text": "a" * MAX_TEXT_LENGTH}, {})
+    assert len(ok["text"]) == MAX_TEXT_LENGTH
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"text": "a" * (MAX_TEXT_LENGTH + 1)}, {})
+    assert exc.value.codes == ["text_too_long"]
+    assert exc.value.issues[0].params == {"max": MAX_TEXT_LENGTH}
+    # a configured max_length above the cap is clamped, not honoured
+    q["config"] = {"max_length": 10 * MAX_TEXT_LENGTH}
+    with pytest.raises(AnswerError):
+        validate_answer(q, {"text": "a" * (MAX_TEXT_LENGTH + 1)}, {})

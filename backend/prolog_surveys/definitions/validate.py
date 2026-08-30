@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..engine.answers import MAX_TEXT_LENGTH
 from .schema import SUPPORTED_SCHEMA_VERSIONS, Issue
 
 SINGLE_VALUED = {"single", "dropdown", "scale"}
@@ -299,6 +300,12 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 "email_capture",
                 f"{qp}.config",
                 "an email question needs store_separately or link_identity",
+            )
+        if t == "text" and (cfg.get("max_length") or 0) > MAX_TEXT_LENGTH:
+            warn(
+                "text_max_length",
+                f"{qp}.config.max_length",
+                f"max_length is capped at {MAX_TEXT_LENGTH} characters by the engine",
             )
         if t == "number":
             lo, hi = cfg.get("min_value"), cfg.get("max_value")
