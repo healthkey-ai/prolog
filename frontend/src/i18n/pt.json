@@ -72,5 +72,6 @@
   "complete.readonly": "Esta resposta foi enviada e não pode mais ser alterada.",
   "complete.missing": "Algumas perguntas ainda precisam de resposta.",
   "unsupported": "Este tipo de pergunta não é suportado por esta versão.",
-  "matrix.incomplete": "Avalie todas as linhas antes de continuar."
+  "matrix.incomplete": "Avalie todas as linhas antes de continuar.",
+  "intro.startNew": "Iniciar uma nova resposta"
 }

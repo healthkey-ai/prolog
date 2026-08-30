@@ -180,5 +180,9 @@ test.describe("complex question types", () => {
     await expect(page.getByTestId("start-again")).toHaveCount(0);
     await page.goto(`/s/${SLUG}/q/overall`);
     await expect(page.getByTestId("complete")).toBeVisible();
+    // a new response can be started; the submitted one is untouched
+    await page.goto(`/s/${SLUG}`);
+    await page.getByTestId("start-new").click();
+    await expect(page.getByTestId("question-welcome")).toBeVisible();
   });
 });

@@ -72,5 +72,6 @@
   "complete.readonly": "This response has been submitted and can no longer be changed.",
   "complete.missing": "A few questions still need an answer.",
   "unsupported": "This question type is not supported by this version of the runner.",
-  "matrix.incomplete": "Please rate every row before continuing."
+  "matrix.incomplete": "Please rate every row before continuing.",
+  "intro.startNew": "Start a new response"
 }

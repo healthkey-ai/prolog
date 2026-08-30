@@ -104,9 +104,21 @@ export function IntroPage() {
               <Button variant="primary" size="runner" onClick={resume} data-testid="resume">
                 {t("intro.continue")}
               </Button>
-              {existing.data!.status !== "submitted" && (
+              {existing.data!.status !== "submitted" ? (
                 <Button variant="text" size="runner" onClick={startAgain} data-testid="start-again">
                   {t("intro.startAgain")}
+                </Button>
+              ) : (
+                <Button
+                  variant="text"
+                  size="runner"
+                  onClick={() => {
+                    clearResponseId(slug);
+                    void start();
+                  }}
+                  data-testid="start-new"
+                >
+                  {t("intro.startNew")}
                 </Button>
               )}
             </div>
