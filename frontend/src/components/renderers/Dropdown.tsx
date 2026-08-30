@@ -48,7 +48,8 @@ export function Dropdown({ question, value, onChange, language, disabled }: Rend
                 {options.map((o) => (
                   <CommandItem
                     key={o.key}
-                    value={o.label}
+                    value={o.key}
+                    keywords={[o.label as string]}
                     onSelect={() => {
                       onChange({ option: o.key }, { commit: true });
                       setOpen(false);

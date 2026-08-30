@@ -100,9 +100,20 @@ def test_account_survey_requires_authentication(api_client, db, definition):
         "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
     )
     assert r.status_code == 403
+    # Standalone has no participant model, so an authenticated user still cannot
+    # be linked to a response; refusing here beats creating an unreadable one.
+    # In the integrated profile (participant model = auth.User) the same user
+    # resolves to a participant and is let in.
+    from prolog_surveys import conf
+
+    expected = 200 if conf.is_integrated() else 403
     user = get_user_model().objects.create_user("p", "p@example.org", "x")
     api_client.force_authenticate(user)
-    assert api_client.get("/api/run/surveys/sample-wellbeing/").status_code == 200
+    assert api_client.get("/api/run/surveys/sample-wellbeing/").status_code == expected
+    r = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+    assert r.status_code == (201 if conf.is_integrated() else 403)
 
 
 def test_consent_required_and_recorded(api_client, db, definition):

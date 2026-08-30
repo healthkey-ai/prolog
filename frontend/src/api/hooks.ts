@@ -9,13 +9,22 @@ export const keys = {
   options: (source: string, lang: string) => ["options", source, lang] as const,
 };
 
-export function useSurveyDefinition(slug: string | undefined, lang?: string, invite?: string) {
+/**
+ * The localized definition. With `responseId` the server serves the version
+ * that response is bound to and accepts the response id as the credential, so
+ * invited/account participants never need the invite token again after
+ * starting. Pass the response's language as `lang` too: it keeps the URL
+ * distinct per language, so the browser cache (max-age) cannot serve the
+ * previous language after a switch.
+ */
+export function useSurveyDefinition(slug: string | undefined, lang?: string, invite?: string, responseId?: string | null) {
   const params = new URLSearchParams();
   if (lang) params.set("lang", lang);
   if (invite) params.set("invite", invite);
+  if (responseId) params.set("response", responseId);
   const qs = params.toString();
   return useQuery({
-    queryKey: [...keys.definition(slug ?? "", lang), invite ?? ""],
+    queryKey: [...keys.definition(slug ?? "", lang), invite ?? "", responseId ?? ""],
     queryFn: () => api.get<RunnerDefinition>(`/surveys/${slug}/${qs ? `?${qs}` : ""}`),
     enabled: Boolean(slug),
     staleTime: Infinity,
@@ -53,7 +62,13 @@ export function usePatchResponse(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { last_question_key?: string; language?: string }) => api.patch<ResponseSummary>(`/responses/${id}/`, body),
-    onSuccess: (data) => qc.setQueryData(keys.response(id), data),
+    onSuccess: (data) => {
+      // Merge only what PATCH owns: an answer PUT may still be in flight and its
+      // optimistic value must survive a PATCH that raced it on the server.
+      qc.setQueryData<ResponseSummary>(keys.response(id), (current) =>
+        current ? { ...current, language: data.language, last_question_key: data.last_question_key } : data,
+      );
+    },
   });
 }
 
@@ -103,6 +118,15 @@ export function useContact(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (email: string) => api.post<void>(`/responses/${id}/contact/`, { email }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.response(id) }),
+  });
+}
+
+/** Identity capture (CON-4): the address goes to the host platform's identity service. */
+export function useIdentity(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (email: string) => api.post<void>(`/responses/${id}/identity/`, { email }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.response(id) }),
   });
 }

@@ -121,6 +121,12 @@ PROLOG_CLIENT_KEY_SALT = os.environ.get("PROLOG_CLIENT_KEY_SALT", SECRET_KEY)
 PROLOG_ABANDONED_RESPONSE_DAYS = int(os.environ.get("PROLOG_ABANDONED_RESPONSE_DAYS", "90"))
 PROLOG_EMAIL_FROM = os.environ.get("PROLOG_EMAIL_FROM", "surveys@example.org")
 PROLOG_PUBLIC_URL = os.environ.get("PROLOG_PUBLIC_URL", "http://localhost:5173")
+# Reverse proxies in front of the app (0 = exposed directly). When > 0 the
+# proxy's X-Forwarded-For / X-Forwarded-Proto are trusted for throttling and
+# for the HTTPS redirect; otherwise a client could spoof both.
+PROLOG_NUM_PROXIES = int(os.environ.get("PROLOG_NUM_PROXIES", "0"))
+if PROLOG_NUM_PROXIES > 0:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 MAILERS = {
     "default": {
@@ -134,6 +140,7 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "true").lower() == "true"
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]  # readiness probes speak plain HTTP
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"

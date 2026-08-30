@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -175,6 +176,8 @@ def validate_answer(
         number = raw.get("number")
         if isinstance(number, bool) or not isinstance(number, (int, float)):
             _fail("number is required")
+        if isinstance(number, float) and not math.isfinite(number):
+            _fail("number must be finite")
         if cfg.get("integer") and int(number) != number:
             _fail("a whole number is required")
         lo, hi = cfg.get("min_value"), cfg.get("max_value")

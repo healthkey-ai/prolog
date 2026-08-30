@@ -2,17 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ApiError } from "@/api/client";
-import { useContact, useOptionsSource, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
+import { useContact, useIdentity, useOptionsSource, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
 import { SectionInterstitial } from "@/components/SectionInterstitial";
 import { Shell, type SaveState } from "@/components/Shell";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SkipConfirm } from "@/components/SkipConfirm";
-import i18n from "@/i18n";
+import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
 import { validateAnswer } from "@/survey/answers";
-import { firstOpenKey, overview, position } from "@/survey/navigation";
+import { firstOpenKey, overview, position, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue } from "@/survey/types";
 import { isAnswered, questionByKey } from "@/survey/visibility";
 import { useThemeLogo } from "@/theme/useTheme";
@@ -23,11 +23,14 @@ export function WizardPage() {
   const navigate = useNavigate();
   const id = storedResponseId(slug);
   const response = useResponse(id);
-  const definition = useSurveyDefinition(slug, response.data?.language);
+  // Response-bound: the server serves the version (and language) this response
+  // uses, and accepts the response id as the credential for invited/account flows.
+  const definition = useSurveyDefinition(slug, response.data?.language, undefined, id);
   const save = useSaveAnswer(id ?? "");
   const patch = usePatchResponse(id ?? "");
   const submit = useSubmitResponse(id ?? "");
   const contact = useContact(id ?? "");
+  const identity = useIdentity(id ?? "");
   const logo = useThemeLogo();
 
   const [draft, setDraft] = useState<AnswerValue | undefined>(undefined);
@@ -47,12 +50,7 @@ export function WizardPage() {
   const country = useOptionsSource(def && pos?.visible.some((v) => v.question.config?.options_source) ? "iso3166_countries" : undefined, def?.language ?? "en");
   const countryLabels = useMemo(() => Object.fromEntries((country.data?.options ?? []).map((o) => [o.key, o.label])), [country.data]);
 
-  useEffect(() => {
-    if (def) {
-      void i18n.changeLanguage(def.language);
-      document.documentElement.lang = def.language;
-    }
-  }, [def]);
+  useDefinitionLanguage(def?.language);
 
   // Redirect: no response, submitted, or the URL question is not visible.
   useEffect(() => {
@@ -77,11 +75,15 @@ export function WizardPage() {
   // The draft is keyed on the question: a stale draft from another question is ignored,
   // so no reset effect is needed (a reset would race with renderers that register a
   // default draft on mount, e.g. ranking).
+  const resetSubmit = submit.reset;
   useEffect(() => {
     setSkipPrompt(false);
     setLocalErrors([]);
-  }, [key]);
+    setInterstitial(null); // leaving an interstitial via the overview or browser history
+    resetSubmit(); // a stale "questions missing" alert must not follow the participant
+  }, [key, resetSubmit]);
 
+  const refetchResponse = response.refetch;
   const flashSaved = useCallback(() => {
     setSaveState("saved");
     if (savedTimer.current) window.clearTimeout(savedTimer.current);
@@ -101,13 +103,14 @@ export function WizardPage() {
           setLocalErrors(err.fieldErrors);
           setSaveState("idle");
         } else {
+          if (err instanceof ApiError) void refetchResponse(); // 409 submitted elsewhere / 404 gone: let the redirect effect take over
           lastFailed.current = { key: qKey, value };
           setSaveState("error");
         }
         return false;
       }
     },
-    [save, flashSaved],
+    [save, flashSaved, refetchResponse],
   );
 
   const goTo = useCallback(
@@ -129,14 +132,21 @@ export function WizardPage() {
   const isAnswerable = ANSWERABLE.has(question.type);
   const draftValue = draftKey === key ? draft : answers[key];
   const hasDraft = isAnswerable && draftValue !== undefined && (isAnswered(draftValue) || ("provided" in draftValue && !draftValue.provided));
+  // An explicit clear (renderer sent `undefined`) means "no answer" even when a
+  // value is stored: Next must then go through the skip flow, not keep the old value.
+  const cleared = draftKey === key && draft === undefined;
   const section = def.sections[current.sectionIndex];
 
-  const onChange = (value: AnswerValue | undefined, opts?: { commit?: boolean }) => {
+  const onChange = (value: AnswerValue | undefined, opts?: { commit?: boolean; advance?: boolean }) => {
     setDraft(value);
     setDraftKey(key);
     setSkipPrompt(false);
     setLocalErrors([]);
-    if (opts?.commit && value !== undefined) void commit(value);
+    if (opts?.commit && value !== undefined) {
+      void commit(value).then((ok) => {
+        if (ok && opts.advance) advance(position(def, { ...answers, [key]: value }, key));
+      });
+    }
   };
 
   const commit = async (value: AnswerValue): Promise<boolean> => {
@@ -150,9 +160,13 @@ export function WizardPage() {
     return persist(key, value);
   };
 
-  const advance = () => {
+  /**
+   * Move on from `p` — the position *after* the value just saved, which may
+   * have revealed or hidden questions; the render-time `pos` is stale by then.
+   */
+  const advance = (p: Position = pos) => {
     setSkipPrompt(false);
-    if (pos.isLast) {
+    if (p.isLast) {
       submit.mutate(undefined, {
         onSuccess: () => navigate(`/s/${slug}/complete`),
         onError: (err) => {
@@ -162,13 +176,16 @@ export function WizardPage() {
       });
       return;
     }
-    const next = pos.visible[pos.index + 1];
+    const next = p.visible[p.index + 1];
+    if (!next) return; // the URL question is no longer visible; the redirect effect relocates
     if (def.presentation?.section_interstitials !== false && next.sectionIndex !== current.sectionIndex) {
       setInterstitial(next.sectionIndex);
       return;
     }
     goTo(next.key);
   };
+
+  const after = (value: AnswerValue) => position(def, { ...answers, [key]: value }, key);
 
   const onNext = async () => {
     if (interstitial !== null) {
@@ -182,12 +199,12 @@ export function WizardPage() {
       advance();
       return;
     }
-    const stored = answers[key];
+    const stored = cleared ? undefined : answers[key];
     if (hasDraft && draftValue !== undefined) {
       if (JSON.stringify(stored) !== JSON.stringify(draftValue)) {
         if (!(await commit(draftValue))) return;
       }
-      advance();
+      advance(after(draftValue));
       return;
     }
     if (stored !== undefined) {
@@ -196,7 +213,7 @@ export function WizardPage() {
     }
     // Unanswered.
     if (!required || policy === "none") {
-      if (await persist(key, { skipped: true })) advance();
+      if (await persist(key, { skipped: true })) advance(after({ skipped: true }));
       return;
     }
     if (policy === "hard") {
@@ -208,7 +225,7 @@ export function WizardPage() {
 
   const onSkip = async () => {
     setSkipPrompt(false);
-    if (await persist(key, { skipped: true })) advance();
+    if (await persist(key, { skipped: true })) advance(after({ skipped: true }));
   };
 
   const onBack = () => {
@@ -227,7 +244,8 @@ export function WizardPage() {
     if (lastFailed.current) void persist(lastFailed.current.key, lastFailed.current.value);
   };
 
-  const rows = overview(def, answers, key, response.data.last_question_key);
+  // The overview sheet is unmounted while closed; don't walk the DAG twice per keystroke for it.
+  const rows = overviewOpen ? overview(def, answers, key, response.data.last_question_key) : [];
   const progressValue = pos.questionTotal ? Math.min(1, (pos.questionNumber - (hasDraft || answers[key] ? 0 : 1)) / pos.questionTotal) : 0;
 
   return (
@@ -264,11 +282,9 @@ export function WizardPage() {
             questionTotal={pos.questionTotal}
             answers={answers}
             questions={questions}
-            onDeclineEmail={async () => {
-              if (await persist(key, { provided: false })) advance();
-            }}
             onSubmitEmail={async (email) => {
-              await contact.mutateAsync(email);
+              // Identity capture goes to the host's identity service; contact capture is stored unlinked.
+              await (question.config?.link_identity ? identity.mutateAsync(email) : contact.mutateAsync(email));
               setDraftKey(key);
               setDraft({ provided: true });
               flashSaved();
@@ -277,7 +293,7 @@ export function WizardPage() {
         )}
         {submit.isError && (
           <p className="mt-6 text-sm text-error" role="alert">
-            {t("complete.missing")}
+            {submit.error instanceof ApiError && submit.error.body.missing ? t("complete.missing") : t("app.error")}
           </p>
         )}
       </Shell>

@@ -48,7 +48,6 @@
   "dropdown.placeholder": "Type to search…",
   "dropdown.noResults": "No matches",
   "dropdown.clear": "Clear",
-  "scale.legend": "{{min}} = {{minLabel}}, {{max}} = {{maxLabel}}",
   "text.remaining": "{{count}} characters left",
   "number.placeholder": "Enter a number",
   "email.placeholder": "you@example.org",

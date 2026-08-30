@@ -112,7 +112,7 @@ export function Shell(p: ShellProps) {
               <span className="text-error">
                 {t("nav.saveFailed")}{" "}
                 {p.onRetry && (
-                  <Button variant="link" size="xs" onClick={p.onRetry} className="text-error">
+                  <Button variant="link" size="runner-sm" onClick={p.onRetry} className="text-error">
                     {t("app.retry")}
                   </Button>
                 )}

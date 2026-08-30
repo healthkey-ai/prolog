@@ -62,13 +62,20 @@ export function conditionsHold(conditions: Condition[] | undefined, answers: Ans
   return (conditions ?? []).every((c) => evaluateCondition(c, answers));
 }
 
-/** One forward pass in presentation order — the DAG's topological order. */
+/**
+ * One forward pass in presentation order — the DAG's topological order.
+ * Conditions see only the answers of questions that are themselves visible
+ * (`seen`): a hidden question's stale answer must not keep anything downstream
+ * open, otherwise a multi-hop cascade would stop after one hop.
+ */
 export function visibleQuestions(def: Definition, answers: Answers): VisibleQuestion[] {
   const out: VisibleQuestion[] = [];
+  const seen: Answers = {};
   def.sections.forEach((section, sectionIndex) => {
-    if (!conditionsHold(section.visible_if, answers)) return;
+    if (!conditionsHold(section.visible_if, seen)) return;
     for (const q of section.questions) {
-      if (!conditionsHold(q.visible_if, answers)) continue;
+      if (!conditionsHold(q.visible_if, seen)) continue;
+      if (q.key in answers) seen[q.key] = answers[q.key];
       out.push({
         key: q.key,
         sectionKey: section.key,

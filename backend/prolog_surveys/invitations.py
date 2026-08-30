@@ -7,7 +7,7 @@ import datetime as dt
 from collections.abc import Iterator
 from typing import Any
 
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives, mailers
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -75,45 +75,53 @@ def schedule_due(now: dt.date | None = None) -> list[SurveyAdministration]:
 
 
 def send_pending() -> int:
-    """Email every unsent administration whose invitation has an address."""
+    """Email every unsent administration whose invitation is active and has an address."""
     sent = 0
-    for administration in SurveyAdministration.objects.filter(sent_at__isnull=True).select_related(
-        "invitation__survey"
-    ):
-        invitation = administration.invitation
-        if not invitation.email:
-            continue
-        survey = invitation.survey
-        version = administration.survey_version or survey.active_version
-        if version is None:
-            continue
-        lang = invitation.language or version.default_language
-        title = pick(version.definition["title"], lang, version.default_language)
-        context = {
-            "title": title,
-            "link": invitation_link(survey, administration),
-            "due": administration.due_at,
-        }
-        send_mail(
-            subject=render_to_string(
-                "prolog_surveys/email/invitation_subject.txt", context
-            ).strip(),
-            message=render_to_string("prolog_surveys/email/invitation.txt", context),
-            from_email=conf.get("PROLOG_EMAIL_FROM"),
-            recipient_list=[invitation.email],
-            html_message=render_to_string("prolog_surveys/email/invitation.html", context),
-        )
-        administration.sent_at = timezone.now()
-        administration.save(update_fields=["sent_at"])
-        sent += 1
+    pending = (
+        SurveyAdministration.objects.filter(sent_at__isnull=True, invitation__active=True)
+        .exclude(invitation__email="")
+        .select_related("invitation__survey", "survey_version")
+    )
+    mailer = mailers.default
+    with mailer:  # one mail session for the whole batch
+        for administration in pending:
+            if _send_one(mailer, administration):
+                sent += 1
     return sent
 
 
+def _send_one(mailer, administration: SurveyAdministration) -> bool:
+    invitation = administration.invitation
+    survey = invitation.survey
+    version = version_for(administration)
+    if version is None:
+        return False
+    lang = invitation.language or version.default_language
+    title = pick(version.definition["title"], lang, version.default_language)
+    context = {
+        "title": title,
+        "link": invitation_link(survey, administration),
+        "due": administration.due_at,
+    }
+    message = EmailMultiAlternatives(
+        subject=render_to_string("prolog_surveys/email/invitation_subject.txt", context).strip(),
+        body=render_to_string("prolog_surveys/email/invitation.txt", context),
+        from_email=conf.get("PROLOG_EMAIL_FROM"),
+        to=[invitation.email],
+    )
+    message.attach_alternative(
+        render_to_string("prolog_surveys/email/invitation.html", context), "text/html"
+    )
+    mailer.send_messages([message])
+    administration.sent_at = timezone.now()
+    administration.save(update_fields=["sent_at"])
+    return True
+
+
 def version_for(administration: SurveyAdministration):
-    """Version a response to this administration must use."""
-    if (
-        administration.survey_version
-        and administration.survey_version.status != LifecycleStatus.ARCHIVED
-    ):
-        return administration.survey_version
+    """Version a response to this administration must use: the scheduled one
+    while it is active, otherwise whatever is active now."""
+    scheduled = administration.survey_version
+    if scheduled is not None and scheduled.status == LifecycleStatus.ACTIVE:
+        return scheduled
     return administration.invitation.survey.active_version

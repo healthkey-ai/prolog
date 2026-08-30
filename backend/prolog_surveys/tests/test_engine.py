@@ -166,3 +166,34 @@ def test_iso3166_source_localised():
     assert {"key": "GB", "label": "United Kingdom"} in en
     assert any(c["key"] == "DE" and c["label"].startswith("Alemania") for c in es)
     assert "GB" in iso3166.country_keys()
+
+
+def test_multi_hop_cascade_reaches_dependants_of_hidden_answers():
+    """q1 gates q2; q2's answer gates q3. A hidden q2 must not keep q3 open."""
+    chain = {
+        "sections": [
+            {
+                "key": "s",
+                "questions": [
+                    {"key": "q1", "type": "single", "options": [{"key": "yes"}, {"key": "no"}]},
+                    {
+                        "key": "q2",
+                        "type": "single",
+                        "options": [{"key": "a"}, {"key": "b"}],
+                        "visible_if": [{"question": "q1", "op": "eq", "value": "yes"}],
+                    },
+                    {
+                        "key": "q3",
+                        "type": "text",
+                        "visible_if": [{"question": "q2", "op": "eq", "value": "a"}],
+                    },
+                ],
+            }
+        ]
+    }
+    answers = {"q1": {"option": "no"}, "q2": {"option": "a"}, "q3": {"text": "hello"}}
+    assert visible_keys(chain, answers) == ["q1"]
+    result = apply_cascade(chain, answers)
+    assert result.invalidated == ["q2", "q3"]
+    assert list(result.answers) == ["q1"]
+    assert result.visible == ["q1"]

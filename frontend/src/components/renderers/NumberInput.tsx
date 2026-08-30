@@ -9,7 +9,7 @@ export function NumberInput({ question, value, onChange, disabled }: RendererPro
   const parse = (s: string) => {
     if (s === "") return undefined;
     const n = Number(s);
-    return Number.isNaN(n) ? undefined : { number: n };
+    return Number.isFinite(n) ? { number: n } : undefined;
   };
   return (
     <Input

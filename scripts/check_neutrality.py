@@ -4,7 +4,9 @@
 The deny-list itself must not live in this public repository, so it is read
 from the NEUTRALITY_DENYLIST environment variable (comma-separated, case-
 insensitive terms), set as a CI secret and optionally in a developer's shell.
-With the variable unset the check passes and prints a notice.
+With the variable unset the check prints a notice and passes locally; in CI
+(``CI`` set) it fails unless ``NEUTRALITY_ALLOW_UNSET`` is ``true`` (fork pull
+requests, where the secret is not available).
 """
 
 from __future__ import annotations
@@ -22,6 +24,9 @@ def main() -> int:
     terms = [t.strip() for t in raw.split(",") if t.strip()]
     if not terms:
         print("check_neutrality: NEUTRALITY_DENYLIST not set; nothing to check")
+        if os.environ.get("CI") and os.environ.get("NEUTRALITY_ALLOW_UNSET", "").lower() != "true":
+            print("check_neutrality: refusing to pass silently in CI (set the secret)")
+            return 1
         return 0
     pattern = re.compile("|".join(re.escape(t) for t in terms), re.IGNORECASE)
     files = subprocess.run(

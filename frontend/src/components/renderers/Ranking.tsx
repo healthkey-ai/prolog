@@ -1,3 +1,4 @@
+import { MAX_OTHER_TEXT } from "@/survey/answers";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -7,7 +8,7 @@ import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "lucide-
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
-import type { Option, RankingValue } from "@/survey/types";
+import { questionRequired, type Option, type RankingValue } from "@/survey/types";
 import { cn } from "@/lib/utils";
 
 /** Ranking with drag **and** ▲▼ buttons, live position announcements, optional items (Q-6). */
@@ -20,9 +21,10 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
   const [announce, setAnnounce] = useState("");
 
   // The order shown is itself a valid answer: register it as the draft so Next
-  // accepts an untouched ranking instead of treating it as unanswered.
+  // accepts an untouched required ranking instead of treating it as unanswered.
+  // An optional ranking stays unanswered so it can still be skipped.
   useEffect(() => {
-    if (value === undefined) onChange({ order });
+    if (value === undefined && questionRequired(question)) onChange({ order });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question.key]);
   const labelOf = (key: string) => (options.find((o) => o.key === key)?.label as string) ?? key;
@@ -147,7 +149,7 @@ function SortableItem(p: {
           className={`${inputClass} mt-3`}
           placeholder={t("single.other")}
           aria-label={t("single.other")}
-          maxLength={500}
+          maxLength={MAX_OTHER_TEXT}
           value={p.otherText ?? ""}
           onChange={(e) => p.onOtherText(e.target.value, false)}
           onBlur={(e) => p.onOtherText(e.target.value, true)}

@@ -1,7 +1,8 @@
 from django.contrib import admin
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q, Subquery
 
 from .models import (
+    LifecycleStatus,
     Survey,
     SurveyAdministration,
     SurveyAnswer,
@@ -49,6 +50,11 @@ class SurveyAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .annotate(
+                active_ver=Subquery(
+                    SurveyVersion.objects.filter(
+                        survey=OuterRef("pk"), status=LifecycleStatus.ACTIVE
+                    ).values("version")[:1]
+                ),
                 n_responses=Count("versions__responses", distinct=True),
                 n_completed=Count(
                     "versions__responses",
@@ -60,8 +66,7 @@ class SurveyAdmin(admin.ModelAdmin):
 
     @admin.display(description="Active version")
     def active(self, obj):
-        v = obj.active_version
-        return v.version if v else "—"
+        return obj.active_ver or "—"
 
     @admin.display(description="Responses (submitted/total)")
     def responses(self, obj):

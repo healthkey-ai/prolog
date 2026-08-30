@@ -12,6 +12,7 @@ presentation order is the topological order the engine evaluates.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,18 +21,6 @@ from .schema import SUPPORTED_SCHEMA_VERSIONS, Issue
 OPTION_TYPES = {"single", "dropdown", "multi", "ranking"}
 SINGLE_VALUED = {"single", "dropdown", "scale"}
 MULTI_VALUED = {"multi", "ranking"}
-ANSWERABLE = {
-    "single",
-    "dropdown",
-    "multi",
-    "scale",
-    "ranking",
-    "matrix",
-    "text",
-    "number",
-    "date",
-    "email",
-}
 
 CONFIG_BY_TYPE: dict[str, set[str]] = {
     "info": set(),
@@ -337,7 +326,7 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
         if t == "scale":
             scale = target.question["config"]["scale"]
             for v in values:
-                if not v.lstrip("-").isdigit() or not scale["min"] <= int(v) <= scale["max"]:
+                if not re.fullmatch(r"-?\d+", v) or not scale["min"] <= int(v) <= scale["max"]:
                     err(
                         "condition_value",
                         path,

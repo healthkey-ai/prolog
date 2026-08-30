@@ -75,10 +75,6 @@ def load_definition(
         slug=definition["slug"],
         defaults={"title": definition["title"][definition["default_language"]]},
     )
-    survey.title = definition["title"][definition["default_language"]]
-    survey.theme_code = definition.get("theme", "")
-    survey.allow_anonymous_participation = definition["participation"]["anonymous"]
-    survey.save()
 
     version, created = SurveyVersion.objects.select_for_update().get_or_create(
         survey=survey,
@@ -113,6 +109,10 @@ def load_definition(
     if activate and version.status != LifecycleStatus.ACTIVE:
         activate_version(version, allow_unreviewed=allow_unreviewed)
         activated = True
+    elif version.status == LifecycleStatus.ACTIVE or survey.active_version is None:
+        # Survey-level fields mirror the active version; a draft may only seed
+        # them while nothing is live (it must not retarget a running survey).
+        _sync_survey(version)
     return LoadResult(
         version=version, created=created, changed=changed, activated=activated, issues=issues
     )
@@ -151,7 +151,21 @@ def activate_version(version: SurveyVersion, *, allow_unreviewed: bool = False) 
     version.status = LifecycleStatus.ACTIVE
     version.published_at = now
     version.save(update_fields=["status", "published_at", "updated_at"])
+    _sync_survey(version)
     materialize(version)
+
+
+def _sync_survey(version: SurveyVersion) -> None:
+    """Survey-level fields mirror the active version only; a draft must not
+    retarget the live survey's title, theme or participation mode."""
+    definition = version.definition
+    survey = version.survey
+    survey.title = definition["title"][definition["default_language"]]
+    survey.theme_code = definition.get("theme", "")
+    survey.allow_anonymous_participation = definition["participation"]["anonymous"]
+    survey.save(
+        update_fields=["title", "theme_code", "allow_anonymous_participation", "updated_at"]
+    )
 
 
 @transaction.atomic

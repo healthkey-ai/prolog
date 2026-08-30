@@ -1,3 +1,4 @@
+import { MAX_OTHER_TEXT } from "@/survey/answers";
 import { useTranslation } from "react-i18next";
 import { Input } from "../ui/input";
 import { OptionCard } from "../ui/OptionCard";
@@ -59,7 +60,7 @@ export function MultiChoice({ question, value, onChange, disabled }: RendererPro
                   className={`${inputClass} mt-3`}
                   placeholder={t("single.other")}
                   aria-label={t("single.other")}
-                  maxLength={500}
+                  maxLength={MAX_OTHER_TEXT}
                   value={value?.other_text ?? ""}
                   onChange={(e) => onChange({ options: selected, other_text: e.target.value })}
                   onBlur={() => onChange({ options: selected, other_text: value?.other_text?.trim() || undefined }, { commit: true })}

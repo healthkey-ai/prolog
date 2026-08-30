@@ -23,8 +23,13 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
-/** Merge extra chrome strings (e.g. from a theme's `strings`) at runtime. */
+/**
+ * Merge extra chrome strings (e.g. from a theme's `strings`) at runtime. The
+ * base bundles are restored first so a previous theme's overrides do not leak
+ * into the next survey opened in the same session.
+ */
 export function addStrings(overrides: Record<string, Record<string, string>>): void {
+  for (const [lang, base] of Object.entries(resources)) i18n.addResourceBundle(lang, "translation", base.translation, false, true);
   const byLang: Record<string, Record<string, string>> = {};
   for (const [key, langs] of Object.entries(overrides)) {
     for (const [lang, text] of Object.entries(langs)) (byLang[lang] ??= {})[key] = text;

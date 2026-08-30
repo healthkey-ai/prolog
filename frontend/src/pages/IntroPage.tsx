@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError } from "@/api/client";
@@ -11,7 +11,7 @@ import { RadioGroup } from "@/components/ui/radio-group";
 import { languageName } from "@/components/Shell";
 import { clearResponseId, storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
-import i18n from "@/i18n";
+import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { Decor } from "@/components/Decor";
 import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
 
@@ -28,15 +28,13 @@ export function IntroPage() {
   const create = useCreateResponse();
   const [agreed, setAgreed] = useState(false);
   const [consentError, setConsentError] = useState(false);
+  // "Start a new response" on a consent survey: show the start form (with the
+  // consent notice) instead of the resume card; the old id is only replaced
+  // once the new response exists.
+  const [fresh, setFresh] = useState(false);
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);
-
-  useEffect(() => {
-    if (definition.data) void i18n.changeLanguage(definition.data.language);
-  }, [definition.data]);
-  useEffect(() => {
-    if (definition.data) document.documentElement.lang = definition.data.language;
-  }, [definition.data]);
+  useDefinitionLanguage(definition.data?.language);
 
   if (definition.isLoading) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
   if (definition.isError || !definition.data) {
@@ -52,12 +50,17 @@ export function IntroPage() {
       setConsentError(true);
       return;
     }
-    const response = await create.mutateAsync({
-      slug,
-      language: def.language,
-      consent: consent ? { version: consent.version, agreed } : undefined,
-      invitation: invite,
-    });
+    let response;
+    try {
+      response = await create.mutateAsync({
+        slug,
+        language: def.language,
+        consent: consent ? { version: consent.version, agreed } : undefined,
+        invitation: invite,
+      });
+    } catch {
+      return; // create.isError renders the message
+    }
     storeResponseId(slug, response.id);
     const key = firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
@@ -81,7 +84,7 @@ export function IntroPage() {
   const immersive = layout.immersiveIntro;
   const ground = immersive ? "bg-primary text-on-primary" : "bg-ground text-ink";
   const soft = immersive ? "text-on-primary/80" : "text-ink-soft";
-  const hasExisting = existingId && existing.data && !existing.isError;
+  const hasExisting = existingId && existing.data && !existing.isError && !fresh;
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
@@ -108,13 +111,13 @@ export function IntroPage() {
                 <Button variant="text" size="runner" onClick={startAgain} data-testid="start-again">
                   {t("intro.startAgain")}
                 </Button>
-              ) : (
+              ) : invite ? null : ( // an invitation is answered once; the server would return the same response
                 <Button
                   variant="text"
                   size="runner"
                   onClick={() => {
-                    clearResponseId(slug);
-                    void start();
+                    if (consentRequired) setFresh(true);
+                    else void start();
                   }}
                   data-testid="start-new"
                 >

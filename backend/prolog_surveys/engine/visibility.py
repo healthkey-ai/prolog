@@ -7,7 +7,6 @@ from typing import Any
 
 Answers = dict[str, dict[str, Any]]
 
-MULTI_VALUED = {"multi", "ranking"}
 ANSWERABLE = {
     "single",
     "dropdown",
@@ -94,14 +93,22 @@ def conditions_hold(conditions: list[dict[str, Any]], answers: Answers) -> bool:
 
 
 def visible_questions(definition: dict[str, Any], answers: Answers) -> list[VisibleQuestion]:
-    """One forward pass in presentation order (the DAG's topological order)."""
+    """One forward pass in presentation order (the DAG's topological order).
+
+    Conditions see only the answers of questions that are themselves visible
+    (``seen``): a hidden question's stale answer must not keep anything
+    downstream open, otherwise a multi-hop cascade would stop after one hop.
+    """
     out: list[VisibleQuestion] = []
+    seen: Answers = {}
     for si, section in enumerate(definition["sections"]):
-        if not conditions_hold(section.get("visible_if", []), answers):
+        if not conditions_hold(section.get("visible_if", []), seen):
             continue
         for q in section["questions"]:
-            if not conditions_hold(q.get("visible_if", []), answers):
+            if not conditions_hold(q.get("visible_if", []), seen):
                 continue
+            if q["key"] in answers:
+                seen[q["key"]] = answers[q["key"]]
             out.append(
                 VisibleQuestion(
                     key=q["key"],

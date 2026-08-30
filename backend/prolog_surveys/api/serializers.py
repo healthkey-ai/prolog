@@ -12,10 +12,6 @@ class CreateResponseSerializer(serializers.Serializer):
     )
 
 
-class IdentitySerializer(serializers.Serializer):
-    email = serializers.EmailField(max_length=254)
-
-
 class PatchResponseSerializer(serializers.Serializer):
     last_question_key = serializers.CharField(max_length=128, required=False, allow_blank=True)
     language = serializers.CharField(max_length=12, required=False)
@@ -26,7 +22,12 @@ class AnswerSerializer(serializers.Serializer):
 
 
 class ContactSerializer(serializers.Serializer):
+    """An email address for the contact or identity endpoint (CON-3/4)."""
+
     email = serializers.EmailField(max_length=254)
+
+
+IdentitySerializer = ContactSerializer
 
 
 class ResponseSerializer(serializers.ModelSerializer):

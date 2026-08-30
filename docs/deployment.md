@@ -57,7 +57,8 @@ Any wording or structure change after activation requires a **new
 | `PROLOG_ABANDONED_RESPONSE_DAYS` | retention of in-progress responses (default 90) |
 | `PROLOG_CLIENT_KEY_SALT` | salt for hashed client keys (throttling); rotate to reset |
 | `EMAIL_BACKEND`, `PROLOG_EMAIL_FROM` | invitations (integrated profile) |
-| `SECURE_SSL_REDIRECT` | set `false` only when TLS terminates elsewhere and the proxy sets `X-Forwarded-Proto` |
+| `SECURE_SSL_REDIRECT` | `true` by default when `DEBUG=false`; `/api/health/` is exempt |
+| `PROLOG_NUM_PROXIES` | number of reverse proxies in front of the app (default `0`). Set `1` behind a TLS-terminating proxy so its `X-Forwarded-Proto` / `X-Forwarded-For` are trusted; otherwise the HTTPS redirect loops and throttling keys on the proxy's address |
 | `LOG_LEVEL` | default `INFO` |
 
 Put TLS termination and HTTP→HTTPS in front (Caddy, nginx, a cloud load

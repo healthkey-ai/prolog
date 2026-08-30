@@ -9,6 +9,9 @@ import type { Palette, Theme } from "./types";
 const STYLE_ID = "prolog-theme";
 const FONTS_ID = "prolog-theme-fonts";
 
+/** Theme values land inside a `<style>` block; keep them to a single declaration. */
+const cssValue = (v: string | number): string => String(v).replace(/[;{}<>]/g, "");
+
 const TOKEN_KEYS: (keyof Palette)[] = ["primary", "primary_deep", "on_primary", "secondary", "accent", "focus", "ground", "surface", "tint", "ink", "ink_soft", "line", "error", "success"];
 
 export function paletteVariables(p: Partial<Palette>): string {
@@ -17,7 +20,7 @@ export function paletteVariables(p: Partial<Palette>): string {
   const values: Partial<Palette> = { ...p, primary_deep: primaryDeep, on_primary: p.on_primary ?? (p.primary ? "#ffffff" : undefined), focus: p.focus ?? p.accent };
   for (const key of TOKEN_KEYS) {
     const v = values[key];
-    if (v) lines.push(`  --p-${key.replace(/_/g, "-")}: ${v};`);
+    if (v) lines.push(`  --p-${key.replace(/_/g, "-")}: ${cssValue(v)};`);
   }
   return lines.join("\n");
 }
@@ -28,7 +31,7 @@ export function themeCss(theme: Theme): string {
   const l = theme.layout ?? {};
   const root: string[] = [paletteVariables(theme.colors.light)];
   const push = (name: string, value: string | number | undefined) => {
-    if (value !== undefined && value !== null && value !== "") root.push(`  --p-${name}: ${value};`);
+    if (value !== undefined && value !== null && value !== "") root.push(`  --p-${name}: ${cssValue(value)};`);
   };
   push("font-heading", t.heading_family);
   push("font-body", t.body_family);
@@ -111,5 +114,5 @@ export function applyTheme(theme: Theme, doc: Document = document): void {
     icon.href = theme.assets.favicon;
   }
 
-  if (theme.strings) addStrings(theme.strings);
+  addStrings(theme.strings ?? {});
 }

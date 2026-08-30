@@ -48,7 +48,6 @@
   "dropdown.placeholder": "Escriba para buscar…",
   "dropdown.noResults": "Sin resultados",
   "dropdown.clear": "Borrar",
-  "scale.legend": "{{min}} = {{minLabel}}, {{max}} = {{maxLabel}}",
   "text.remaining": "Quedan {{count}} caracteres",
   "number.placeholder": "Introduzca un número",
   "email.placeholder": "usted@ejemplo.org",

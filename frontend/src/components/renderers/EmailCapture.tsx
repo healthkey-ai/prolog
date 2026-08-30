@@ -8,12 +8,10 @@ import type { EmailValue } from "@/survey/types";
 
 interface Props extends RendererProps<EmailValue> {
   onSubmitEmail: (email: string) => Promise<void>;
-  /** Decline: records {provided: false} and moves on. */
-  onDecline?: () => void;
 }
 
 /** Contact/identity capture (Q-11, CON-3/4): the address goes to its own endpoint, never into the answer. */
-export function EmailCapture({ question, value, onChange, onSubmitEmail, onDecline, disabled }: Props) {
+export function EmailCapture({ question, value, onChange, onSubmitEmail, disabled }: Props) {
   const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +68,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onDecli
             <Button variant="primary" size="runner" onClick={submit} disabled={disabled || busy || !email} data-testid="email-save">
               {t("email.save")}
             </Button>
-            <Button variant="surface" size="runner" onClick={() => (onDecline ? onDecline() : onChange({ provided: false }, { commit: true }))} disabled={disabled || busy} data-testid="email-skip">
+            <Button variant="surface" size="runner" onClick={() => onChange({ provided: false }, { commit: true, advance: true })} disabled={disabled || busy} data-testid="email-skip">
               {t("email.skip")}
             </Button>
           </div>

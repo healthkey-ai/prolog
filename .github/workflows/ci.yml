@@ -13,6 +13,9 @@ jobs:
       - run: python3 scripts/check_neutrality.py
         env:
           NEUTRALITY_DENYLIST: ${{ secrets.NEUTRALITY_DENYLIST }}
+          # Fork PRs cannot read secrets, and the guard stays advisory until the
+          # NEUTRALITY_DENYLIST secret is configured for the repository.
+          NEUTRALITY_ALLOW_UNSET: ${{ secrets.NEUTRALITY_DENYLIST == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
   schemas:
     runs-on: ubuntu-latest

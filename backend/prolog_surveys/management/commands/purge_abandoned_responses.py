@@ -15,7 +15,9 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, *args, **options):
-        days = options["days"] or conf.get("PROLOG_ABANDONED_RESPONSE_DAYS")
+        days = options["days"]
+        if days is None:
+            days = conf.get("PROLOG_ABANDONED_RESPONSE_DAYS")
         cutoff = timezone.now() - timedelta(days=days)
         qs = SurveyResponse.objects.filter(status=ResponseStatus.IN_PROGRESS, updated_at__lt=cutoff)
         n = qs.count()

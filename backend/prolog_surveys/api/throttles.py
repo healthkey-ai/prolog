@@ -9,12 +9,22 @@ from rest_framework.throttling import SimpleRateThrottle
 from .. import conf
 
 
-def client_key(request) -> str:
-    """Salted hash of the caller's address and user agent; never persisted."""
+def client_address(request) -> str:
+    """The caller's address, trusting X-Forwarded-For only for the configured
+    number of proxies (anything a client can set itself would let it pick a
+    fresh throttle bucket per request)."""
+    proxies = int(conf.get("PROLOG_NUM_PROXIES") or 0)
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    addr = forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "")
-    ua = request.META.get("HTTP_USER_AGENT", "")
-    raw = f"{conf.get('PROLOG_CLIENT_KEY_SALT')}|{addr}|{ua}"
+    if proxies > 0 and forwarded:
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        if len(hops) >= proxies:
+            return hops[-proxies]
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def client_key(request) -> str:
+    """Salted hash of the caller's address; never persisted."""
+    raw = f"{conf.get('PROLOG_CLIENT_KEY_SALT')}|{client_address(request)}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

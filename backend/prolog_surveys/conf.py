@@ -35,6 +35,9 @@ DEFAULTS: dict[str, Any] = {
     "PROLOG_PARTICIPANT_RESOLVER": None,
     # Salt for hashed client keys used by throttling (never stores raw IPs).
     "PROLOG_CLIENT_KEY_SALT": "prolog",
+    # Trusted reverse proxies in front of the app. 0 = exposed directly (ignore
+    # X-Forwarded-For / X-Forwarded-Proto); N = trust the last N hops.
+    "PROLOG_NUM_PROXIES": 0,
     # In-progress responses older than this are purged by `purge_abandoned_responses`.
     "PROLOG_ABANDONED_RESPONSE_DAYS": 90,
     "PROLOG_EMAIL_FROM": "surveys@example.org",

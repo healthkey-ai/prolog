@@ -22,10 +22,15 @@ def pick(obj: dict[str, str], lang: str, default: str) -> str:
     return obj.get(lang) or obj.get(default) or next(iter(obj.values()), "")
 
 
+def resolve_language(definition: dict[str, Any], lang: str | None) -> str:
+    """``lang`` when the definition offers it, else the default language."""
+    default = definition["default_language"]
+    return lang if lang and lang in definition["languages"] else default
+
+
 def localize(definition: dict[str, Any], lang: str) -> dict[str, Any]:
     default = definition["default_language"]
-    if lang not in definition["languages"]:
-        lang = default
+    lang = resolve_language(definition, lang)
 
     def walk(node: Any, key: str | None = None) -> Any:
         if isinstance(node, dict):

@@ -3,8 +3,8 @@ import type { AnswerValue, Question } from "@/survey/types";
 export interface RendererProps<V extends AnswerValue = AnswerValue> {
   question: Question;
   value: V | undefined;
-  /** Update the draft; `commit` asks the wizard to save immediately (instant controls). */
-  onChange: (value: V | undefined, opts?: { commit?: boolean }) => void;
+  /** Update the draft; `commit` saves immediately (instant controls), `advance` also moves on once saved. */
+  onChange: (value: V | undefined, opts?: { commit?: boolean; advance?: boolean }) => void;
   language: string;
   disabled?: boolean;
   /** Errors from the last save attempt or local validation. */

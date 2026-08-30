@@ -22,7 +22,7 @@ export class AnswerError extends Error {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_OTHER_TEXT = 500;
+export const MAX_OTHER_TEXT = 500;
 
 function fail(msg: string): never {
   throw new AnswerError([msg]);
@@ -152,7 +152,7 @@ export function validateAnswer(
 
   if (q.type === "number") {
     const n = raw.number;
-    if (typeof n !== "number" || Number.isNaN(n)) fail("number is required");
+    if (typeof n !== "number" || !Number.isFinite(n)) fail("number is required");
     if (cfg.integer && !Number.isInteger(n)) fail("a whole number is required");
     if (cfg.min_value !== undefined && n < cfg.min_value) fail(`number must be at least ${cfg.min_value}`);
     if (cfg.max_value !== undefined && n > cfg.max_value) fail(`number must be at most ${cfg.max_value}`);
