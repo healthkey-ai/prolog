@@ -1,0 +1,241 @@
+{
+  "definition": "sample-wellbeing.json",
+  "description": "Both branch directions, dynamic matrix pruning, section gate, exclusive option.",
+  "initial": {
+    "visible": [
+      "welcome",
+      "country",
+      "age_band",
+      "birth_year",
+      "last_visit",
+      "overall",
+      "has_symptoms",
+      "daily_activities",
+      "outcome_ranking",
+      "support_wanted",
+      "anything_else",
+      "contact_email"
+    ]
+  },
+  "steps": [
+    {
+      "answer": {
+        "key": "has_symptoms",
+        "value": {
+          "option": "yes"
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "welcome",
+          "country",
+          "age_band",
+          "birth_year",
+          "last_visit",
+          "overall",
+          "has_symptoms",
+          "symptoms",
+          "daily_activities",
+          "outcome_ranking",
+          "support_wanted",
+          "told_clinician",
+          "anything_else",
+          "contact_email"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "symptoms",
+        "value": {
+          "options": [
+            "worry",
+            "fatigue"
+          ]
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "answers": {
+          "has_symptoms": {
+            "option": "yes"
+          },
+          "symptoms": {
+            "options": [
+              "fatigue",
+              "worry"
+            ]
+          }
+        },
+        "visible": [
+          "welcome",
+          "country",
+          "age_band",
+          "birth_year",
+          "last_visit",
+          "overall",
+          "has_symptoms",
+          "symptoms",
+          "symptom_impact",
+          "daily_activities",
+          "outcome_ranking",
+          "support_wanted",
+          "told_clinician",
+          "worry_detail",
+          "anything_else",
+          "contact_email"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "symptom_impact",
+        "value": {
+          "ratings": {
+            "fatigue": 3,
+            "worry": 5
+          }
+        }
+      },
+      "expect": {
+        "invalidated": []
+      }
+    },
+    {
+      "answer": {
+        "key": "symptoms",
+        "value": {
+          "options": [
+            "fatigue"
+          ]
+        }
+      },
+      "expect": {
+        "invalidated": [
+          "symptom_impact"
+        ],
+        "answers": {
+          "has_symptoms": {
+            "option": "yes"
+          },
+          "symptoms": {
+            "options": [
+              "fatigue"
+            ]
+          },
+          "symptom_impact": {
+            "ratings": {
+              "fatigue": 3
+            }
+          }
+        },
+        "visible": [
+          "welcome",
+          "country",
+          "age_band",
+          "birth_year",
+          "last_visit",
+          "overall",
+          "has_symptoms",
+          "symptoms",
+          "symptom_impact",
+          "daily_activities",
+          "outcome_ranking",
+          "support_wanted",
+          "told_clinician",
+          "anything_else",
+          "contact_email"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "symptoms",
+        "value": {
+          "options": [
+            "none"
+          ]
+        }
+      },
+      "expect": {
+        "invalidated": [
+          "symptom_impact"
+        ],
+        "answers": {
+          "has_symptoms": {
+            "option": "yes"
+          },
+          "symptoms": {
+            "options": [
+              "none"
+            ]
+          }
+        },
+        "missing": [
+          "country",
+          "age_band",
+          "birth_year",
+          "last_visit",
+          "overall",
+          "daily_activities",
+          "outcome_ranking",
+          "support_wanted",
+          "told_clinician",
+          "anything_else",
+          "contact_email"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "has_symptoms",
+        "value": {
+          "option": "no"
+        }
+      },
+      "expect": {
+        "invalidated": [
+          "symptoms"
+        ],
+        "answers": {
+          "has_symptoms": {
+            "option": "no"
+          }
+        },
+        "visible": [
+          "welcome",
+          "country",
+          "age_band",
+          "birth_year",
+          "last_visit",
+          "overall",
+          "has_symptoms",
+          "daily_activities",
+          "outcome_ranking",
+          "support_wanted",
+          "anything_else",
+          "contact_email"
+        ]
+      }
+    }
+  ],
+  "final": {
+    "missing": [
+      "country",
+      "age_band",
+      "birth_year",
+      "last_visit",
+      "overall",
+      "daily_activities",
+      "outcome_ranking",
+      "support_wanted",
+      "anything_else",
+      "contact_email"
+    ],
+    "progress": {
+      "answered": 1,
+      "total": 11
+    }
+  }
+}

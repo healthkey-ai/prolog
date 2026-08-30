@@ -74,14 +74,14 @@ content and is never reproduced here. The capabilities it requires are:
 
 Every item above is expressed below as a neutral requirement.
 
-### HealthTree survey capability
+### Prior survey-platform baseline
 
-HealthTree establishes useful baseline behaviour: draft/active/archive
-lifecycle, multi-step wizard, non-persisting preview, autosave,
-started/completed timestamps, completion percentage, and consent handling. It
-stores answers in a mutable per-user document. PROlog retains the UX but uses
-normalized, versioned, immutable submissions for reliable longitudinal
-analysis, exports, and clinical provenance.
+An existing survey platform establishes useful baseline behaviour:
+draft/active/archive lifecycle, multi-step wizard, non-persisting preview,
+autosave, started/completed timestamps, completion percentage, and consent
+handling. It stores answers in a mutable per-user document. PROlog retains
+the UX but uses normalized, versioned, immutable submissions for reliable
+longitudinal analysis, exports, and clinical provenance.
 
 ## Deployment profiles
 
@@ -175,7 +175,7 @@ changed answer.
 | RUN-9 | An overview panel (`presentation.overview`) lists sections and visible questions with status (answered / skipped / current / unanswered / unreachable) and an answer summary; answered and reachable questions are navigable, future unreachable ones are inert. |
 | RUN-10 | Progress shows the section position ("Section 2 of 7") and a bar over visible questions, recomputed as branches open/close. |
 | RUN-11 | Optional data-free section interstitials (`presentation.section_interstitials`). |
-| RUN-12 | An intro page shows title, intro copy, estimated time, anonymity statement (when anonymous), language selector, consent (if defined), and Start/Continue. A completion page shows completion copy and, if configured at the end, the contact or identity capture step. |
+| RUN-12 | An intro page shows title, intro copy, estimated time, anonymity statement (when anonymous), language selector, consent (if defined), and Start/Continue. The contact or identity capture step, when configured, is the `email` question asked in the wizard at its position in the definition (Save stores the address and the participant continues with Next / Finish; No thanks records the decline and moves on, which on the last question submits). A completion page shows completion copy and the read-only notice only — no data entry. |
 | RUN-13 | The "Next" control reads "Finish" on the last visible question; single-choice selection does **not** auto-advance. |
 
 ### Answers, validation, branching
@@ -222,7 +222,7 @@ changed answer.
 | ID | Requirement |
 | --- | --- |
 | THM-1 | A theme is a directory containing `theme.json` (conforming to `schema/theme.schema.json`) and its assets (logo, decorative SVGs, self-hosted font files). PROlog ships one neutral theme, `themes/default`. |
-| THM-2 | Themes are registered from `PROLOG_THEME_DIRS` at startup and exposed by `GET /api/run/themes/{code}/`; assets are served under `/api/run/themes/{code}/assets/…` with long-lived caching. |
+| THM-2 | Themes are registered from `PROLOG_THEME_DIRS` at first use (the registry scans lazily on the first definition, theme or health request; a restart rescans) and exposed by `GET /api/run/themes/{code}/`; assets are served under `/api/run/themes/{code}/assets/…` with long-lived caching. |
 | THM-3 | A survey selects a theme with its `theme` code; an unknown or missing code falls back to `default` and is logged. |
 | THM-4 | The runner applies a theme at load time by setting CSS custom properties (`--p-primary`, `--p-ground`, …), injecting `@font-face` rules for declared faces, and switching layout flags (`immersive_intro`, `copy_alignment`, `logo_placement`). Component styles reference tokens only; no component references a brand color directly. |
 | THM-5 | A theme may declare `light` only (light-only product) or `light-dark`; the runner honours `prefers-color-scheme` only for `light-dark` themes. |

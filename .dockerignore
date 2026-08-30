@@ -1,0 +1,12 @@
+# Keep host-only artefacts out of the image build context.
+.git
+.env
+.env.*
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+backend/staticfiles

@@ -11,6 +11,7 @@ last. This repository is **public**.
 - `docs/implementation-plan.md` — phases, stack, layout, testing strategy
 - `schema/survey-definition.schema.json` — the survey definition contract
 - `schema/theme.schema.json` — the runner theme contract; `themes/default/` is the neutral theme
+- `docs/definitions/survey-definition.md`, `docs/definitions/theme-definition.md` — field-by-field manuals for both contracts
 
 ## Hard rules
 
@@ -65,11 +66,11 @@ Node 24 LTS (≥ 22) / Vite 8 / React 19 / TypeScript 7 / Tailwind CSS 4 /
 shadcn / TanStack React Query 5 / React Router 8 / i18next / Vitest /
 Playwright.
 
-- Backend deps: `uv` with `backend/pyproject.toml` (Phase 0 replaces
-  `requirements.txt`). Frontend: npm in `frontend/`.
+- Backend deps: `uv` with `backend/pyproject.toml` (no `requirements.txt`).
+  Frontend: npm in `frontend/`.
 - Local Postgres via `docker-compose up -d` (postgres:18). No SQLite, ever.
 - Validate a definition: `python -m jsonschema -i <file> schema/survey-definition.schema.json`
-  (or `manage.py validate_definition <file>` once Phase 1 lands).
+  or `manage.py validate_definition <file>` (schema + semantic rules).
 
 ## Conventions
 
@@ -80,3 +81,35 @@ Playwright.
 - WCAG 2.2 AA: real `fieldset`/`legend`, ≥44 px targets, `:focus-visible`
   rings, `prefers-reduced-motion`.
 - All runner chrome strings go through i18next (`frontend/src/i18n/`).
+- **Migrations are append-only** once a release tag exists: never edit or delete a shipped migration, add a new one (CI runs `scripts/check_migrations_append_only.sh`). Before the first tag, recreate pre-release databases when a migration changes.
+
+## Code review loop
+
+When asked to review and fix a branch/PR "until clean", run the `code-review`
+skill (`high --fix <base>...<head>`) from this directory in a loop and:
+
+- **Fix every confirmed finding**, not only the top-10 the skill reports —
+  including the cleanup / reuse / simplification / efficiency angles. A pass
+  that leaves a "confirmed but below the cap" tail does not converge.
+- **Verify before committing**: backend pytest in both profiles (standalone,
+  and integrated with `POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated
+  PROLOG_PARTICIPANT_MODEL=auth.User`), ruff, `tsc -b`,
+  vitest, Playwright (twice if anything looked flaky). One commit per pass,
+  pushed to the PR branch.
+- **Convergence**: stop when a pass returns only items already decided below,
+  or nothing.
+- If a review agent stalls waiting on child verifiers that are not running,
+  resume it with a message to verify in-context and continue.
+
+Decisions that reviewers must treat as settled (implement, don't re-report):
+
+| Topic | Decision |
+| --- | --- |
+| `presentation.mode: "section"` | Not implemented in this release; the validator rejects it, docs mark it planned. |
+| Invitation schedules | Never back-fill past due dates; an invitation with no administrations gets the current cycle only. |
+| Throttle cache | Optional shared cache via `CACHE_URL` (Redis / memcached); LocMem is per process and multiplies limits by worker count (documented). |
+| Validation messages | Structured error codes (code + params) in both engines and in the API 400 body, mapped to i18n strings in the runner; never match on English text. |
+| Neutrality CI guard | Advisory until the `NEUTRALITY_DENYLIST` repository secret exists; enforcing afterwards. Do not re-report. |
+| Anonymous surveys and invitations | No invitation link may bind to an anonymous response: `send_pending` skips anonymous surveys and `?invite=` is ignored on them. |
+| `DEBUG` | Defaults to `false`; `prolog.settings_dev` (used by `manage.py`/pytest) turns it on locally; the image sets `DEBUG=false` and the placeholder-`SECRET_KEY` guard stays. |
+| `--allow-unreviewed` | A review-only activation override that logs loudly; not a bug. |

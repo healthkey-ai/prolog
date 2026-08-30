@@ -1,0 +1,75 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-capture",
+  "version": "1.0",
+  "status": "draft",
+  "default_language": "en",
+  "languages": [
+    "en"
+  ],
+  "title": {
+    "en": "Follow-up contact"
+  },
+  "participation": {
+    "anonymous": true
+  },
+  "notes": "Minimal neutral instrument for the engine vectors: an email capture gated by an earlier answer.",
+  "sections": [
+    {
+      "key": "main",
+      "title": {
+        "en": "Follow-up"
+      },
+      "questions": [
+        {
+          "key": "follow_up",
+          "type": "single",
+          "text": {
+            "en": "May we follow up with you?"
+          },
+          "options": [
+            {
+              "key": "yes",
+              "label": {
+                "en": "Yes"
+              }
+            },
+            {
+              "key": "no",
+              "label": {
+                "en": "No"
+              }
+            }
+          ]
+        },
+        {
+          "key": "contact_email",
+          "type": "email",
+          "required": false,
+          "text": {
+            "en": "Where can we reach you?"
+          },
+          "visible_if": [
+            {
+              "question": "follow_up",
+              "op": "eq",
+              "value": "yes"
+            }
+          ],
+          "config": {
+            "store_separately": true
+          }
+        },
+        {
+          "key": "comments",
+          "type": "text",
+          "required": false,
+          "text": {
+            "en": "Anything else?"
+          }
+        }
+      ]
+    }
+  ]
+}

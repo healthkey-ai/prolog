@@ -1,0 +1,141 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./tokens.css";
+
+/*
+ * shadcn/ui semantic variables, mapped onto the PROlog theme tokens so every
+ * shadcn component follows the active theme (THM-4).
+ */
+:root {
+  --background: var(--p-ground);
+  --foreground: var(--p-ink);
+  --card: var(--p-surface);
+  --card-foreground: var(--p-ink);
+  --popover: var(--p-surface);
+  --popover-foreground: var(--p-ink);
+  --primary: var(--p-primary);
+  --primary-foreground: var(--p-on-primary);
+  --secondary: var(--p-tint);
+  --secondary-foreground: var(--p-ink);
+  --muted: var(--p-tint);
+  --muted-foreground: var(--p-ink-soft);
+  --accent: var(--p-tint);
+  --accent-foreground: var(--p-ink);
+  --destructive: var(--p-error);
+  --destructive-foreground: var(--p-on-error);
+  --border: var(--p-line);
+  --input: var(--p-line);
+  --ring: var(--p-focus);
+  --radius: var(--p-radius-input);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-primary: var(--p-primary);
+  --color-primary-deep: var(--p-primary-deep);
+  --color-on-primary: var(--p-on-primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-brand-secondary: var(--p-secondary);
+  --color-brand-accent: var(--p-accent);
+  --color-focus: var(--p-focus);
+  --color-ground: var(--p-ground);
+  --color-surface: var(--p-surface);
+  --color-tint: var(--p-tint);
+  --color-ink: var(--p-ink);
+  --color-ink-soft: var(--p-ink-soft);
+  --color-line: var(--p-line);
+  --color-error: var(--p-error);
+  --color-success: var(--p-success);
+  --color-scrim: var(--p-scrim);
+  --font-heading: var(--p-font-heading);
+  --font-body: var(--p-font-body);
+  --radius-card: var(--p-radius-card);
+  --radius-input: var(--p-radius-input);
+  --radius-button: var(--p-radius-button);
+  --radius-sheet: var(--p-radius-sheet);
+}
+
+html {
+  font-size: var(--p-base-size);
+}
+
+body {
+  margin: 0;
+  background: var(--p-ground);
+  color: var(--p-ink);
+  font-family: var(--p-font-body);
+  font-weight: var(--p-weight-body);
+  letter-spacing: var(--p-tracking);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-heading {
+  font-family: var(--p-font-heading);
+  font-weight: var(--p-weight-heading);
+  text-wrap: balance;
+}
+
+@layer base {
+  /* shadcn base: tokens for borders and focus outlines on every element */
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  /* Fallback focus ring for non-shadcn elements; shadcn components use their own ring utilities */
+  :focus-visible {
+    outline: 2px solid var(--p-focus);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:root[data-align="center"] main,
+:root[data-align="center"] h1,
+:root[data-align="center"] h2 {
+  text-align: center;
+}

@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+jobs:
+  neutrality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 scripts/check_neutrality.py
+        env:
+          NEUTRALITY_DENYLIST: ${{ secrets.NEUTRALITY_DENYLIST }}
+          # Fork PRs cannot read secrets, and the guard stays advisory until the
+          # NEUTRALITY_DENYLIST secret is configured for the repository.
+          NEUTRALITY_ALLOW_UNSET: ${{ secrets.NEUTRALITY_DENYLIST == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+
+  schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install jsonschema
+      - run: |
+          python - <<'PY'
+          import json, glob, jsonschema
+          for schema_path, pattern in [("schema/survey-definition.schema.json", "examples/*.json"),
+                                       ("schema/theme.schema.json", "themes/*/theme.json")]:
+              schema = json.load(open(schema_path))
+              jsonschema.Draft202012Validator.check_schema(schema)
+              for f in glob.glob(pattern):
+                  jsonschema.validate(json.load(open(f)), schema, cls=jsonschema.Draft202012Validator)
+                  print("ok", f)
+          PY
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      POSTGRES_DB: prolog
+      POSTGRES_USER: prolog
+      POSTGRES_PASSWORD: prolog
+      POSTGRES_HOST: localhost
+      DEBUG: "true"
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 } # release tags, for the append-only migrations guard
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.12.7", enable-cache: true }
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - run: ../scripts/check_migrations_append_only.sh
+      - run: uv run pytest
+
+  backend-integrated:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      POSTGRES_DB: prolog_integrated
+      POSTGRES_USER: prolog
+      POSTGRES_PASSWORD: prolog
+      POSTGRES_HOST: localhost
+      DEBUG: "true"
+      PROLOG_PROFILE: integrated
+      PROLOG_PARTICIPANT_MODEL: auth.User
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.12.7", enable-cache: true }
+      - run: uv sync --locked
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - run: uv run pytest --create-db
+
+  # The image is the only deployment artifact (DEP-5): build it and start it
+  # once against PostgreSQL so the deployment-only paths (uv sync without dev
+  # deps, collectstatic under DEBUG=false, migrate + load_definitions + gunicorn)
+  # break here rather than on a customer's host. Nothing is pushed.
+  docker:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      SMOKE_ENV: >-
+        -e SECRET_KEY=ci-only-secret-key-with-more-than-fifty-characters-0123456789
+        -e POSTGRES_HOST=localhost -e POSTGRES_DB=prolog -e POSTGRES_USER=prolog -e POSTGRES_PASSWORD=prolog
+        -e ALLOWED_HOSTS=localhost,127.0.0.1 -e SECURE_SSL_REDIRECT=false
+        -e EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f docker/Dockerfile -t prolog:ci .
+      - name: Deployment checks run as the image's unprivileged user
+        run: |
+          docker run --rm $SMOKE_ENV prolog:ci sh -c 'test "$(id -u)" != 0'
+          docker run --rm $SMOKE_ENV prolog:ci python manage.py check --deploy
+      - name: Start chain (migrate, load_definitions, gunicorn) and health probe
+        # A real definition is mounted so the per-file loader path runs in the
+        # image (examples/deploy/surveys holds only a .gitkeep); the log line
+        # is asserted once the app answers, when load_definitions has finished.
+        run: |
+          mkdir -p "$RUNNER_TEMP/surveys" && cp examples/sample-wellbeing.json "$RUNNER_TEMP/surveys/"
+          docker run -d --name app --network host \
+            -v "$RUNNER_TEMP/surveys:/data/surveys:ro" -v "$PWD/examples/deploy/themes:/data/themes:ro" \
+            $SMOKE_ENV prolog:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/api/health/; then
+              docker logs app 2>&1 | grep -F 'created: sample-wellbeing@' && exit 0
+              echo "load_definitions did not create sample-wellbeing"; docker logs app; exit 1
+            fi
+            sleep 2
+          done
+          echo "health probe never answered"; docker logs app; exit 1
+      - if: always()
+        run: docker logs app || true
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      POSTGRES_DB: prolog
+      POSTGRES_USER: prolog
+      POSTGRES_PASSWORD: prolog
+      POSTGRES_HOST: localhost
+      DEBUG: "true"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.12.7", enable-cache: true }
+      - run: cd backend && uv sync --locked
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx playwright install --with-deps chromium
+      # Playwright starts the backend before globalSetup; the readiness probe needs a migrated database.
+      - run: cd backend && uv run python manage.py migrate --noinput
+      - run: cd frontend && npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: frontend/test-results, retention-days: 7 }

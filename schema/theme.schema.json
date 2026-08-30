@@ -129,7 +129,7 @@
         "primary": { "description": "Primary brand color: primary buttons, headings, selected borders, immersive grounds.", "$ref": "#/$defs/color" },
         "primary_deep": { "description": "Hover/pressed on primary. Derived from primary if omitted.", "$ref": "#/$defs/color" },
         "on_primary": { "description": "Text/icons on primary. Default white.", "$ref": "#/$defs/color" },
-        "secondary": { "description": "Secondary emphasis: section eyebrows, decorative shapes.", "$ref": "#/$defs/color" },
+        "secondary": { "description": "Secondary emphasis: section accents and decorative shapes (never text).", "$ref": "#/$defs/color" },
         "accent": { "description": "Progress fill, decorative shapes. Never used for small text.", "$ref": "#/$defs/color" },
         "focus": { "description": "Focus ring. Defaults to accent.", "$ref": "#/$defs/color" },
         "ground": { "description": "App background.", "$ref": "#/$defs/color" },

@@ -1,31 +1,24 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./styles.css";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter } from "react-router";
+import "./i18n";
+import "./styles/app.css";
+import App from "./App";
+import { isTerminal } from "./api/client";
 
-const questions = [
-  ["country", "Which country do you live in?", "Dropdown"],
-  ["wellbeing", "How would you rate your overall wellbeing this week?", "Scale 1–5"],
-  ["symptoms", "Which of the following have you experienced?", "Multi-select"],
-];
+const queryClient = new QueryClient({
+  // One retry for transient failures; a definitive 4xx (gone, closed,
+  // forbidden, throttled) goes straight to the page that explains it.
+  defaultOptions: { queries: { retry: (count, error) => count < 1 && !isTerminal(error), refetchOnWindowFocus: false } },
+});
 
-function App() {
-  return <main>
-    <header><span className="eyebrow">PROlog</span><h1>Patient-reported outcomes</h1>
-      <p>Design governed surveys and run them securely against PRomop.</p></header>
-    <section className="grid">
-      <article><span className="eyebrow">Survey designer</span><h2>Sample wellbeing survey</h2>
-        <p className="muted">Draft · English · 3 sections</p>
-        {questions.map(([key, label, type]) => <div className="question" key={key}>
-          <strong>{label}</strong><small>{type} · {key}</small></div>)}
-        <button>Open designer</button>
-      </article>
-      <article><span className="eyebrow">Survey runner</span><h2>About you</h2>
-        <label>Which country do you live in?<select defaultValue=""><option value="" disabled>Select a country</option><option>United Kingdom</option><option>United States</option><option>Other</option></select></label>
-        <label>How would you rate your overall wellbeing this week?<select defaultValue=""><option value="" disabled>Select an answer</option><option>1 – Very poor</option><option>3 – Fair</option><option>5 – Very good</option></select></label>
-        <button>Save and continue</button>
-      </article>
-    </section>
-  </main>;
-}
-
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </QueryClientProvider>
+  </StrictMode>,
+);
