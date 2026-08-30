@@ -12,7 +12,7 @@ final phase.
 - Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
 - Deployment and operations: [docs/deployment.md](docs/deployment.md)
 - Integrated profile (inside a host platform): [docs/integration.md](docs/integration.md)
-- Theming: [docs/theming.md](docs/theming.md)
+- Manuals: [survey definition](docs/definitions/survey-definition.md) · [theme](docs/definitions/theme-definition.md)
 - Working agreements: [CLAUDE.md](CLAUDE.md)
 
 ## Quick start

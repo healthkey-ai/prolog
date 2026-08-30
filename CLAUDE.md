@@ -11,6 +11,7 @@ last. This repository is **public**.
 - `docs/implementation-plan.md` — phases, stack, layout, testing strategy
 - `schema/survey-definition.schema.json` — the survey definition contract
 - `schema/theme.schema.json` — the runner theme contract; `themes/default/` is the neutral theme
+- `docs/definitions/survey-definition.md`, `docs/definitions/theme-definition.md` — field-by-field manuals for both contracts
 
 ## Hard rules
 
