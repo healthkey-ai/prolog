@@ -6,7 +6,7 @@
   "status": "draft",
   "default_language": "en",
   "languages": ["en", "es", "fr"],
-  "translation_status": { "es": "reviewed", "fr": "machine" },
+  "translation_status": { "es": "reviewed", "fr": "reviewed" },
   "title": { "en": "Wellbeing check-in", "es": "Chequeo de bienestar", "fr": "Bilan de bien-être" },
   "intro": {
     "en": "This short survey asks how you have been feeling and what support would help. It takes about five minutes. Your answers are anonymous.",

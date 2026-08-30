@@ -304,8 +304,6 @@ def test_draft_can_change_published_cannot(example):
     result = load_definition(example)
     example["title"]["en"] = "Changed"
     assert load_definition(example).changed
-    # make it reviewed and activate
-    example["translation_status"]["fr"] = "reviewed"
     load_definition(example, activate=True)
     example["title"]["en"] = "Changed again"
     with pytest.raises(DefinitionError) as exc:
@@ -316,6 +314,7 @@ def test_draft_can_change_published_cannot(example):
 
 @pytest.mark.django_db
 def test_activation_refused_while_machine_translated(example):
+    example["translation_status"]["fr"] = "machine"
     version = load_definition(example).version
     with pytest.raises(ActivationError, match="fr"):
         activate_version(version)
@@ -324,7 +323,6 @@ def test_activation_refused_while_machine_translated(example):
 
 @pytest.mark.django_db
 def test_activation_archives_previous_and_materializes(example):
-    example["translation_status"]["fr"] = "reviewed"
     v1 = load_definition(example, activate=True).version
     assert v1.status == LifecycleStatus.ACTIVE
     keys = list(SurveyQuestion.objects.filter(survey_version=v1).values_list("key", flat=True))
@@ -367,6 +365,7 @@ def test_validate_command_fails(tmp_path, example):
 
 @pytest.mark.django_db
 def test_load_command_and_startup_loader(tmp_path, example, settings, capsys):
+    example["translation_status"]["fr"] = "machine"
     (tmp_path / "a.json").write_text(json.dumps(example))
     call_command("load_definition", str(tmp_path))
     assert "created" in capsys.readouterr().out

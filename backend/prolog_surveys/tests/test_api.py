@@ -17,9 +17,7 @@ EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
 
 @pytest.fixture
 def definition() -> dict:
-    doc = json.loads(EXAMPLE.read_text())
-    doc["translation_status"]["fr"] = "reviewed"
-    return doc
+    return json.loads(EXAMPLE.read_text())
 
 
 @pytest.fixture

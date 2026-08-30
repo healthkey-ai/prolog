@@ -2,7 +2,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import en from "./en.json";
 
-export const resources = { en: { translation: en } } as const;
+export const resources: Record<string, { translation: Record<string, string> }> = { en: { translation: en } };
 
 void i18n.use(initReactI18next).init({
   resources,
@@ -10,5 +10,14 @@ void i18n.use(initReactI18next).init({
   fallbackLng: "en",
   interpolation: { escapeValue: false },
 });
+
+/** Merge extra chrome strings (e.g. from a theme's `strings`) at runtime. */
+export function addStrings(overrides: Record<string, Record<string, string>>): void {
+  const byLang: Record<string, Record<string, string>> = {};
+  for (const [key, langs] of Object.entries(overrides)) {
+    for (const [lang, text] of Object.entries(langs)) (byLang[lang] ??= {})[key] = text;
+  }
+  for (const [lang, bundle] of Object.entries(byLang)) i18n.addResourceBundle(lang, "translation", bundle, true, true);
+}
 
 export default i18n;
