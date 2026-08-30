@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ListIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -46,19 +47,28 @@ export function Shell(p: ShellProps) {
   return (
     <div className="flex min-h-dvh flex-col bg-ground">
       <header className="sticky top-0 z-10 bg-surface">
-        <div className="mx-auto flex max-w-[var(--p-content-max)] items-center gap-3 px-4 py-3">
-          <div className="flex items-center gap-3 overflow-hidden">
+        <div className="mx-auto flex max-w-[var(--p-content-max)] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             {p.logo}
-            <p className="truncate text-[13px] font-medium uppercase tracking-[0.08em] text-ink-soft">
-              {t("header.section", { number: p.sectionNumber, total: p.sectionTotal })}
-              {p.sectionLabel ? ` · ${p.sectionLabel}` : ""}
+            <p className="min-w-0 truncate text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              <span className="sm:hidden">
+                {p.sectionNumber}/{p.sectionTotal}
+                {p.sectionLabel ? ` · ${p.sectionLabel}` : ""}
+              </span>
+              <span className="hidden sm:inline">
+                {t("header.section", { number: p.sectionNumber, total: p.sectionTotal })}
+                {p.sectionLabel ? ` · ${p.sectionLabel}` : ""}
+              </span>
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             {p.languages.length > 1 && (
               <Select value={p.language} onValueChange={p.onLanguage}>
-                <SelectTrigger id="language-switch" aria-label={t("header.language")} className="min-h-[44px] bg-card" data-testid="language-switch">
-                  <SelectValue />
+                <SelectTrigger id="language-switch" aria-label={t("header.language")} className="min-h-[44px] bg-card px-2 sm:px-3" data-testid="language-switch">
+                  <SelectValue>
+                    <span className="sm:hidden">{p.language.toUpperCase()}</span>
+                    <span className="hidden sm:inline">{languageName(p.language)}</span>
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {p.languages.map((l) => (
@@ -70,8 +80,9 @@ export function Shell(p: ShellProps) {
               </Select>
             )}
             {p.onOverview && (
-              <Button variant="text" size="runner-sm" onClick={p.onOverview}>
-                {t("header.overview")}
+              <Button variant="text" size="runner-sm" onClick={p.onOverview} aria-label={t("header.overview")} className="px-2 sm:px-4">
+                <ListIcon className="size-5 sm:hidden" />
+                <span className="hidden sm:inline">{t("header.overview")}</span>
               </Button>
             )}
           </div>
