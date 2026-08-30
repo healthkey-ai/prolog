@@ -6,9 +6,6 @@ export interface RendererProps<V extends AnswerValue = AnswerValue> {
   /** Update the draft; `commit` saves immediately (instant controls), `advance` also moves on once saved. */
   onChange: (value: V | undefined, opts?: { commit?: boolean; advance?: boolean }) => void;
   language: string;
-  disabled?: boolean;
-  /** Errors from the last save attempt or local validation. */
-  errors?: string[];
 }
 
 /** Sizing applied to shadcn Input/Textarea in the runner (≥52px targets, 17px text). */

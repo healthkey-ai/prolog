@@ -17,6 +17,18 @@ from django.core.exceptions import ImproperlyConfigured
 
 PROFILES = ("standalone", "integrated")
 
+# Throttle scopes the runner API uses and their default rates, keyed per hashed
+# client address (``run.answer``: per response id). The standalone settings
+# expose them as PROLOG_THROTTLE_* environment variables; an integrated host
+# copies them into its REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] (a missing
+# scope falls back to these, so nothing 500s).
+THROTTLE_RATES: dict[str, str] = {
+    "run.read": "1200/hour",
+    "run.create": "30/hour",
+    "run.capture": "30/hour",
+    "run.answer": "600/hour",
+}
+
 DEFAULTS: dict[str, Any] = {
     # "standalone": own database, no participant model, no identity service.
     # "integrated": installed in a host platform that provides both.

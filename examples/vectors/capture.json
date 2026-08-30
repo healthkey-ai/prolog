@@ -1,0 +1,111 @@
+{
+  "definition": "sample-capture.json",
+  "description": "A recorded contact capture ({provided: true}) survives its question being hidden \u2014 the address is already stored, so re-showing the question must not capture it twice. A decline ({provided: false}) is an ordinary answer and goes with the question.",
+  "steps": [
+    {
+      "answer": {
+        "key": "follow_up",
+        "value": {
+          "option": "yes"
+        }
+      },
+      "expect": {
+        "visible": [
+          "follow_up",
+          "contact_email",
+          "comments"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "contact_email",
+        "value": {
+          "provided": false
+        }
+      },
+      "expect": {
+        "missing": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "follow_up",
+        "value": {
+          "option": "no"
+        }
+      },
+      "expect": {
+        "invalidated": [
+          "contact_email"
+        ],
+        "visible": [
+          "follow_up",
+          "comments"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "follow_up",
+        "value": {
+          "option": "yes"
+        }
+      },
+      "expect": {
+        "missing": [
+          "contact_email",
+          "comments"
+        ]
+      }
+    }
+  ],
+  "retained": [
+    {
+      "given": {
+        "follow_up": {
+          "option": "yes"
+        },
+        "contact_email": {
+          "provided": true
+        }
+      },
+      "answer": {
+        "key": "follow_up",
+        "value": {
+          "option": "no"
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "follow_up",
+          "comments"
+        ],
+        "answers": {
+          "follow_up": {
+            "option": "no"
+          },
+          "contact_email": {
+            "provided": true
+          }
+        },
+        "missing": [
+          "comments"
+        ]
+      }
+    }
+  ],
+  "final": {
+    "missing": [
+      "contact_email",
+      "comments"
+    ],
+    "progress": {
+      "answered": 1,
+      "total": 3
+    }
+  }
+}

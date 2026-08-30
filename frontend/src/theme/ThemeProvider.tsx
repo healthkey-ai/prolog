@@ -8,10 +8,9 @@ import type { Theme } from "./types";
 
 interface ThemeContextValue {
   theme: Theme | null;
-  ready: boolean;
 }
 
-const ThemeContext = createContext<ThemeContextValue>({ theme: null, ready: true });
+const ThemeContext = createContext<ThemeContextValue>({ theme: null });
 
 export function useThemeContext(): ThemeContextValue {
   return useContext(ThemeContext);
@@ -48,6 +47,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme.data]);
 
   const ready = !code ? definition.isError || definition.isSuccess : theme.isSuccess || theme.isError;
-  const value = useMemo(() => ({ theme: theme.data ?? null, ready }), [theme.data, ready]);
+  const value = useMemo(() => ({ theme: theme.data ?? null }), [theme.data]);
   return <ThemeContext.Provider value={value}>{ready ? children : null}</ThemeContext.Provider>;
 }

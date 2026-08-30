@@ -49,37 +49,6 @@ class QuestionInfo:
     option_keys: list[str] = field(default_factory=list)
 
 
-@dataclass
-class Graph:
-    """Dependency graph of a definition; ``edges[k]`` = keys ``k`` depends on."""
-
-    order: list[str]
-    index: dict[str, int]
-    edges: dict[str, set[str]]
-    dependents: dict[str, set[str]]
-
-
-def build_graph(definition: dict[str, Any]) -> Graph:
-    order: list[str] = []
-    edges: dict[str, set[str]] = {}
-    for section in definition["sections"]:
-        for q in section["questions"]:
-            order.append(q["key"])
-            deps = {c["question"] for c in q.get("visible_if", [])}
-            deps |= {c["question"] for c in section.get("visible_if", [])}
-            rows_from = (q.get("config") or {}).get("rows_from")
-            if rows_from:
-                deps.add(rows_from)
-            edges[q["key"]] = deps
-    index = {k: i for i, k in enumerate(order)}
-    dependents: dict[str, set[str]] = {k: set() for k in order}
-    for k, deps in edges.items():
-        for d in deps:
-            if d in dependents:
-                dependents[d].add(k)
-    return Graph(order=order, index=index, edges=edges, dependents=dependents)
-
-
 def _walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     """Every i18n object in the definition with its path."""
     found: list[tuple[str, dict[str, Any]]] = []
@@ -121,6 +90,17 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
     schema_version = definition.get("schema_version", 1)
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         err("schema_version", "$.schema_version", f"unsupported schema version {schema_version}")
+
+    # --- presentation ------------------------------------------------------
+    mode = (definition.get("presentation") or {}).get("mode", "question")
+    if mode != "question":
+        # The schema reserves "section" for a later phase; activating it now would
+        # silently serve the one-question-per-screen wizard instead.
+        err(
+            "presentation_mode",
+            "$.presentation.mode",
+            f"presentation.mode '{mode}' is not available in this runner yet; use 'question'",
+        )
 
     # --- languages and translation status ---------------------------------
     default_lang = definition["default_language"]

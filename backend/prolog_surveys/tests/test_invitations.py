@@ -3,23 +3,25 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
-from pathlib import Path
 
 import pytest
 from django.core import mail
 from django.core.management import call_command
 
 from prolog_surveys.definitions.loader import load_definition
-from prolog_surveys.invitations import add_months, due_dates, schedule_due, send_pending
+from prolog_surveys.invitations import (
+    add_months,
+    current_due_date,
+    due_dates,
+    schedule_due,
+    send_pending,
+)
 from prolog_surveys.models import SurveyAdministration, SurveyInvitation, SurveyResponse
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
+from prolog_surveys.tests.conftest import example_definition
 
 
 def definition(**participation):
-    doc = json.loads(EXAMPLE.read_text())
+    doc = example_definition()
     doc["participation"] = {"anonymous": False, **participation}
     return doc
 
@@ -42,23 +44,33 @@ def test_due_dates_weeks_and_months():
     assert list(due_dates(monthly, dt.date(2025, 12, 31))) == []
 
 
+def test_current_due_date_is_the_open_cycle():
+    monthly = {"every": 1, "unit": "months", "start_date": "2026-01-01"}
+    assert current_due_date(monthly, dt.date(2025, 12, 31)) is None
+    assert current_due_date(monthly, dt.date(2026, 1, 1)) == dt.date(2026, 1, 1)
+    assert current_due_date(monthly, dt.date(2026, 3, 15)) == dt.date(2026, 3, 1)
+    ended = {**monthly, "end_date": "2026-02-15"}
+    assert current_due_date(ended, dt.date(2026, 2, 20)) == dt.date(2026, 2, 1)
+    assert current_due_date(ended, dt.date(2026, 3, 1)) is None  # the schedule is over
+
+
 @pytest.mark.django_db
-def test_schedule_creates_due_administrations_idempotently(settings):
+def test_schedule_creates_only_the_current_cycle(settings):
     doc = definition(repeat={"every": 1, "unit": "months", "start_date": "2026-01-01"})
     version = load_definition(doc, activate=True).version
     inv = SurveyInvitation.objects.create(
         survey=version.survey, email="p@example.org", language="es"
     )
+    # An invitation added mid-schedule gets this cycle's link, never a backlog.
     created = schedule_due(dt.date(2026, 3, 15))
-    assert [a.due_at for a in created] == [
-        dt.date(2026, 1, 1),
-        dt.date(2026, 2, 1),
-        dt.date(2026, 3, 1),
-    ]
+    assert [a.due_at for a in created] == [dt.date(2026, 3, 1)]
     assert all(a.survey_version == version for a in created)
     assert schedule_due(dt.date(2026, 3, 15)) == []
-    assert len(schedule_due(dt.date(2026, 4, 2))) == 1
-    assert inv.administrations.count() == 4
+    assert [a.due_at for a in schedule_due(dt.date(2026, 4, 2))] == [dt.date(2026, 4, 1)]
+    # A scheduler that was down for two cycles does not back-fill them either.
+    assert [a.due_at for a in schedule_due(dt.date(2026, 7, 10))] == [dt.date(2026, 7, 1)]
+    assert inv.administrations.count() == 3
+    assert send_pending() == 3
 
 
 @pytest.mark.django_db
@@ -179,6 +191,14 @@ def test_anonymous_survey_takes_no_invitations(api_client, caplog):
     # Nothing is scheduled (so nothing is emailed) for an anonymous survey...
     assert schedule_due(dt.date(2026, 1, 1)) == []
     assert "anonymous" in caplog.text
+    # ...and an administration created before the survey went anonymous is
+    # not sent either (the link would be refused below).
+    SurveyAdministration.objects.create(
+        invitation=version.survey.invitations.get(), survey_version=None, due_at="2025-12-01"
+    )
+    assert send_pending() == 0 and not mail.outbox
+    assert "not sent" in caplog.text
+    SurveyAdministration.objects.all().delete()
     # ...and a token, however obtained, is refused rather than linked to the answers.
     admin = SurveyAdministration.objects.create(
         invitation=version.survey.invitations.get(), survey_version=version, due_at="2026-01-01"

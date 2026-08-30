@@ -39,8 +39,12 @@ services:
       # not pass .env into the container by itself).
       PROLOG_NUM_PROXIES: ${PROLOG_NUM_PROXIES:-0}
       PROLOG_THROTTLE_CREATE: ${PROLOG_THROTTLE_CREATE:-30/hour}
+      PROLOG_THROTTLE_CAPTURE: ${PROLOG_THROTTLE_CAPTURE:-30/hour}
       PROLOG_THROTTLE_ANSWER: ${PROLOG_THROTTLE_ANSWER:-600/hour}
       PROLOG_THROTTLE_READ: ${PROLOG_THROTTLE_READ:-1200/hour}
+      # Throttle counters: per worker by default; see docs/deployment.md for a shared cache.
+      CACHE_BACKEND: ${CACHE_BACKEND:-django.core.cache.backends.locmem.LocMemCache}
+      CACHE_LOCATION: ${CACHE_LOCATION:-prolog}
       PROLOG_ABANDONED_RESPONSE_DAYS: ${PROLOG_ABANDONED_RESPONSE_DAYS:-90}
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       PROLOG_EMAIL_FROM: ${PROLOG_EMAIL_FROM:-surveys@example.org}

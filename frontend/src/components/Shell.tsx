@@ -3,6 +3,8 @@ import { ListIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Eyebrow } from "./Eyebrow";
+import { languageName } from "@/i18n/languageName";
 import { cn } from "@/lib/utils";
 
 export type SaveState = "idle" | "saving" | "saved" | "error" | "closed";
@@ -28,20 +30,6 @@ interface ShellProps {
   logo?: ReactNode;
 }
 
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  es: "Español",
-  pt: "Português",
-  fr: "Français",
-  de: "Deutsch",
-  it: "Italiano",
-  nl: "Nederlands",
-};
-
-export function languageName(code: string): string {
-  return LANGUAGE_NAMES[code] ?? code.toUpperCase();
-}
-
 export function Shell(p: ShellProps) {
   const { t } = useTranslation();
   return (
@@ -51,12 +39,12 @@ export function Shell(p: ShellProps) {
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             {p.logo}
             <div className="min-w-0">
-              <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              <Eyebrow className="text-[12px] text-muted-foreground">
                 <span className="sm:hidden">
                   {p.sectionNumber}/{p.sectionTotal}
                 </span>
                 <span className="hidden sm:inline">{t("header.section", { number: p.sectionNumber, total: p.sectionTotal })}</span>
-              </p>
+              </Eyebrow>
               {p.sectionLabel && <p className="line-clamp-2 text-[0.95rem] leading-tight text-foreground">{p.sectionLabel}</p>}
             </div>
           </div>

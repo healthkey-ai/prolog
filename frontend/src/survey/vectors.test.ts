@@ -21,10 +21,16 @@ interface Case {
   value: unknown;
   canonical?: unknown;
 }
+interface Retained {
+  given: Answers;
+  answer: { key: string; value: unknown };
+  expect: { invalidated: string[]; visible: string[]; answers: Answers; missing: string[] };
+}
 interface Vector {
   definition: string;
   initial?: { visible: string[] };
   steps?: Step[];
+  retained?: Retained[];
   reject?: Case[];
   accept?: Case[];
   final?: { missing?: string[]; progress?: { answered: number; total: number } };
@@ -65,6 +71,15 @@ describe("shared engine vectors", () => {
         if ("answers_subset" in e)
           for (const [k, v] of Object.entries(e.answers_subset as Answers)) expect(answers[k], key).toEqual(v);
         if ("missing" in e) expect(missingKeys(def, answers), key).toEqual(e.missing);
+      }
+
+      for (const c of vector.retained ?? []) {
+        const given: Answers = { ...c.given };
+        const result = store(def, given, c.answer.key, c.answer.value);
+        expect(result.invalidated).toEqual(c.expect.invalidated);
+        expect(result.visible).toEqual(c.expect.visible);
+        expect(given).toEqual(c.expect.answers);
+        expect(missingKeys(def, given)).toEqual(c.expect.missing);
       }
 
       for (const c of vector.reject ?? []) {

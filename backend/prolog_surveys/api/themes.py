@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import mimetypes
-
 from django.http import FileResponse, Http404
 from django.urls import reverse
 from rest_framework.response import Response
@@ -22,13 +20,12 @@ class ThemeView(APIView):
         theme = registry.get(code)
         if theme is None:
             raise Http404("unknown theme")
-
-        def asset_url(relative: str) -> str:
-            return request.build_absolute_uri(
-                reverse("run-theme-asset", kwargs={"code": code, "path": relative})
-            )
-
-        doc = theme.public(asset_url)
+        # Asset paths are resolved once per theme; only the scheme and host
+        # (which belong to this request) are added here.
+        doc = theme.public(
+            lambda relative: reverse("run-theme-asset", kwargs={"code": code, "path": relative}),
+            request.build_absolute_uri,
+        )
         doc["warnings"] = theme.warnings
         return Response(doc, headers={"Cache-Control": "public, max-age=300"})
 
@@ -43,10 +40,9 @@ class ThemeAssetView(APIView):
         file = theme.asset_path(path)
         if file is None:
             raise Http404("unknown asset")
-        content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
-        if file.suffix == ".woff2":
-            content_type = "font/woff2"
-        response = FileResponse(open(file, "rb"), content_type=content_type)
+        # FileResponse guesses the content type from the name (mimetypes knows
+        # every extension in ASSET_EXTENSIONS, woff2 included) and sets the length.
+        response = FileResponse(open(file, "rb"))
         response["Cache-Control"] = f"public, max-age={ASSET_MAX_AGE}, immutable"
         response["Access-Control-Allow-Origin"] = "*"
         return response

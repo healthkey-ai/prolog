@@ -9,3 +9,7 @@ a list of `steps` (an answer to store, then what must hold afterwards) and a
 question keys), `invalidated` (keys whose stored answers were deleted or
 pruned by the cascade), `answers` (the surviving answer map), `missing`
 (completion check) and `progress`.
+
+`retained` entries start from `given` answers, store one `answer` and check
+the same expectations — for rules about answers that outlive their question's
+visibility (a recorded contact capture).

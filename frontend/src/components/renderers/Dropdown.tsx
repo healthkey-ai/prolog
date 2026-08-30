@@ -10,7 +10,7 @@ import type { OptionValue } from "@/survey/types";
 import { cn } from "@/lib/utils";
 
 /** Searchable single-select (shadcn Combobox: Popover + Command) for option sources such as ISO 3166 (Q-3). */
-export function Dropdown({ question, value, onChange, language, disabled }: RendererProps<OptionValue>) {
+export function Dropdown({ question, value, onChange, language }: RendererProps<OptionValue>) {
   const { t } = useTranslation();
   const source = question.config?.options_source;
   const remote = useOptionsSource(source, language);
@@ -31,7 +31,7 @@ export function Dropdown({ question, value, onChange, language, disabled }: Rend
             role="combobox"
             aria-expanded={open}
             aria-label={question.text as string}
-            disabled={disabled || remote.isLoading}
+            disabled={remote.isLoading}
             className="w-full justify-between px-4 font-body text-[1.05rem] font-normal"
             data-testid="combobox-trigger"
           >
@@ -67,7 +67,7 @@ export function Dropdown({ question, value, onChange, language, disabled }: Rend
         </PopoverContent>
       </Popover>
       {selected && (
-        <Button variant="text" size="runner-icon" onClick={() => onChange(undefined)} aria-label={t("dropdown.clear")} disabled={disabled}>
+        <Button variant="text" size="runner-icon" onClick={() => onChange(undefined)} aria-label={t("dropdown.clear")}>
           <XIcon className="size-4" />
         </Button>
       )}

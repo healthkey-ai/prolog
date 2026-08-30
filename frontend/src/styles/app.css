@@ -22,6 +22,7 @@
   --accent: var(--p-tint);
   --accent-foreground: var(--p-ink);
   --destructive: var(--p-error);
+  --destructive-foreground: var(--p-on-error);
   --border: var(--p-line);
   --input: var(--p-line);
   --ring: var(--p-focus);
@@ -41,6 +42,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

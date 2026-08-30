@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ScaleControl } from "./Scale";
 import type { RendererProps } from "./types";
-import type { AnswerValue, MatrixValue, Question } from "@/survey/types";
+import { optionLabel, type AnswerValue, type MatrixValue, type Question } from "@/survey/types";
 import { matrixRows } from "@/survey/visibility";
 
 interface Props extends RendererProps<MatrixValue> {
@@ -10,7 +10,7 @@ interface Props extends RendererProps<MatrixValue> {
 }
 
 /** One card per row (fixed rows or the source selection), a scale per row, legend once (Q-7). */
-export function Matrix({ question, value, onChange, answers, questions, disabled }: Props) {
+export function Matrix({ question, value, onChange, answers, questions }: Props) {
   const { t } = useTranslation();
   const cfg = question.config ?? {};
   const scale = cfg.scale!;
@@ -23,7 +23,7 @@ export function Matrix({ question, value, onChange, answers, questions, disabled
     if (fixed) return fixed.label as string;
     const option = source?.options?.find((o) => o.key === row);
     if (option?.free_text && sourceAnswer && "other_text" in sourceAnswer && sourceAnswer.other_text) return sourceAnswer.other_text;
-    return (option?.label as string) ?? row;
+    return (source && optionLabel(source, row)) ?? row;
   };
 
   // Only the current rows: while the source question's save is still in flight
@@ -49,7 +49,7 @@ export function Matrix({ question, value, onChange, answers, questions, disabled
           <p className="mb-3 font-heading text-[1.05rem]" id={`${question.key}-${row}-label`}>
             {labelOf(row)}
           </p>
-          <ScaleControl min={scale.min} max={scale.max} value={ratings[row]} onSelect={(v) => rate(row, v)} name={`${question.key}-${row}`} disabled={disabled} ariaLabel={labelOf(row)} />
+          <ScaleControl min={scale.min} max={scale.max} value={ratings[row]} onSelect={(v) => rate(row, v)} name={`${question.key}-${row}`} ariaLabel={labelOf(row)} />
         </div>
       ))}
     </div>

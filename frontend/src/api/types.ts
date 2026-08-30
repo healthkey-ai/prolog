@@ -4,7 +4,6 @@ import type { AnswerValue, Answers, Definition } from "@/survey/types";
 export interface RunnerDefinition extends Definition {
   language: string;
   theme_code: string;
-  translation_status: Record<string, "machine" | "reviewed">;
 }
 
 export interface ResponseSummary {
@@ -38,6 +37,13 @@ export interface OptionsSource {
   source: string;
   language: string;
   options: { key: string; label: string }[];
+}
+
+/** A rejected answer as the server reports it: a stable code plus typed params (see survey/answers.ts). */
+export interface ApiIssue {
+  code: string;
+  params: Record<string, unknown>;
+  message?: string;
 }
 
 export interface ApiErrorBody {

@@ -7,6 +7,7 @@ from typing import Any
 from .visibility import (
     ANSWERABLE,
     Answers,
+    VisibleQuestion,
     is_answered,
     matrix_rows,
     question_by_key,
@@ -14,10 +15,23 @@ from .visibility import (
 )
 
 
-def missing_keys(definition: dict[str, Any], answers: Answers) -> list[str]:
-    questions = question_by_key(definition)
+def missing_keys(
+    definition: dict[str, Any],
+    answers: Answers,
+    *,
+    visible: list[VisibleQuestion] | None = None,
+    questions: dict[str, dict[str, Any]] | None = None,
+) -> list[str]:
+    """Visible answerable questions without a complete answer row.
+
+    ``visible``/``questions`` accept a caller's precomputed walk so one request
+    does not traverse the definition several times.
+    """
+    questions = questions or question_by_key(definition)
+    if visible is None:
+        visible = visible_questions(definition, answers)
     missing: list[str] = []
-    for v in visible_questions(definition, answers):
+    for v in visible:
         if v.type not in ANSWERABLE:
             continue
         value = answers.get(v.key)
@@ -32,7 +46,19 @@ def missing_keys(definition: dict[str, Any], answers: Answers) -> list[str]:
     return missing
 
 
-def progress(definition: dict[str, Any], answers: Answers) -> dict[str, int]:
-    visible = [v for v in visible_questions(definition, answers) if v.type in ANSWERABLE]
-    answered = sum(1 for v in visible if v.key in answers)
-    return {"answered": answered, "total": len(visible)}
+def progress(
+    definition: dict[str, Any],
+    answers: Answers,
+    *,
+    visible: list[VisibleQuestion] | None = None,
+    missing: list[str] | None = None,
+) -> dict[str, int]:
+    """Answered = visible answerable questions that are not missing, so a
+    pruned matrix (rated, but not for every current row) counts as open,
+    exactly as ``missing_keys`` reports it; a skip counts as answered."""
+    if visible is None:
+        visible = visible_questions(definition, answers)
+    if missing is None:
+        missing = missing_keys(definition, answers, visible=visible)
+    total = sum(1 for v in visible if v.type in ANSWERABLE)
+    return {"answered": total - len(missing), "total": total}

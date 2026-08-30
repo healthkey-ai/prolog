@@ -114,7 +114,7 @@
       "additionalProperties": false,
       "properties": {
         "mode": {
-          "description": "question (default) = one question per screen; section = one section per screen.",
+          "description": "question (default) = one question per screen. \"section\" (one section per screen) is reserved for a later phase: it is accepted structurally but rejected by the semantic validator until the runner implements it.",
           "enum": ["question", "section"]
         },
         "overview": {

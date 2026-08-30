@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -11,13 +10,10 @@ from django.contrib.auth import get_user_model
 from prolog_surveys.definitions.loader import load_definition
 from prolog_surveys.models import SurveyAnswer, SurveyConsent, SurveyContact, SurveyResponse
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
-
 
 @pytest.fixture
-def definition() -> dict:
-    return json.loads(EXAMPLE.read_text())
+def definition(example) -> dict:
+    return example
 
 
 @pytest.fixture
@@ -72,7 +68,36 @@ def test_effective_dates(api_client, active):
     survey = active.survey
     survey.effective_to = "2000-01-01"
     survey.save()
-    assert api_client.get("/api/run/surveys/sample-wellbeing/").status_code == 404
+    # Outside the window the survey is "closed" (410), not "not found" (404),
+    # so the runner can say so; the same signal writes get later on.
+    r = api_client.get("/api/run/surveys/sample-wellbeing/")
+    assert r.status_code == 410 and r.json()["detail"] == "survey has closed"
+    r = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+    assert r.status_code == 410
+    survey.effective_to = None
+    survey.effective_from = "2999-01-01"
+    survey.save()
+    r = api_client.get("/api/run/surveys/sample-wellbeing/")
+    assert r.status_code == 410 and r.json()["detail"] == "survey is not yet open"
+
+
+def test_rejected_answer_carries_structured_issues(api_client, response_id):
+    r = put_answer(api_client, response_id, "overall", {"value": 9})
+    assert r.status_code == 400
+    assert r.json() == {
+        "value": [
+            {
+                "code": "value_out_of_range",
+                "params": {"min": 1, "max": 5},
+                "message": "value must be between 1 and 5",
+            }
+        ]
+    }
+    # Not-yet-visible questions are refused with a code too.
+    r = put_answer(api_client, response_id, "symptoms", {"options": ["pain"]})
+    assert r.status_code == 400 and r.json()["value"][0]["code"] == "not_visible"
 
 
 def test_options_source(api_client, active):

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
 
 import pytest
 from django.core.management import call_command
@@ -18,16 +17,9 @@ from prolog_surveys.definitions.loader import (
     validate_definition,
 )
 from prolog_surveys.definitions.normalize import checksum, normalize
-from prolog_surveys.definitions.validate import build_graph, has_errors, validate_semantics
+from prolog_surveys.definitions.validate import has_errors, validate_semantics
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
-
-
-@pytest.fixture
-def example() -> dict:
-    return json.loads(EXAMPLE.read_text())
+from prolog_surveys.tests.conftest import EXAMPLE_PATH
 
 
 def question(doc: dict, key: str) -> dict:
@@ -51,13 +43,12 @@ def test_example_is_valid(example):
     assert codes(issues, "warning") == []
 
 
-def test_example_graph_edges_point_backward(example):
-    g = build_graph(example)
-    for source, deps in g.edges.items():
-        for dep in deps:
-            assert g.index[dep] < g.index[source]
-    assert g.edges["symptom_impact"] == {"has_symptoms", "symptoms"}
-    assert g.dependents["has_symptoms"] >= {"symptoms", "symptom_impact", "told_clinician"}
+def test_section_mode_is_rejected_until_implemented(example):
+    example["presentation"] = {"mode": "section"}
+    issues = validate_semantics(example)
+    assert codes(issues, "error") == ["presentation_mode"]
+    example["presentation"] = {"mode": "question"}
+    assert not has_errors(validate_semantics(example))
 
 
 # --- structural ----------------------------------------------------------------
@@ -377,7 +368,7 @@ def test_invalid_definition_is_rejected(example):
 
 
 def test_validate_command_ok(capsys):
-    call_command("validate_definition", str(EXAMPLE))
+    call_command("validate_definition", str(EXAMPLE_PATH))
     assert "OK" in capsys.readouterr().out
 
 
@@ -402,3 +393,9 @@ def test_load_command_and_startup_loader(tmp_path, example, settings, capsys):
         call_command("load_definition", str(tmp_path), "--activate")  # fr is machine
     call_command("load_definition", str(tmp_path), "--activate", "--allow-unreviewed")
     assert "activated" in capsys.readouterr().out
+
+
+def test_validate_command_fails_when_no_file_matches(tmp_path):
+    # A typo'd path must not pass a CI gate silently.
+    with pytest.raises(CommandError, match="no definition files"):
+        call_command("validate_definition", str(tmp_path / "missing.json"))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ class Theme:
     directory: Path
     data: dict[str, Any]
     warnings: list[str] = field(default_factory=list)
+    _public: dict[str, Any] | None = field(default=None, repr=False, compare=False)
 
     def asset_path(self, relative: str) -> Path | None:
         """Resolve an asset inside the theme directory; None if outside or disallowed."""
@@ -59,18 +61,40 @@ class Theme:
         refs += [f["src"] for f in self.data.get("typography", {}).get("font_faces", [])]
         return refs
 
-    def public(self, asset_url: callable) -> dict[str, Any]:  # type: ignore[valid-type]
-        """Theme document with asset paths rewritten through ``asset_url(relative)``."""
-        doc = json.loads(json.dumps(self.data))
-        doc.pop("$schema", None)
-        assets = doc.get("assets", {})
-        for k in ASSET_KEYS:
-            if assets.get(k):
-                assets[k] = asset_url(assets[k])
-        if assets.get("decor"):
-            assets["decor"] = [asset_url(a) for a in assets["decor"]]
-        for face in doc.get("typography", {}).get("font_faces", []):
-            face["src"] = asset_url(face["src"])
+    def public(self, asset_path: Callable[[str], str], absolute: Callable[[str], str]) -> dict:
+        """Theme document for the runner with asset references rewritten.
+
+        ``asset_path`` maps a theme-relative asset to its host-independent URL
+        path (computed once per theme); ``absolute`` prefixes the requesting
+        host's scheme and origin, which is all that varies per request.
+        """
+        if self._public is None:
+            doc = json.loads(json.dumps(self.data))
+            doc.pop("$schema", None)
+            assets = doc.get("assets", {})
+            for k in ASSET_KEYS:
+                if assets.get(k):
+                    assets[k] = asset_path(assets[k])
+            if assets.get("decor"):
+                assets["decor"] = [asset_path(a) for a in assets["decor"]]
+            for face in doc.get("typography", {}).get("font_faces", []):
+                face["src"] = asset_path(face["src"])
+            self._public = doc
+        doc = dict(self._public)
+        if "assets" in doc:
+            assets = dict(doc["assets"])
+            for k in ASSET_KEYS:
+                if assets.get(k):
+                    assets[k] = absolute(assets[k])
+            if assets.get("decor"):
+                assets["decor"] = [absolute(a) for a in assets["decor"]]
+            doc["assets"] = assets
+        if doc.get("typography", {}).get("font_faces"):
+            typography = dict(doc["typography"])
+            typography["font_faces"] = [
+                {**face, "src": absolute(face["src"])} for face in typography["font_faces"]
+            ]
+            doc["typography"] = typography
         return doc
 
 

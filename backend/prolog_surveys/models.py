@@ -7,9 +7,12 @@ answers, consent, contacts, invitations and mappings.
 
 from __future__ import annotations
 
+import threading
 import uuid
+from collections import OrderedDict
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -85,12 +88,35 @@ class SurveyVersion(models.Model):
         return self.status == LifecycleStatus.DRAFT
 
     @property
-    def languages(self) -> list[str]:
-        return list(self.definition.get("languages", []))
-
-    @property
     def default_language(self) -> str:
         return self.definition["default_language"]
+
+    @property
+    def cached_definition(self) -> dict:
+        """The definition, decoded once per process.
+
+        Published versions are immutable and a draft's checksum changes with its
+        body, so (pk, checksum) can never serve a stale document. Runner views
+        defer the JSON column and read it through here; the returned dict is
+        shared and must not be mutated.
+        """
+        key = (self.pk, self.checksum)
+        with _definition_lock:
+            doc = _definition_cache.get(key)
+            if doc is not None:
+                _definition_cache.move_to_end(key)
+                return doc
+        doc = self.definition  # a refresh query when the column was deferred
+        with _definition_lock:
+            _definition_cache[key] = doc
+            while len(_definition_cache) > _DEFINITION_CACHE_SIZE:
+                _definition_cache.popitem(last=False)
+        return doc
+
+
+_DEFINITION_CACHE_SIZE = 64
+_definition_cache: OrderedDict[tuple, dict] = OrderedDict()
+_definition_lock = threading.Lock()
 
 
 class SurveyQuestion(models.Model):
@@ -202,7 +228,7 @@ class SurveyResponse(models.Model):
 
     @property
     def definition(self) -> dict:
-        return self.survey_version.definition
+        return self.survey_version.cached_definition
 
     def answer_map(self) -> dict[str, dict]:
         return {a.question_key: a.value for a in self.answers.all()}
@@ -233,10 +259,6 @@ class SurveyAnswer(models.Model):
 
     def __str__(self) -> str:
         return f"{self.response_id}:{self.question_key}"
-
-    @property
-    def is_skipped(self) -> bool:
-        return bool(self.value.get("skipped"))
 
 
 class SurveyContact(models.Model):
@@ -307,6 +329,12 @@ class SurveyInvitation(models.Model):
 
     def __str__(self) -> str:
         return f"invitation {self.id} to {self.survey.slug}"
+
+    def clean(self) -> None:
+        # An invitation joins an address to the answers, which an anonymous
+        # survey promises not to do (CON-3); the admin form reports this.
+        if self.survey_id and self.survey.allow_anonymous_participation:
+            raise ValidationError({"survey": "an anonymous survey takes no invitations"})
 
 
 class SurveyAdministration(models.Model):

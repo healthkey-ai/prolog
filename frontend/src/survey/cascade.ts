@@ -1,10 +1,19 @@
 import { isAnswered, matrixRows, questionByKey, visibleKeys } from "./visibility";
-import type { Answers, Definition } from "./types";
+import type { AnswerValue, Answers, Definition, Question } from "./types";
 
 export interface CascadeResult {
   answers: Answers;
   invalidated: string[];
   visible: string[];
+}
+
+/**
+ * `{provided: true}` on an email question records that an address was captured
+ * (CON-3/4); hiding the question must not throw it away, or re-showing it would
+ * capture the address twice. Mirrors cascade.py.
+ */
+export function retainedWhenHidden(question: Question | undefined, value: AnswerValue | undefined): boolean {
+  return question?.type === "email" && value !== undefined && "provided" in value && value.provided === true;
 }
 
 /** Recompute visibility over the whole DAG (one pass) and drop what no longer applies. */
@@ -16,7 +25,7 @@ export function applyCascade(def: Definition, answers: Answers): CascadeResult {
   const visibleSet = new Set(visible);
 
   for (const key of Object.keys(surviving)) {
-    if (!visibleSet.has(key)) {
+    if (!visibleSet.has(key) && !retainedWhenHidden(questions[key], surviving[key])) {
       delete surviving[key];
       invalidated.push(key);
     }

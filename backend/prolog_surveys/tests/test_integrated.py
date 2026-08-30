@@ -8,7 +8,6 @@ migration). CI runs this configuration as a separate job.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -17,15 +16,13 @@ from prolog_surveys import conf
 from prolog_surveys.definitions.loader import load_definition
 from prolog_surveys.models import SurveyResponse
 from prolog_surveys.tests import fake_identity
+from prolog_surveys.tests.conftest import example_definition
 
 pytestmark = pytest.mark.skipif(not conf.is_integrated(), reason="integrated profile only")
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
-
 
 def definition(**changes):
-    doc = json.loads(EXAMPLE.read_text())
+    doc = example_definition()
     doc.update(changes)
     return doc
 
@@ -203,3 +200,41 @@ def test_reconsent_required_for_new_version(api_client):
         format="json",
     )
     assert r.status_code == 201
+
+
+@pytest.mark.django_db
+def test_invited_account_participant_starts_each_administration(api_client):
+    """A logged-in invited participant's older in-progress response must not
+    stand in for a new administration (repeat surveys, RUN-5)."""
+    import datetime as dt
+
+    from prolog_surveys.invitations import schedule_due
+    from prolog_surveys.models import SurveyInvitation
+
+    doc = definition(
+        participation={
+            "anonymous": False,
+            "resume": "account",
+            "repeat": {"every": 1, "unit": "months", "start_date": "2026-01-01"},
+        }
+    )
+    version = load_definition(doc, activate=True).version
+    user = get_user_model().objects.create_user("p", "p@example.org", "x")
+    invitation = SurveyInvitation.objects.create(
+        survey=version.survey, email="p@example.org", participant=user
+    )
+    (january,) = schedule_due(dt.date(2026, 1, 15))
+    (february,) = schedule_due(dt.date(2026, 2, 15))
+    api_client.force_authenticate(user)
+    start = lambda admin: api_client.post(  # noqa: E731
+        "/api/run/responses/",
+        {"slug": "sample-wellbeing", "language": "en", "invitation": str(admin.id)},
+        format="json",
+    )
+    r1 = start(january)
+    assert r1.status_code == 201 and r1.json()["administration"] == str(january.id)
+    r2 = start(february)
+    assert r2.status_code == 201 and r2.json()["administration"] == str(february.id)
+    assert r2.json()["id"] != r1.json()["id"]
+    assert start(february).json()["id"] == r2.json()["id"]  # the link resumes its own
+    assert invitation.administrations.count() == 2

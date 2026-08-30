@@ -1,4 +1,12 @@
-"""Throttling without storing raw IPs (CON-6)."""
+"""Throttling without storing raw IPs (CON-6).
+
+Buckets are keyed by a salted hash of the caller's address, never the address
+itself. The address comes from DRF's ``get_ident`` — X-Forwarded-For is trusted
+only for ``REST_FRAMEWORK["NUM_PROXIES"]`` hops (wired from PROLOG_NUM_PROXIES in
+the standalone settings), since anything a client can set itself would let it
+pick a fresh bucket per request. Counters live in Django's default cache; see
+docs/deployment.md for what that means across worker processes.
+"""
 
 from __future__ import annotations
 
@@ -6,49 +14,33 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .. import conf
 
-# Used when the project's REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] does not
-# name a scope (an integrated host that did not copy the standalone settings),
-# so a missing rate degrades to these defaults instead of a 500 on every call.
-DEFAULT_RATES = {"run.read": "1200/hour", "run.create": "30/hour", "run.answer": "600/hour"}
-
-
-def client_address(request) -> str:
-    """The caller's address, trusting X-Forwarded-For only for the configured
-    number of proxies (anything a client can set itself would let it pick a
-    fresh throttle bucket per request).
-
-    Same rule as DRF's ``SimpleRateThrottle.get_ident`` with ``NUM_PROXIES``:
-    a chain shorter than the configured proxy count yields its outermost hop
-    (still one bucket per client), never the proxy's own address (which would
-    put every client behind it into a single bucket)."""
-    proxies = int(conf.get("PROLOG_NUM_PROXIES") or 0)
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if proxies > 0 and forwarded:
-        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
-        if hops:
-            return hops[-min(proxies, len(hops))]
-    return request.META.get("REMOTE_ADDR", "")
-
-
-def client_key(request) -> str:
-    """Salted hash of the caller's address; never persisted."""
-    return conf.salted_hash(client_address(request))
-
 
 class _RunnerThrottle(SimpleRateThrottle):
     def get_rate(self):
-        return self.THROTTLE_RATES.get(self.scope) or DEFAULT_RATES[self.scope]
+        return self.THROTTLE_RATES.get(self.scope) or conf.THROTTLE_RATES[self.scope]
 
 
 class ClientKeyThrottle(_RunnerThrottle):
     scope = "run.read"
 
     def get_cache_key(self, request, view):
-        return self.cache_format % {"scope": self.scope, "ident": client_key(request)}
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": conf.salted_hash(self.get_ident(request)),
+        }
 
 
 class CreateThrottle(ClientKeyThrottle):
+    """Response creation per client."""
+
     scope = "run.create"
+
+
+class CaptureThrottle(ClientKeyThrottle):
+    """Contact/identity capture per client: its own bucket, so captures never
+    consume a shared address's response-creation budget (and vice versa)."""
+
+    scope = "run.capture"
 
 
 class ResponseThrottle(_RunnerThrottle):
@@ -57,5 +49,5 @@ class ResponseThrottle(_RunnerThrottle):
     scope = "run.answer"
 
     def get_cache_key(self, request, view):
-        ident = view.kwargs.get("response_id") or client_key(request)
+        ident = view.kwargs.get("response_id") or conf.salted_hash(self.get_ident(request))
         return self.cache_format % {"scope": self.scope, "ident": ident}

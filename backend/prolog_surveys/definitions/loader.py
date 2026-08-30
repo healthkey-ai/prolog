@@ -11,6 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .. import conf
+from ..engine.visibility import iter_questions
 from ..models import LifecycleStatus, Survey, SurveyOption, SurveyQuestion, SurveyVersion
 from .normalize import checksum, normalize
 from .schema import Issue, read_json, validate_schema
@@ -126,6 +127,10 @@ def activate_version(version: SurveyVersion, *, allow_unreviewed: bool = False) 
     of machine-translated content; it logs loudly and must never be used for a
     production launch.
     """
+    # Serialise activations of one survey: two concurrent ones would both read
+    # the same current version and race the one-active-version constraint.
+    Survey.objects.select_for_update().get(pk=version.survey_id)
+    version.refresh_from_db(fields=["status"])
     if version.status == LifecycleStatus.ARCHIVED:
         raise ActivationError(
             "an archived version cannot be re-activated; load it as a new version"
@@ -179,32 +184,36 @@ def materialize(version: SurveyVersion) -> None:
     """Rebuild the read-only question/option projections for a version."""
     version.questions.all().delete()
     default = version.default_language
-    order = 0
-    for section in version.definition["sections"]:
-        for q in section["questions"]:
-            question = SurveyQuestion.objects.create(
-                survey_version=version,
-                key=q["key"],
-                section_key=section["key"],
-                type=q["type"],
-                order=order,
-                text=q["text"][default],
-                required=q.get("required", True),
+    questions = [
+        SurveyQuestion(
+            survey_version=version,
+            key=q["key"],
+            section_key=section["key"],
+            type=q["type"],
+            order=order,
+            text=q["text"][default],
+            required=q.get("required", True),
+        )
+        for order, (_, section, q) in enumerate(iter_questions(version.definition))
+    ]
+    # PostgreSQL returns the new pks (DEP-6: no other backend), so one insert
+    # per table instead of one per question.
+    SurveyQuestion.objects.bulk_create(questions)
+    by_key = {q.key: q for q in questions}
+    SurveyOption.objects.bulk_create(
+        [
+            SurveyOption(
+                question=by_key[q["key"]],
+                key=o["key"],
+                order=i,
+                label=o["label"][default],
+                exclusive=o.get("exclusive", False),
+                free_text=o.get("free_text", False),
             )
-            order += 1
-            SurveyOption.objects.bulk_create(
-                [
-                    SurveyOption(
-                        question=question,
-                        key=o["key"],
-                        order=i,
-                        label=o["label"][default],
-                        exclusive=o.get("exclusive", False),
-                        free_text=o.get("free_text", False),
-                    )
-                    for i, o in enumerate(q.get("options", []))
-                ]
-            )
+            for _, _, q in iter_questions(version.definition)
+            for i, o in enumerate(q.get("options", []))
+        ]
+    )
 
 
 def load_file(

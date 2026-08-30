@@ -2,21 +2,33 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ApiError } from "@/api/client";
-import { useContact, useIdentity, useOptionsSource, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
+import { SupersededError, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
 import { SectionInterstitial } from "@/components/SectionInterstitial";
 import { Shell, type SaveState } from "@/components/Shell";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SkipConfirm } from "@/components/SkipConfirm";
+import { issueMessages } from "@/i18n/issues";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
-import { implicitAnswer, validateAnswer } from "@/survey/answers";
+import { AnswerError, implicitAnswer, validateAnswer } from "@/survey/answers";
 import { missingKeys } from "@/survey/completion";
 import { firstOpenKey, overview, position, progressFraction, type Position } from "@/survey/navigation";
-import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue } from "@/survey/types";
+import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue, type Question } from "@/survey/types";
 import { isAnswered, questionByKey } from "@/survey/visibility";
 import { useThemeLogo } from "@/theme/useTheme";
+
+/**
+ * How a save ended. Only "failed" stops the participant; "superseded" means a
+ * newer save of the same question took over and reports for it.
+ */
+type SaveOutcome = "saved" | "failed" | "superseded";
+
+/** The response no longer exists for this participant (purged, or an account session that expired). */
+const gone = (err: unknown) => err instanceof ApiError && (err.status === 403 || err.status === 404);
+/** The server's view of the response differs from the cache (submitted in another tab, or gone). */
+const stale = (err: unknown) => err instanceof ApiError && (err.status === 409 || gone(err));
 
 export function WizardPage() {
   const { slug = "", key = "" } = useParams();
@@ -46,13 +58,12 @@ export function WizardPage() {
   // The route key at render time, so a save that settles after the participant
   // moved on can tell whether its question is still on screen.
   const keyRef = useRef(key);
-  // Per-question save sequence: only the latest save of a question may set the
-  // page's save state (an older PUT settling late must not raise an error the
-  // newer, successful one has already superseded — nor offer to retry its value).
-  const saveSeq = useRef(new Map<string, number>());
   // Every save in flight (a blur commit on an earlier question may still be
-  // retrying), so Finish waits for all of them instead of racing them on the server.
-  const pendingSaves = useRef(new Set<Promise<boolean>>());
+  // retrying), so Finish waits for all of them instead of racing them on the
+  // server; and the latest one per question, so Next on an optimistically
+  // stored answer waits for its PUT to land before a downstream PUT can overtake it.
+  const pendingSaves = useRef(new Set<Promise<SaveOutcome>>());
+  const pendingByKey = useRef(new Map<string, Promise<SaveOutcome>>());
   // Field errors for a question the participant has already left, shown once
   // they are back on it (the key effect would otherwise clear them).
   const pendingErrors = useRef<{ key: string; errors: string[] } | null>(null);
@@ -64,18 +75,22 @@ export function WizardPage() {
   const answers = response.data?.answers ?? {};
   const pos = useMemo(() => (def ? position(def, answers, key) : null), [def, answers, key]);
   const questions = useMemo(() => (def ? questionByKey(def) : {}), [def]);
-  const country = useOptionsSource(def && pos?.visible.some((v) => v.question.config?.options_source) ? "iso3166_countries" : undefined, def?.language ?? "en");
-  const countryLabels = useMemo(() => Object.fromEntries((country.data?.options ?? []).map((o) => [o.key, o.label])), [country.data]);
+  // Option sources (e.g. countries) of every visible dropdown, each fetched once:
+  // the current question's list validates its answer, the overview shows labels.
+  const sources = useMemo(() => [...new Set((pos?.visible ?? []).map((v) => v.question.config?.options_source).filter((s): s is string => Boolean(s)))], [pos]);
+  const sourceLabels = useOptionsSources(sources, def?.language ?? "en");
 
   useDefinitionLanguage(def?.language);
 
-  // Redirect: no response, submitted, or the URL question is not visible.
+  // Redirect: no response, one that is gone, a submitted one, or a URL question that is not visible.
   useEffect(() => {
     if (!id) {
       navigate(`/s/${slug}`, { replace: true });
       return;
     }
-    if (response.isError) {
+    if (response.isError && (gone(response.error) || !response.data)) {
+      // A transient refetch error keeps the page (and its retry affordance): the
+      // cached response is still good to work with.
       navigate(`/s/${slug}`, { replace: true });
       return;
     }
@@ -87,7 +102,7 @@ export function WizardPage() {
       const target = firstOpenKey(def, response.data.answers, response.data.last_question_key);
       if (target && target !== key) navigate(`/s/${slug}/q/${target}`, { replace: true });
     }
-  }, [id, def, response.data, response.isError, pos, key, slug, navigate]);
+  }, [id, def, response.data, response.isError, response.error, pos, key, slug, navigate]);
 
   // The draft is keyed on the question: a stale draft from another question is ignored,
   // so no reset effect is needed.
@@ -113,28 +128,25 @@ export function WizardPage() {
   }, []);
 
   const persist = useCallback(
-    async (qKey: string, value: AnswerValue): Promise<boolean> => {
-      const seq = (saveSeq.current.get(qKey) ?? 0) + 1;
-      saveSeq.current.set(qKey, seq);
-      const latest = () => saveSeq.current.get(qKey) === seq;
+    async (qKey: string, value: AnswerValue): Promise<SaveOutcome> => {
       setSaveState("saving");
-      const run = (async () => {
+      const run = (async (): Promise<SaveOutcome> => {
         try {
           await save.mutateAsync({ key: qKey, value });
-          if (!latest()) return false; // superseded by a newer save of this question
           lastFailed.current = null;
           flashSaved();
-          return true;
+          return "saved";
         } catch (err) {
-          if (!latest()) return false;
+          // A newer save of this question is in flight: it reports for both.
+          if (err instanceof SupersededError) return "superseded";
           if (err instanceof ApiError && err.status === 410) {
             // The survey closed mid-response: nothing to retry, the footer explains.
             lastFailed.current = null;
             setSaveState("closed");
-            return false;
+            return "failed";
           }
           if (err instanceof ApiError && err.status === 400) {
-            const errors = err.fieldErrors.length ? err.fieldErrors : [t("app.error")];
+            const errors = err.issues.length ? issueMessages(err.issues, t) : err.fieldErrors.length ? err.fieldErrors : [t("app.error")];
             setSaveState("idle");
             if (qKey === keyRef.current) {
               setLocalErrors(errors);
@@ -144,19 +156,21 @@ export function WizardPage() {
               pendingErrors.current = { key: qKey, errors };
               navigate(`/s/${slug}/q/${qKey}`);
             }
-            return false;
+            return "failed";
           }
-          if (err instanceof ApiError) void refetchResponse(); // 409 submitted elsewhere / 404 gone: let the redirect effect take over
+          if (stale(err)) void refetchResponse(); // submitted elsewhere / gone: let the redirect effect take over
           lastFailed.current = { key: qKey, value };
           setSaveState("error");
-          return false;
+          return "failed";
         }
       })();
       pendingSaves.current.add(run);
+      pendingByKey.current.set(qKey, run);
       try {
         return await run;
       } finally {
         pendingSaves.current.delete(run);
+        if (pendingByKey.current.get(qKey) === run) pendingByKey.current.delete(qKey);
       }
     },
     [save, flashSaved, refetchResponse, navigate, slug, t],
@@ -189,6 +203,16 @@ export function WizardPage() {
   const cleared = draftKey === key && draft === undefined;
   const section = def.sections[current.sectionIndex];
 
+  /** Client-side check of a value against the same rules the server applies; the messages are chrome strings. */
+  const localIssues = (q: Question, value: AnswerValue): string[] => {
+    try {
+      validateAnswer(q, value, answers, { skipPolicy: policy, sourceOptions: new Set(Object.keys(sourceLabels[q.config?.options_source ?? ""] ?? {})), questions });
+      return [];
+    } catch (e) {
+      return e instanceof AnswerError ? issueMessages(e.issues, t) : [t("error.generic")];
+    }
+  };
+
   const onChange = (value: AnswerValue | undefined, opts?: { commit?: boolean; advance?: boolean }) => {
     setDraft(value);
     setDraftKey(key);
@@ -197,21 +221,25 @@ export function WizardPage() {
     if (opts?.commit && value !== undefined) {
       // Blur on an unchanged text/number/date field must not PUT the same value again.
       const unchanged = JSON.stringify(value) === JSON.stringify(answers[key]);
-      void (unchanged ? Promise.resolve(true) : commit(value)).then((ok) => {
-        if (ok && opts.advance) void advance(after(value));
+      void (unchanged ? Promise.resolve<SaveOutcome>("saved") : commit(value)).then((outcome) => {
+        if (outcome === "saved" && opts.advance) void advance(after(value));
       });
     }
   };
 
-  const commit = async (value: AnswerValue): Promise<boolean> => {
-    try {
-      validateAnswer(question, value, answers, { skipPolicy: policy, sourceOptions: new Set(Object.keys(countryLabels)), questions });
-    } catch (e) {
-      const errors = (e as { errors?: string[] }).errors ?? [String(e)];
-      setLocalErrors(question.type === "matrix" && errors.some((m) => m.startsWith("every row must be rated")) ? [t("matrix.incomplete")] : errors);
-      return false;
+  const commit = async (value: AnswerValue): Promise<SaveOutcome> => {
+    const errors = localIssues(question, value);
+    if (errors.length) {
+      setLocalErrors(errors);
+      return "failed";
     }
     return persist(key, value);
+  };
+
+  /** The latest save of the current question, if one is still in flight, must land before moving on. */
+  const settled = async (): Promise<boolean> => {
+    const pending = pendingByKey.current.get(key);
+    return !pending || (await pending) !== "failed";
   };
 
   /**
@@ -224,16 +252,23 @@ export function WizardPage() {
       // Finish must not race any autosave still in flight (a blur commit on an
       // earlier question, or a click commit right before Finish): the server
       // would read the answers before that PUT lands and report the question
-      // missing — or, for an optional one, submit without it.
+      // missing — or, for an optional one, submit without it. A superseded save
+      // is not a failure: the save that superseded it is awaited here too.
       while (pendingSaves.current.size) {
         const outcomes = await Promise.all([...pendingSaves.current]);
-        if (outcomes.some((ok) => !ok)) return;
+        if (outcomes.includes("failed")) return;
       }
       submit.mutate(undefined, {
         onSuccess: () => navigate(`/s/${slug}/complete`),
         onError: (err) => {
           if (err instanceof ApiError && err.status === 410) {
             setSaveState("closed");
+            return;
+          }
+          if (stale(err)) {
+            // Submitted in another tab (409) or gone: the refreshed response
+            // sends the participant to the right page.
+            void refetchResponse();
             return;
           }
           const missing = err instanceof ApiError ? err.body.missing : undefined;
@@ -270,23 +305,29 @@ export function WizardPage() {
     const stored = cleared ? undefined : answers[key];
     if (hasDraft && draftValue !== undefined) {
       if (JSON.stringify(stored) !== JSON.stringify(draftValue)) {
-        if (!(await commit(draftValue))) return;
-      } else if (missingKeys(def, answers).includes(key)) {
-        // Stored but no longer complete (a rows_from matrix whose source gained
-        // rows after it was rated): the server would bounce the submit back here.
-        setLocalErrors([t("matrix.incomplete")]);
-        return;
+        if ((await commit(draftValue)) !== "saved") return;
+      } else {
+        // Stored, possibly only optimistically: its PUT must land before a
+        // downstream question's, or the server refuses the latter as not shown.
+        if (!(await settled())) return;
+        if (missingKeys(def, answers).includes(key)) {
+          // Stored but no longer complete (a rows_from matrix whose source gained
+          // rows after it was rated): the server would bounce the submit back here.
+          setLocalErrors(localIssues(question, draftValue));
+          return;
+        }
       }
       await advance(after(draftValue));
       return;
     }
     if (stored !== undefined) {
+      if (!(await settled())) return;
       await advance();
       return;
     }
     // Unanswered.
     if (!required || policy === "none") {
-      if (await persist(key, { skipped: true })) await advance(after({ skipped: true }));
+      if ((await persist(key, { skipped: true })) === "saved") await advance(after({ skipped: true }));
       return;
     }
     if (policy === "hard") {
@@ -298,7 +339,7 @@ export function WizardPage() {
 
   const onSkip = async () => {
     setSkipPrompt(false);
-    if (await persist(key, { skipped: true })) await advance(after({ skipped: true }));
+    if ((await persist(key, { skipped: true })) === "saved") await advance(after({ skipped: true }));
   };
 
   const onBack = () => {
@@ -317,7 +358,7 @@ export function WizardPage() {
     if (lastFailed.current) void persist(lastFailed.current.key, lastFailed.current.value);
   };
 
-  // The overview sheet is unmounted while closed; don't walk the DAG twice per keystroke for it.
+  // The overview sheet is unmounted while closed; don't walk the DAG for it per keystroke.
   const rows = overviewOpen ? overview(def, answers, key, response.data.last_question_key) : [];
   const progressValue = progressFraction(pos, hasDraft || answers[key] !== undefined);
 
@@ -370,7 +411,7 @@ export function WizardPage() {
           </p>
         )}
       </Shell>
-      <OverviewPanel open={overviewOpen} onClose={() => setOverviewOpen(false)} sections={rows} definitionSections={def.sections} answers={answers} onNavigate={goTo} countryLabels={countryLabels} />
+      <OverviewPanel open={overviewOpen} onClose={() => setOverviewOpen(false)} sections={rows} definitionSections={def.sections} answers={answers} onNavigate={goTo} sourceLabels={sourceLabels} />
     </>
   );
 }

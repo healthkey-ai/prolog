@@ -13,7 +13,6 @@ export function ScaleControl({
   minLabel,
   maxLabel,
   pointLabels,
-  disabled,
   ariaLabel,
 }: {
   min: number;
@@ -24,7 +23,6 @@ export function ScaleControl({
   minLabel?: string;
   maxLabel?: string;
   pointLabels?: string[];
-  disabled?: boolean;
   ariaLabel?: string;
 }) {
   const points = Array.from({ length: max - min + 1 }, (_, i) => min + i);
@@ -33,7 +31,6 @@ export function ScaleControl({
       <RadioGroupPrimitive.Root
         value={value === undefined ? "" : String(value)}
         onValueChange={(v) => onSelect(Number(v))}
-        disabled={disabled}
         aria-label={ariaLabel}
         name={name}
         className="grid gap-2"
@@ -66,7 +63,7 @@ export function ScaleControl({
   );
 }
 
-export function Scale({ question, value, onChange, disabled }: RendererProps<ScaleValue>) {
+export function Scale({ question, value, onChange }: RendererProps<ScaleValue>) {
   const scale = question.config?.scale;
   if (!scale) return null;
   return (
@@ -79,7 +76,6 @@ export function Scale({ question, value, onChange, disabled }: RendererProps<Sca
       minLabel={scale.min_label as string | undefined}
       maxLabel={scale.max_label as string | undefined}
       pointLabels={scale.point_labels as string[] | undefined}
-      disabled={disabled}
       ariaLabel={question.text as string}
     />
   );

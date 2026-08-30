@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
 from django.core.management import call_command
@@ -16,13 +14,10 @@ from prolog_surveys.definitions.loader import load_definition
 from prolog_surveys.exports import write_contacts, write_responses
 from prolog_surveys.models import SurveyContact, SurveyResponse
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
-
 
 @pytest.fixture
-def version(db):
-    return load_definition(json.loads(EXAMPLE.read_text()), activate=True).version
+def version(db, example):
+    return load_definition(example, activate=True).version
 
 
 def fill(api_client, rid, answers):

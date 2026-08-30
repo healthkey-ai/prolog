@@ -10,12 +10,12 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from prolog_surveys.definitions.loader import load_definition
+from prolog_surveys.tests.conftest import example_definition
 from prolog_surveys.themes import registry, validate_theme
 from prolog_surveys.themes.contrast import contrast_ratio, palette_warnings
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 THEMES = REPO_ROOT / "themes"
-EXAMPLE = REPO_ROOT / "examples" / "sample-wellbeing.json"
 
 
 @pytest.fixture(autouse=True)
@@ -131,7 +131,7 @@ def test_theme_assets_served_safely(api_client, db):
 
 
 def test_definition_reports_resolved_theme(api_client, db, caplog):
-    doc = json.loads(EXAMPLE.read_text())
+    doc = example_definition()
     doc["theme"] = "does-not-exist"
     load_definition(doc, activate=True)
     r = api_client.get("/api/run/surveys/sample-wellbeing/")

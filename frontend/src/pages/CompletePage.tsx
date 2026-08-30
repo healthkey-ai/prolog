@@ -4,6 +4,7 @@ import { useResponse, useSurveyDefinition } from "@/api/hooks";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
 import { Decor } from "@/components/Decor";
+import { Eyebrow } from "@/components/Eyebrow";
 import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
 
 export function CompletePage() {
@@ -22,7 +23,7 @@ export function CompletePage() {
       {immersive && <Decor />}
       <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-5 px-6 py-12 sm:py-20">
         <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
-        <p className={`text-[13px] font-medium uppercase tracking-[0.08em] ${immersive ? "text-on-primary/80" : "text-ink-soft"}`}>{t("complete.eyebrow")}</p>
+        <Eyebrow onPrimary={immersive}>{t("complete.eyebrow")}</Eyebrow>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{t("complete.title")}</h1>
         <p className={`text-[1.05rem] ${immersive ? "text-on-primary/85" : "text-ink-soft"}`}>{text ?? t("complete.body")}</p>
         <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>{t("complete.readonly")}</p>

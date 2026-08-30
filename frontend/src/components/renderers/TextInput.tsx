@@ -4,7 +4,7 @@ import { Textarea } from "../ui/textarea";
 import { inputClass, type RendererProps } from "./types";
 import type { TextValue } from "@/survey/types";
 
-export function TextInput({ question, value, onChange, disabled }: RendererProps<TextValue>) {
+export function TextInput({ question, value, onChange }: RendererProps<TextValue>) {
   const { t } = useTranslation();
   const cfg = question.config ?? {};
   const multiline = cfg.multiline ?? false; // the server fills the default (normalize.py)
@@ -13,7 +13,6 @@ export function TextInput({ question, value, onChange, disabled }: RendererProps
     className: inputClass,
     value: text,
     maxLength: cfg.max_length,
-    disabled,
     "aria-label": question.text as string,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value ? { text: e.target.value } : undefined),
     onBlur: () => onChange(text.trim() ? { text: text.trim() } : undefined, { commit: true }),

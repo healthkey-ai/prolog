@@ -23,7 +23,12 @@ PROLOG_THEME_DIRS = ["/srv/prolog/themes", "/srv/themes"]
 PROLOG_SCHEMA_DIR = "/srv/prolog/schema"
 PROLOG_PUBLIC_URL = "https://surveys.example.org"
 PROLOG_EMAIL_FROM = "surveys@example.org"
-REST_FRAMEWORK = {...}  # see backend/prolog/settings.py for the throttle scopes PROlog uses
+REST_FRAMEWORK = {
+    ...,
+    # Throttle scopes (defaults in prolog_surveys.conf.THROTTLE_RATES apply when omitted)
+    "DEFAULT_THROTTLE_RATES": {"run.read": "1200/hour", "run.create": "30/hour", "run.capture": "30/hour", "run.answer": "600/hour"},
+    "NUM_PROXIES": 1,  # reverse proxies whose X-Forwarded-For is trusted for the client address
+}
 ```
 
 `urls.py`: `path("api/", include("prolog_surveys.urls"))` and, if the host

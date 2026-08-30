@@ -12,17 +12,18 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .. import conf
-from ..engine.answers import AnswerError, option_keys_of, validate_answer
+from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade
 from ..engine.completion import missing_keys, progress
 from ..engine.localize import localize, pick, resolve_language
-from ..engine.visibility import question_by_key, visible_keys
+from ..engine.visibility import VisibleQuestion, question_by_key, visible_questions
 from ..identity import (
     IdentityRequest,
     IdentityServiceError,
@@ -30,8 +31,9 @@ from ..identity import (
     idempotency_key,
     resolve_participant,
 )
-from ..invitations import version_for
+from ..invitations import takes_invitations, version_for
 from ..models import (
+    LifecycleStatus,
     ResponseStatus,
     Survey,
     SurveyAdministration,
@@ -47,11 +49,10 @@ from .serializers import (
     AnswerSerializer,
     ContactSerializer,
     CreateResponseSerializer,
-    IdentitySerializer,
     PatchResponseSerializer,
     ResponseSerializer,
 )
-from .throttles import ClientKeyThrottle, CreateThrottle, ResponseThrottle
+from .throttles import CaptureThrottle, ClientKeyThrottle, CreateThrottle, ResponseThrottle
 
 log = logging.getLogger(__name__)
 
@@ -71,13 +72,17 @@ def _effective_window_error(survey: Survey) -> str | None:
 
 
 def _active_version(slug: str):
+    """The survey and its active version, or 404 (unknown/inactive) / 410 (outside
+    the effective window — the same signal ``writable`` gives, so the runner can
+    say "closed" rather than "not found"). The definition column is deferred;
+    read it through ``cached_definition``."""
     survey = get_object_or_404(Survey, slug=slug)
-    version = survey.active_version
+    version = survey.versions.filter(status=LifecycleStatus.ACTIVE).defer("definition").first()
     if version is None:
         raise NotFound("survey is not active")
     error = _effective_window_error(survey)
     if error:
-        raise NotFound(error)
+        raise SurveyClosed(error)
     return survey, version
 
 
@@ -150,23 +155,41 @@ def _response_for_definition(request, slug: str) -> SurveyResponse | None:
         response_id = uuid.UUID(raw)
     except ValueError as exc:
         raise NotFound("unknown response") from exc
-    response = get_object_or_404(
-        SurveyResponse.objects.select_related("survey_version__survey"), pk=response_id
-    )
+    response = get_object_or_404(_responses(), pk=response_id)
     if response.survey_version.survey.slug != slug:
         raise NotFound("response belongs to another survey")
     _owns(request, response)
     return response
 
 
+def _responses():
+    """Response queryset for the runner: the definition JSON is deferred and read
+    through the per-process cache (``SurveyResponse.definition``)."""
+    return SurveyResponse.objects.select_related("survey_version__survey").defer(
+        "survey_version__definition"
+    )
+
+
+def _state(
+    definition: dict, answers: dict, *, visible: list[VisibleQuestion] | None = None
+) -> dict:
+    """visible / missing / progress from one walk of the definition."""
+    questions = question_by_key(definition)
+    if visible is None:
+        visible = visible_questions(definition, answers)
+    missing = missing_keys(definition, answers, visible=visible, questions=questions)
+    return {
+        "visible": [v.key for v in visible],
+        "missing": missing,
+        "progress": progress(definition, answers, visible=visible, missing=missing),
+    }
+
+
 def _response_payload(response: SurveyResponse) -> dict:
-    definition = response.definition
     answers = response.answer_map()
     data = ResponseSerializer(response).data
     data["answers"] = answers
-    data["visible"] = visible_keys(definition, answers)
-    data["missing"] = missing_keys(definition, answers)
-    data["progress"] = progress(definition, answers)
+    data.update(_state(response.definition, answers))
     return data
 
 
@@ -178,13 +201,15 @@ class SurveyDefinitionView(APIView):
         response = _response_for_definition(request, slug)
         if response is not None:
             survey, version = response.survey_version.survey, response.survey_version
-            definition = version.definition
+            definition = response.definition
             lang = _language(request, definition, response.language)
         else:
             survey, version = _active_version(slug)
-            definition = version.definition
+            definition = version.cached_definition
+            # ``?invite=`` is ignored on an anonymous survey (it takes none);
+            # elsewhere it is the credential for an account survey.
             invited = (
-                not definition["participation"]["anonymous"]
+                takes_invitations(definition)
                 and _administration(request, {}, survey=survey) is not None
             )
             _check_access(request, definition, invited=invited)
@@ -226,8 +251,8 @@ class ResponseCreateView(APIView):
         administration = _administration(request, data, survey=survey, lock=True)
         if administration is not None:
             version = version_for(administration) or version
-        definition = version.definition
-        if administration is not None and definition["participation"]["anonymous"]:
+        definition = version.cached_definition
+        if administration is not None and not takes_invitations(definition):
             # Linking would join anonymous answers to the invitation's email address.
             raise ValidationError(
                 {"invitation": "this survey is anonymous and takes no invitation"}
@@ -237,16 +262,21 @@ class ResponseCreateView(APIView):
         if lang not in definition["languages"]:
             raise ValidationError({"language": "not offered by this survey"})
 
-        # Account resume (RUN-3): return the participant's in-progress response.
         participant = (
             None if definition["participation"]["anonymous"] else resolve_participant(request)
         )
-        if administration is not None and getattr(administration, "response", None) is not None:
-            return Response(_response_payload(administration.response), status=status.HTTP_200_OK)
-        if participant is not None and definition["participation"].get("resume") == "account":
+        if administration is not None:
+            # An invitation link resumes its own administration's response and
+            # nothing else: a logged-in participant's older in-progress response
+            # (a previous administration) must not stand in for this one.
+            existing = getattr(administration, "response", None)
+            if existing is not None:
+                return Response(_response_payload(existing), status=status.HTTP_200_OK)
+        elif participant is not None and definition["participation"].get("resume") == "account":
+            # Account resume (RUN-3): return the participant's in-progress response.
             # Serialise concurrent starts by the same participant so the
             # read-then-create below cannot produce two in-progress responses.
-            SurveyVersion.objects.select_for_update().get(pk=version.pk)
+            SurveyVersion.objects.select_for_update().only("pk").get(pk=version.pk)
             existing = (
                 SurveyResponse.objects.filter(
                     survey_version=version,
@@ -292,6 +322,21 @@ class ResponseCreateView(APIView):
         return Response(_response_payload(response), status=status.HTTP_201_CREATED)
 
 
+class AnswerRejected(APIException):
+    """400 with the engine's structured issues under ``value``, untouched.
+
+    DRF's ValidationError would coerce every nested primitive to a string,
+    losing the typed ``params`` the runner formats into its own language.
+    """
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_code = "invalid"
+
+    def __init__(self, issues: list[dict]):
+        super().__init__()
+        self.detail = {"value": issues}
+
+
 class ReadOnly(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = "response is submitted and read-only"
@@ -306,7 +351,7 @@ class SurveyClosed(APIException):
 
 class ResponseMixin:
     def get_response(self, response_id, *, lock: bool = False) -> SurveyResponse:
-        qs = SurveyResponse.objects.select_related("survey_version__survey")
+        qs = _responses()
         if lock:
             qs = qs.select_for_update(of=("self",))
         response = get_object_or_404(qs, pk=response_id)
@@ -359,15 +404,13 @@ def _answer_result(
     *,
     invalidated: list[str] | None = None,
     pruned: dict | None = None,
-    visible: list[str] | None = None,
+    visible: list[VisibleQuestion] | None = None,
 ) -> dict:
     return {
         "answer": {"key": question_key, "value": value},
         "invalidated": invalidated or [],
         "pruned": pruned or {},
-        "visible": visible if visible is not None else visible_keys(definition, answers),
-        "missing": missing_keys(definition, answers),
-        "progress": progress(definition, answers),
+        **_state(definition, answers, visible=visible),
     }
 
 
@@ -390,15 +433,18 @@ class AnswerView(ResponseMixin, APIView):
         if question is None:
             raise NotFound("unknown question")
         answers = response.answer_map()
-        if question_key not in visible_keys(definition, answers):
-            raise ValidationError({"value": ["this question is not currently shown"]})
+        visible = visible_questions(definition, answers)
+        if question_key not in {v.key for v in visible}:
+            raise AnswerRejected([issue("not_visible").as_dict()])
         if _is_capture_marker(question, answers.get(question_key)):
             # A recorded capture cannot be downgraded: the {provided: true} marker is
             # what makes the contact endpoint idempotent (one address per response).
             response.last_question_key = question_key
             response.save(update_fields=["last_question_key", "updated_at"])
             return Response(
-                _answer_result(definition, question_key, answers[question_key], answers)
+                _answer_result(
+                    definition, question_key, answers[question_key], answers, visible=visible
+                )
             )
         source_options = None
         if question["type"] == "dropdown" and question["config"].get("options_source"):
@@ -413,19 +459,17 @@ class AnswerView(ResponseMixin, APIView):
                 questions=questions,
             )
         except AnswerError as exc:
-            raise ValidationError({"value": exc.errors}) from exc
+            raise AnswerRejected(exc.as_list()) from exc
         answers[question_key] = value
-        cascade = apply_cascade(definition, answers)
-        answer, _ = SurveyAnswer.objects.update_or_create(
+        # One walk with the new answer: what is visible now, what no longer applies
+        # (a hidden capture marker is retained by the engine, see cascade.py).
+        cascade = apply_cascade(definition, answers, questions=questions)
+        SurveyAnswer.objects.update_or_create(
             response=response,
             question_key=question_key,
             defaults={"value": value, "option_keys": option_keys_of(value)},
         )
-        # A capture marker survives being hidden by visible_if: the address is
-        # already stored, so re-showing the question must not capture it twice.
-        kept = {k for k in cascade.invalidated if _is_capture_marker(questions[k], answers.get(k))}
-        invalidated = [k for k in cascade.invalidated if k not in kept]
-        dead = [k for k in invalidated if k not in cascade.answers]
+        dead = [k for k in cascade.invalidated if k not in cascade.answers]
         if dead:
             SurveyAnswer.objects.filter(response=response, question_key__in=dead).delete()
         # A pruned matrix keeps its surviving rows; the client gets them back so
@@ -443,9 +487,9 @@ class AnswerView(ResponseMixin, APIView):
                 question_key,
                 value,
                 cascade.answers,
-                invalidated=invalidated,
+                invalidated=cascade.invalidated,
                 pruned=pruned,
-                visible=cascade.visible,
+                visible=cascade.visible_questions,
             )
         )
 
@@ -465,15 +509,6 @@ class SubmitView(ResponseMixin, APIView):
         return Response(_response_payload(response))
 
 
-def _mark_email_sensitive(request) -> None:
-    """Keep the address out of error reports (CON-3/4) should anything raise.
-
-    What ``django.views.decorators.debug.sensitive_post_parameters`` does, set on
-    the underlying HttpRequest (the decorator rejects DRF's request).
-    """
-    request._request.sensitive_post_parameters = ("email",)
-
-
 def _email_question(definition: dict) -> dict | None:
     for q in question_by_key(definition).values():
         if q["type"] == "email":
@@ -481,16 +516,20 @@ def _email_question(definition: dict) -> dict | None:
     return None
 
 
+@method_decorator(sensitive_post_parameters("email"), name="dispatch")
 class ContactView(ResponseMixin, APIView):
-    """Contact capture (CON-3): the address is stored with no link to the response."""
+    """Contact capture (CON-3): the address is stored with no link to the response.
+
+    The address is kept out of error reports (CON-3/4) should anything raise.
+    """
 
     # Per response *and* per client: an address is captured once per response, so
-    # the create budget bounds how many captures one caller can drive.
-    throttle_classes = [ResponseThrottle, CreateThrottle]
+    # the capture budget bounds how many captures one caller can drive (its own
+    # bucket, so captures never eat into a shared address's start budget).
+    throttle_classes = [ResponseThrottle, CaptureThrottle]
 
     @transaction.atomic
     def post(self, request, response_id):
-        _mark_email_sensitive(request)
         response = self.writable(response_id)
         ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -499,7 +538,7 @@ class ContactView(ResponseMixin, APIView):
         if question is None or not question["config"].get("store_separately"):
             raise NotFound("this survey has no contact capture")
         answers = response.answer_map()
-        if question["key"] not in visible_keys(definition, answers):
+        if question["key"] not in {v.key for v in visible_questions(definition, answers)}:
             raise ValidationError({"email": ["contact capture is not currently shown"]})
         if (answers.get(question["key"]) or {}).get("provided") is True:
             return Response(status=status.HTTP_204_NO_CONTENT)  # retry after a lost 204
@@ -522,26 +561,28 @@ class ContactView(ResponseMixin, APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@method_decorator(sensitive_post_parameters("email"), name="dispatch")
 class IdentityView(ResponseMixin, APIView):
     """Identity capture (CON-4): the email goes to the host platform's identity service only."""
 
-    # The per-client create budget also caps how often a failing identity service
+    # The per-client capture budget also caps how often a failing identity service
     # can be re-invoked: the per-response bucket alone is fresh for every id.
-    throttle_classes = [ResponseThrottle, CreateThrottle]
+    throttle_classes = [ResponseThrottle, CaptureThrottle]
 
     @transaction.atomic
     def post(self, request, response_id):
-        _mark_email_sensitive(request)
         response = self.writable(response_id)
         if not conf.is_integrated():
             raise NotFound("identity capture is only available in the integrated profile")
-        ser = IdentitySerializer(data=request.data)
+        ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         definition = response.definition
         question = _email_question(definition)
         if question is None or not question["config"].get("link_identity"):
             raise NotFound("this survey has no identity capture")
-        if question["key"] not in visible_keys(definition, response.answer_map()):
+        if question["key"] not in {
+            v.key for v in visible_questions(definition, response.answer_map())
+        }:
             raise ValidationError({"email": ["identity capture is not currently shown"]})
         service = get_identity_service()
         if service is None:

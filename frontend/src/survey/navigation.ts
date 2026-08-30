@@ -87,16 +87,19 @@ export function firstOpenKey(def: Definition, answers: Answers, lastKey?: string
  * including the first unanswered visible question (or the last reached one).
  */
 export function reachableIndex(def: Definition, answers: Answers, lastKey?: string | null): number {
-  const visible = visibleQuestions(def, answers);
-  const missing = missingKeys(def, answers);
+  return reachableFrom(visibleQuestions(def, answers), missingKeys(def, answers), lastKey);
+}
+
+function reachableFrom(visible: VisibleQuestion[], missing: string[], lastKey?: string | null): number {
   const firstMissing = missing.length ? visible.findIndex((v) => v.key === missing[0]) : visible.length - 1;
   const last = lastKey ? visible.findIndex((v) => v.key === lastKey) : -1;
   return Math.max(firstMissing, last);
 }
 
 export function overview(def: Definition, answers: Answers, currentKey: string | null, lastKey?: string | null): OverviewSection[] {
+  // One visibility walk (plus the completion check) for the whole panel.
   const visible = visibleQuestions(def, answers);
-  const reachable = reachableIndex(def, answers, lastKey);
+  const reachable = reachableFrom(visible, missingKeys(def, answers), lastKey);
   const sections = new Map<number, OverviewSection>();
   for (const v of visible) {
     const value = answers[v.key];

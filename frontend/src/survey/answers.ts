@@ -4,6 +4,7 @@
  */
 import { matrixRows } from "./visibility";
 import {
+  type AnswerIssue,
   type AnswerValue,
   type Answers,
   type Question,
@@ -13,19 +14,68 @@ import {
   questionRequired,
 } from "./types";
 
+/** Rejection codes, mirrored from backend/prolog_surveys/engine/answers.py MESSAGES. */
+export type AnswerIssueCode =
+  | "info_no_answer"
+  | "value_not_object"
+  | "skip_shape"
+  | "skip_not_allowed"
+  | "not_visible"
+  | "other_text_not_string"
+  | "other_text_without_free_option"
+  | "other_text_too_long"
+  | "option_required"
+  | "option_unknown"
+  | "options_not_list"
+  | "options_duplicate"
+  | "options_unknown"
+  | "min_selections"
+  | "max_selections"
+  | "exclusive_combined"
+  | "value_not_integer"
+  | "value_out_of_range"
+  | "order_not_list"
+  | "order_duplicate"
+  | "order_unknown"
+  | "order_incomplete"
+  | "ratings_not_object"
+  | "matrix_no_rows"
+  | "rows_unknown"
+  | "rows_incomplete"
+  | "rating_not_integer"
+  | "rating_out_of_range"
+  | "text_required"
+  | "text_too_long"
+  | "number_required"
+  | "number_not_finite"
+  | "number_not_integer"
+  | "number_too_small"
+  | "number_too_large"
+  | "date_format"
+  | "date_invalid"
+  | "date_too_early"
+  | "date_too_late"
+  | "email_via_endpoint"
+  | "unsupported_type";
+
+export type { AnswerIssue } from "./types";
+
 export class AnswerError extends Error {
-  errors: string[];
-  constructor(errors: string[]) {
-    super(errors.join("; "));
-    this.errors = errors;
+  issues: AnswerIssue[];
+  constructor(issues: AnswerIssue[]) {
+    super(issues.map((i) => `${i.code} ${JSON.stringify(i.params)}`).join("; "));
+    this.issues = issues;
+  }
+  get codes(): string[] {
+    return this.issues.map((i) => i.code);
   }
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_OTHER_TEXT = 500;
 
-function fail(msg: string): never {
-  throw new AnswerError([msg]);
+function fail(code: AnswerIssueCode, params: Record<string, unknown> = {}): never {
+  throw new AnswerError([{ code, params }]);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -63,12 +113,12 @@ function optionKeys(q: Question): string[] {
 function otherText(raw: Record<string, unknown>, q: Question, selected: string[]): { other_text?: string } {
   const text = raw.other_text;
   if (text === undefined || text === null) return {};
-  if (typeof text !== "string") fail("other_text must be a string");
+  if (typeof text !== "string") fail("other_text_not_string");
   const trimmed = text.trim();
   if (!trimmed) return {};
   const free = new Set(questionOptions(q).filter((o) => o.free_text).map((o) => o.key));
-  if (!selected.some((k) => free.has(k))) fail("other_text requires a free-text option to be selected");
-  if (length(trimmed) > MAX_OTHER_TEXT) fail(`other_text exceeds ${MAX_OTHER_TEXT} characters`);
+  if (!selected.some((k) => free.has(k))) fail("other_text_without_free_option");
+  if (length(trimmed) > MAX_OTHER_TEXT) fail("other_text_too_long", { max: MAX_OTHER_TEXT });
   return { other_text: trimmed };
 }
 
@@ -86,36 +136,36 @@ export function validateAnswer(
   answers: Answers,
   opts: ValidateOptions = {},
 ): AnswerValue {
-  if (q.type === "info") fail("info questions take no answer");
-  if (!isRecord(raw)) fail("value must be an object");
+  if (q.type === "info") fail("info_no_answer");
+  if (!isRecord(raw)) fail("value_not_object");
   if (raw.skipped) {
-    if (Object.keys(raw).length !== 1 || raw.skipped !== true) fail('a skip is exactly {"skipped": true}');
-    if (questionRequired(q) && (opts.skipPolicy ?? "soft") === "hard") fail("this question cannot be skipped");
+    if (Object.keys(raw).length !== 1 || raw.skipped !== true) fail("skip_shape");
+    if (questionRequired(q) && (opts.skipPolicy ?? "soft") === "hard") fail("skip_not_allowed");
     return { skipped: true };
   }
   const cfg = questionConfig(q);
 
   if (q.type === "single" || q.type === "dropdown") {
     const option = raw.option;
-    if (typeof option !== "string" || !option) fail("option is required");
+    if (typeof option !== "string" || !option) fail("option_required");
     const allowed = new Set(optionKeys(q));
     if (q.type === "dropdown" && cfg.options_source) for (const k of opts.sourceOptions ?? []) allowed.add(k);
-    if (!allowed.has(option)) fail(`unknown option '${option}'`);
+    if (!allowed.has(option)) fail("option_unknown", { option });
     return { option, ...otherText(raw, q, [option]) };
   }
 
   if (q.type === "multi") {
     const options = raw.options;
-    if (!isStringArray(options)) fail("options must be a list of option keys");
-    if (new Set(options).size !== options.length) fail("duplicate options");
+    if (!isStringArray(options)) fail("options_not_list");
+    if (new Set(options).size !== options.length) fail("options_duplicate");
     const allowed = optionKeys(q);
     const unknown = options.filter((o) => !allowed.includes(o));
-    if (unknown.length) fail(`unknown options ${unknown.join(", ")}`);
+    if (unknown.length) fail("options_unknown", { options: unknown });
     const min = cfg.min_selections ?? 1;
-    if (options.length < min) fail(`select at least ${min}`);
-    if (cfg.max_selections !== undefined && options.length > cfg.max_selections) fail(`select at most ${cfg.max_selections}`);
+    if (options.length < min) fail("min_selections", { min });
+    if (cfg.max_selections !== undefined && options.length > cfg.max_selections) fail("max_selections", { max: cfg.max_selections });
     const exclusive = new Set(questionOptions(q).filter((o) => o.exclusive).map((o) => o.key));
-    if (options.length > 1 && options.some((o) => exclusive.has(o))) fail("an exclusive option cannot be combined with others");
+    if (options.length > 1 && options.some((o) => exclusive.has(o))) fail("exclusive_combined");
     const ordered = allowed.filter((k) => options.includes(k));
     return { options: ordered, ...otherText(raw, q, ordered) };
   }
@@ -123,39 +173,39 @@ export function validateAnswer(
   if (q.type === "scale") {
     const value = raw.value;
     const scale = cfg.scale!;
-    if (!isInt(value)) fail("value must be an integer");
-    if (value < scale.min || value > scale.max) fail(`value must be between ${scale.min} and ${scale.max}`);
+    if (!isInt(value)) fail("value_not_integer");
+    if (value < scale.min || value > scale.max) fail("value_out_of_range", { min: scale.min, max: scale.max });
     return { value };
   }
 
   if (q.type === "ranking") {
     const order = raw.order;
-    if (!isStringArray(order)) fail("order must be a list of option keys");
-    if (new Set(order).size !== order.length) fail("duplicate items in order");
+    if (!isStringArray(order)) fail("order_not_list");
+    if (new Set(order).size !== order.length) fail("order_duplicate");
     const allowed = optionKeys(q);
     const unknown = order.filter((o) => !allowed.includes(o));
-    if (unknown.length) fail(`unknown items ${unknown.join(", ")}`);
+    if (unknown.length) fail("order_unknown", { items: unknown });
     const optional = new Set(cfg.optional_items ?? []);
     const missing = allowed.filter((k) => !order.includes(k) && !optional.has(k));
-    if (missing.length) fail(`every item must be ranked; missing ${missing.join(", ")}`);
+    if (missing.length) fail("order_incomplete", { missing });
     return { order: [...order], ...otherText(raw, q, order) };
   }
 
   if (q.type === "matrix") {
     const ratings = raw.ratings;
-    if (!isRecord(ratings)) fail("ratings must be an object of row -> value");
+    if (!isRecord(ratings)) fail("ratings_not_object");
     const rows = matrixRows(q, answers, opts.questions ?? {});
-    if (!rows.length) fail("this matrix currently has no rows");
+    if (!rows.length) fail("matrix_no_rows");
     const unknown = Object.keys(ratings).filter((r) => !rows.includes(r));
-    if (unknown.length) fail(`unknown rows ${unknown.join(", ")}`);
+    if (unknown.length) fail("rows_unknown", { rows: unknown });
     const missing = rows.filter((r) => !(r in ratings));
-    if (missing.length) fail(`every row must be rated; missing ${missing.join(", ")}`);
+    if (missing.length) fail("rows_incomplete", { missing });
     const scale = cfg.scale!;
     const out: Record<string, number> = {};
     for (const row of rows) {
       const v = ratings[row];
-      if (!isInt(v)) fail(`rating for '${row}' must be an integer`);
-      if (v < scale.min || v > scale.max) fail(`rating for '${row}' must be between ${scale.min} and ${scale.max}`);
+      if (!isInt(v)) fail("rating_not_integer", { row });
+      if (v < scale.min || v > scale.max) fail("rating_out_of_range", { row, min: scale.min, max: scale.max });
       out[row] = v;
     }
     return { ratings: out };
@@ -163,34 +213,35 @@ export function validateAnswer(
 
   if (q.type === "text") {
     const text = raw.text;
-    if (typeof text !== "string" || !text.trim()) fail("text is required");
-    if (cfg.max_length && length(text) > cfg.max_length) fail(`text exceeds ${cfg.max_length} characters`);
+    if (typeof text !== "string" || !text.trim()) fail("text_required");
+    if (cfg.max_length && length(text) > cfg.max_length) fail("text_too_long", { max: cfg.max_length });
     return { text: text.trim() };
   }
 
   if (q.type === "number") {
     const n = raw.number;
-    if (typeof n !== "number" || !Number.isFinite(n)) fail("number is required");
-    if (cfg.integer && !Number.isInteger(n)) fail("a whole number is required");
-    if (cfg.min_value !== undefined && n < cfg.min_value) fail(`number must be at least ${cfg.min_value}`);
-    if (cfg.max_value !== undefined && n > cfg.max_value) fail(`number must be at most ${cfg.max_value}`);
+    if (typeof n !== "number") fail("number_required");
+    if (!Number.isFinite(n)) fail("number_not_finite");
+    if (cfg.integer && !Number.isInteger(n)) fail("number_not_integer");
+    if (cfg.min_value !== undefined && n < cfg.min_value) fail("number_too_small", { min: cfg.min_value });
+    if (cfg.max_value !== undefined && n > cfg.max_value) fail("number_too_large", { max: cfg.max_value });
     return { number: n };
   }
 
   if (q.type === "date") {
     const d = raw.date;
-    if (typeof d !== "string" || !DATE_RE.test(d)) fail("date must be YYYY-MM-DD");
+    if (typeof d !== "string" || !DATE_RE.test(d)) fail("date_format");
     const parsed = new Date(`${d}T00:00:00Z`);
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== d) fail("invalid date");
-    if (cfg.min_date && d < cfg.min_date) fail(`date must be on or after ${cfg.min_date}`);
-    if (cfg.max_date && d > cfg.max_date) fail(`date must be on or before ${cfg.max_date}`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== d) fail("date_invalid");
+    if (cfg.min_date && d < cfg.min_date) fail("date_too_early", { min: cfg.min_date });
+    if (cfg.max_date && d > cfg.max_date) fail("date_too_late", { max: cfg.max_date });
     return { date: d };
   }
 
   if (q.type === "email") {
     if (raw.provided === false && Object.keys(raw).length === 1) return { provided: false };
-    fail("email addresses are submitted through the contact or identity endpoint");
+    fail("email_via_endpoint");
   }
 
-  fail(`unsupported question type '${q.type}'`);
+  fail("unsupported_type", { type: q.type });
 }

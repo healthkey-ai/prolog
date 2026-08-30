@@ -11,6 +11,8 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
+from prolog_surveys.conf import THROTTLE_RATES
+
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 REPO_ROOT = BASE_DIR.parent
 
@@ -129,11 +131,27 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.AcceptHeaderVersioning",
     "DEFAULT_VERSION": "1",
     "ALLOWED_VERSIONS": ["1"],
+    # PROLOG_THROTTLE_<SCOPE> overrides the defaults in prolog_surveys.conf.
     "DEFAULT_THROTTLE_RATES": {
-        "run.create": os.environ.get("PROLOG_THROTTLE_CREATE", "30/hour"),
-        "run.answer": os.environ.get("PROLOG_THROTTLE_ANSWER", "600/hour"),
-        "run.read": os.environ.get("PROLOG_THROTTLE_READ", "1200/hour"),
+        scope: os.environ.get(f"PROLOG_THROTTLE_{scope.removeprefix('run.').upper()}", rate)
+        for scope, rate in THROTTLE_RATES.items()
     },
+    # Trusted reverse proxies for the client address behind the throttles (also
+    # governs SECURE_PROXY_SSL_HEADER below); set from PROLOG_NUM_PROXIES.
+    "NUM_PROXIES": int(os.environ.get("PROLOG_NUM_PROXIES", "0")),
+}
+
+# Throttle counters (and nothing else) live here. The default is per process:
+# with N gunicorn workers each rate is effectively N times the configured
+# value. For exact limits point CACHE_URL-style settings at a cache shared by
+# all workers, e.g. CACHE_BACKEND=django.core.cache.backends.redis.RedisCache
+# CACHE_LOCATION=redis://cache:6379/1 (or the database cache after
+# `manage.py createcachetable`).
+CACHES = {
+    "default": {
+        "BACKEND": os.environ.get("CACHE_BACKEND", "django.core.cache.backends.locmem.LocMemCache"),
+        "LOCATION": os.environ.get("CACHE_LOCATION", "prolog"),
+    }
 }
 
 # --- PROlog settings (see prolog_surveys/conf.py for defaults and docs) -----
@@ -150,7 +168,7 @@ PROLOG_PUBLIC_URL = os.environ.get("PROLOG_PUBLIC_URL", "http://localhost:5173")
 # Reverse proxies in front of the app (0 = exposed directly). When > 0 the
 # proxy's X-Forwarded-For / X-Forwarded-Proto are trusted for throttling and
 # for the HTTPS redirect; otherwise a client could spoof both.
-PROLOG_NUM_PROXIES = int(os.environ.get("PROLOG_NUM_PROXIES", "0"))
+PROLOG_NUM_PROXIES = REST_FRAMEWORK["NUM_PROXIES"]
 if PROLOG_NUM_PROXIES > 0:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

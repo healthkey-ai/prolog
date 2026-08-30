@@ -22,7 +22,12 @@ export function missingKeys(def: Definition, answers: Answers): string[] {
   return missing;
 }
 
+/**
+ * Answered = visible answerable questions that are not missing, so a pruned
+ * matrix (rated, but not for every current row) counts as open, exactly as
+ * `missingKeys` reports it; a skip counts as answered. Mirrors completion.py.
+ */
 export function progress(def: Definition, answers: Answers): { answered: number; total: number } {
-  const visible = visibleQuestions(def, answers).filter((v) => ANSWERABLE.has(v.type));
-  return { answered: visible.filter((v) => v.key in answers).length, total: visible.length };
+  const total = visibleQuestions(def, answers).filter((v) => ANSWERABLE.has(v.type)).length;
+  return { answered: total - missingKeys(def, answers).length, total };
 }

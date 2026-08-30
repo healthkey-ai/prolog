@@ -84,7 +84,8 @@ export interface Section {
 export type SkipPolicy = "soft" | "hard" | "none";
 
 export interface Presentation {
-  mode?: "question" | "section";
+  /** Only "question" exists today; "section" is reserved and rejected by the validator. */
+  mode?: "question";
   overview?: boolean;
   section_interstitials?: boolean;
   skip_policy?: SkipPolicy;
@@ -144,6 +145,12 @@ export type AnswerValue =
 
 export type Answers = Record<string, AnswerValue>;
 
+/** One answer rejection: a stable code plus the values a message is built from (never English text). */
+export interface AnswerIssue {
+  code: string;
+  params: Record<string, unknown>;
+}
+
 export const ANSWERABLE: ReadonlySet<QuestionType> = new Set([
   "single",
   "dropdown",
@@ -167,6 +174,11 @@ export function questionConfig(q: Question): QuestionConfig {
 
 export function questionOptions(q: Question): Option[] {
   return q.options ?? [];
+}
+
+/** An option's (localized) label by key; undefined when the key is not one of the question's own options. */
+export function optionLabel(q: Question, key: string): string | undefined {
+  return questionOptions(q).find((o) => o.key === key)?.label as string | undefined;
 }
 
 export function skipPolicy(def: Definition): SkipPolicy {

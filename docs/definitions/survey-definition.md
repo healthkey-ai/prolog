@@ -251,7 +251,7 @@ reachable question; changing an answer re-runs the cascade forward.
 
 ```jsonc
 "presentation": {
-  "mode": "question",            // question (one question per screen) | section (planned)
+  "mode": "question",            // question (one question per screen); "section" is planned and rejected by the validator for now
   "overview": true,              // "All questions" panel with jump-back
   "section_interstitials": true, // interstitial when entering a new section
   "skip_policy": "soft",         // soft | hard | none (see §3.4)
@@ -326,7 +326,14 @@ the **active** version; loading a draft cannot retarget a live survey.
 - **Answers** (per PUT): value shape per type, option keys, limits,
   exclusives, `other_text` rules, scale bounds, ranking completeness, matrix
   rows equal to the current row set, text/number/date bounds, the skip
-  policy, and visibility (an answer to a hidden question is rejected).
+  policy, and visibility (an answer to a hidden question is rejected). A
+  rejection is `400 {"value": [{"code", "params", "message"}]}`: the
+  `code` (e.g. `rows_incomplete`, `value_out_of_range`) and typed `params`
+  are what the runner turns into text in the participant's language; the
+  English `message` is for logs and tooling only. Both engines share the
+  code list (`engine/answers.py` `MESSAGES`, `survey/answers.ts`).
+- **Presentation**: `presentation.mode` must be `question`; `section` is
+  reserved for a later phase and rejected until the runner implements it.
 - **Completion** (`POST …/submit/`): every visible answerable question has an
   answer row (value or skip); otherwise `400 {"missing": [keys]}` and the
   runner jumps to the first.

@@ -3,7 +3,6 @@ import { useThemeContext } from "./ThemeProvider";
 
 export interface ThemeLayout {
   immersiveIntro: boolean;
-  copyAlignment: "left" | "center";
   logoPlacement: "top-left" | "top-right";
 }
 
@@ -11,7 +10,6 @@ export function useThemeLayout(): ThemeLayout {
   const { theme } = useThemeContext();
   return {
     immersiveIntro: theme?.layout?.immersive_intro ?? false,
-    copyAlignment: theme?.layout?.copy_alignment ?? "left",
     logoPlacement: theme?.layout?.logo_placement ?? "top-left",
   };
 }

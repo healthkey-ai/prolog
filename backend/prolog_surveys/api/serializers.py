@@ -22,12 +22,9 @@ class AnswerSerializer(serializers.Serializer):
 
 
 class ContactSerializer(serializers.Serializer):
-    """An email address for the contact or identity endpoint (CON-3/4)."""
+    """An email address for the contact and identity endpoints (CON-3/4)."""
 
     email = serializers.EmailField(max_length=254)
-
-
-IdentitySerializer = ContactSerializer
 
 
 class ResponseSerializer(serializers.ModelSerializer):

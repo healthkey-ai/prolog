@@ -1,12 +1,11 @@
-import { MAX_OTHER_TEXT } from "@/survey/answers";
 import { useTranslation } from "react-i18next";
-import { Input } from "../ui/input";
 import { OptionCard } from "../ui/OptionCard";
-import { inputClass, type RendererProps } from "./types";
+import { OtherTextInput } from "./OtherTextInput";
+import type { RendererProps } from "./types";
 import type { OptionsValue } from "@/survey/types";
 
 /** Multi-select with max-N counter, inert cards at the limit, exclusive options and inline "Other" (Q-4). */
-export function MultiChoice({ question, value, onChange, disabled }: RendererProps<OptionsValue>) {
+export function MultiChoice({ question, value, onChange }: RendererProps<OptionsValue>) {
   const { t } = useTranslation();
   const options = question.options ?? [];
   const max = question.config?.max_selections;
@@ -52,25 +51,13 @@ export function MultiChoice({ question, value, onChange, disabled }: RendererPro
               value={o.key}
               label={o.label as string}
               checked={checked}
-              disabled={disabled}
               inert={inert}
               onCheckedChange={(on) => toggle(o.key, on)}
               className="transition-opacity duration-150"
               data-testid={`option-${o.key}`}
             >
               {o.free_text && checked && (
-                <Input
-                  type="text"
-                  autoFocus
-                  className={`${inputClass} mt-3`}
-                  placeholder={t("single.other")}
-                  aria-label={t("single.other")}
-                  maxLength={MAX_OTHER_TEXT}
-                  value={value?.other_text ?? ""}
-                  onChange={(e) => onChange({ options: selected, other_text: e.target.value })}
-                  onBlur={() => onChange({ options: selected, other_text: value?.other_text?.trim() || undefined }, { commit: true })}
-                  data-testid="other-text"
-                />
+                <OtherTextInput autoFocus value={value?.other_text} onChange={(text) => onChange({ options: selected, other_text: text })} onCommit={(text) => onChange({ options: selected, other_text: text }, { commit: true })} />
               )}
             </OptionCard>
           );

@@ -3,7 +3,7 @@ import { Input } from "../ui/input";
 import { inputClass, type RendererProps } from "./types";
 import type { NumberValue } from "@/survey/types";
 
-export function NumberInput({ question, value, onChange, disabled }: RendererProps<NumberValue>) {
+export function NumberInput({ question, value, onChange }: RendererProps<NumberValue>) {
   const { t } = useTranslation();
   const cfg = question.config ?? {};
   const parse = (s: string) => {
@@ -21,7 +21,6 @@ export function NumberInput({ question, value, onChange, disabled }: RendererPro
       className={inputClass}
       placeholder={t("number.placeholder")}
       aria-label={question.text as string}
-      disabled={disabled}
       value={value?.number ?? ""}
       onChange={(e) => onChange(parse(e.target.value))}
       onBlur={(e) => onChange(parse(e.target.value), { commit: true })}

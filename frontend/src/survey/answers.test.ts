@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { implicitAnswer, validateAnswer } from "./answers";
+import { type AnswerError, implicitAnswer, validateAnswer } from "./answers";
 import type { Question } from "./types";
 
 const ranking: Question = {
@@ -28,6 +28,12 @@ describe("text length", () => {
   it("counts code points like the server, not UTF-16 units", () => {
     const q: Question = { key: "t", type: "text", text: { en: "t" }, config: { max_length: 6 } };
     expect(validateAnswer(q, { text: "😀😀😀😀😀😀" }, {})).toEqual({ text: "😀😀😀😀😀😀" });
-    expect(() => validateAnswer(q, { text: "😀😀😀😀😀😀😀" }, {})).toThrow(/exceeds 6/);
+    let issues: unknown;
+    try {
+      validateAnswer(q, { text: "😀😀😀😀😀😀😀" }, {});
+    } catch (e) {
+      issues = (e as AnswerError).issues;
+    }
+    expect(issues).toEqual([{ code: "text_too_long", params: { max: 6 } }]);
   });
 });

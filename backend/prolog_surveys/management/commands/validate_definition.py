@@ -14,8 +14,11 @@ class Command(BaseCommand):
         parser.add_argument("--profile", choices=["standalone", "integrated"], default=None)
 
     def handle(self, *args, **options):
+        files = discover(options["paths"])
+        if not files:
+            raise CommandError("no definition files found")
         failed = 0
-        for path in discover(options["paths"]):
+        for path in files:
             issues = validate_definition(read_json(path), profile=options["profile"])
             report(self, issues)
             if has_errors(issues):

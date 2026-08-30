@@ -50,11 +50,12 @@ Any wording or structure change after activation requires a **new
 | Variable | Purpose |
 | --- | --- |
 | `SECRET_KEY`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `PROLOG_PUBLIC_URL` | Django/CORS basics and the public origin used in links |
-| `DEBUG` | `false` unless set to `true`. Deployments never set it; locally `manage.py` and `pytest` use `prolog.settings_dev`, which turns it on (and accepts the development key) unless `DEBUG` is set in the environment |
+| `DEBUG` | `false` unless set to `true`. The image sets `DEBUG=false`; a bare-host install should set it too. `manage.py` uses the development settings (`DEBUG` on, development key accepted) only while *neither* `DEBUG` nor `SECRET_KEY` is in the environment, so a cron job that exports `SECRET_KEY` runs with production settings; `pytest` always uses `prolog.settings_dev` |
 | `POSTGRES_*` | database connection (no SQLite fallback) |
 | `PROLOG_PROFILE` | `standalone` (default) or `integrated` |
 | `PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS` | path-separated directory lists |
-| `PROLOG_THROTTLE_CREATE/ANSWER/READ` | throttle rates (`30/hour`, `600/hour`, `1200/hour`) |
+| `PROLOG_THROTTLE_CREATE/CAPTURE/ANSWER/READ` | throttle rates per hashed client address (create `30/hour`, contact/identity capture `30/hour`, answer `600/hour` per response, read `1200/hour`). Behind NAT (clinic Wi-Fi, mobile carriers) many participants share one address: raise `CREATE`/`CAPTURE` accordingly |
+| `CACHE_BACKEND`, `CACHE_LOCATION` | where throttle counters live. Default: an in-process cache, so each gunicorn worker counts separately and every rate is effectively multiplied by `WEB_CONCURRENCY`. For exact limits use a cache shared by all workers, e.g. `CACHE_BACKEND=django.core.cache.backends.redis.RedisCache CACHE_LOCATION=redis://cache:6379/1` |
 | `PROLOG_ABANDONED_RESPONSE_DAYS` | retention of in-progress responses (default 90) |
 | `PROLOG_CLIENT_KEY_SALT` | salt for hashed client keys (throttling); rotate to reset |
 | `EMAIL_BACKEND`, `PROLOG_EMAIL_FROM` | invitations (integrated profile) |

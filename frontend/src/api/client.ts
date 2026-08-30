@@ -1,4 +1,9 @@
-import type { ApiErrorBody } from "./types";
+import type { ApiErrorBody, ApiIssue } from "./types";
+import type { AnswerIssue } from "@/survey/types";
+
+function isIssue(v: unknown): v is ApiIssue {
+  return typeof v === "object" && v !== null && typeof (v as ApiIssue).code === "string";
+}
 
 export class ApiError extends Error {
   status: number;
@@ -8,12 +13,21 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
-  /** Field errors as flat strings, e.g. from {"value": ["..."]} */
+  /** Structured rejections, e.g. from {"value": [{code, params, message}]}; never English text. */
+  get issues(): AnswerIssue[] {
+    const out: AnswerIssue[] = [];
+    for (const [k, v] of Object.entries(this.body)) {
+      if (k === "detail" || !Array.isArray(v)) continue;
+      for (const item of v) if (isIssue(item)) out.push({ code: item.code, params: item.params ?? {} });
+    }
+    return out;
+  }
+  /** Plain field errors as flat strings, e.g. from {"language": "not offered"} */
   get fieldErrors(): string[] {
     const out: string[] = [];
     for (const [k, v] of Object.entries(this.body)) {
       if (k === "detail") continue;
-      if (Array.isArray(v)) out.push(...v.map(String));
+      if (Array.isArray(v)) out.push(...v.filter((x) => !isIssue(x)).map(String));
       else if (typeof v === "string") out.push(v);
     }
     return out;
@@ -28,7 +42,7 @@ function csrfToken(): string | undefined {
   return match ? decodeURIComponent(match[1]) : undefined;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const csrf = method === "GET" ? undefined : csrfToken();
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -36,7 +50,6 @@ async function request<T>(method: string, path: string, body?: unknown, headers:
       Accept: "application/json; version=1",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(csrf ? { "X-CSRFToken": csrf } : {}),
-      ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     credentials: "same-origin",

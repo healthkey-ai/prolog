@@ -1,6 +1,6 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
-import { api } from "./client";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useCallback, useRef } from "react";
+import { ApiError, api } from "./client";
 import type { AnswerResult, OptionsSource, ResponseSummary, RunnerDefinition } from "./types";
 import type { AnswerValue } from "@/survey/types";
 import type { Theme } from "@/theme/types";
@@ -65,6 +65,22 @@ export function useOptionsSource(source: string | undefined, lang: string) {
   });
 }
 
+/** Labels of several option sources at once, by source then key (for validation and the overview). */
+export function useOptionsSources(sources: readonly string[], lang: string): Record<string, Record<string, string>> {
+  const combine = useCallback(
+    (results: { data?: OptionsSource }[]) => Object.fromEntries(sources.map((source, i) => [source, Object.fromEntries((results[i]?.data?.options ?? []).map((o) => [o.key, o.label]))])),
+    [sources],
+  );
+  return useQueries({
+    queries: sources.map((source) => ({
+      queryKey: keys.options(source, lang),
+      queryFn: () => api.get<OptionsSource>(`/options/${source}/?lang=${encodeURIComponent(lang)}`),
+      staleTime: Infinity,
+    })),
+    combine,
+  });
+}
+
 export function useCreateResponse() {
   const qc = useQueryClient();
   return useMutation({
@@ -100,7 +116,11 @@ export function usePatchResponse(id: string) {
   });
 }
 
-/** Thrown (and never retried) when a newer save of the same key has started meanwhile. */
+/**
+ * Rejection of a save that a newer save of the same key has overtaken: never
+ * retried, never applied to the cache, and not a failure for the caller (the
+ * newer save's outcome is the one that counts).
+ */
 export class SupersededError extends Error {
   constructor() {
     super("save superseded by a newer value");
@@ -147,15 +167,22 @@ export function useSaveAnswer(id: string) {
   // mutationFn with the same object) can tell it has been superseded.
   const seqOf = useRef(new WeakMap<object, number>());
   return useMutation({
-    mutationFn: (vars: { key: string; value: AnswerValue }) => {
+    mutationFn: async (vars: { key: string; value: AnswerValue }) => {
       // The server stores PUTs in arrival order: an older value retried after a
       // newer one succeeded would overwrite it (and cascade) while the cache
       // shows the newer one, so a superseded save never reaches the wire again.
-      const seq = seqOf.current.get(vars);
-      if (seq !== undefined && seq !== seqs.current.get(vars.key)) throw new SupersededError();
-      return api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value });
+      const superseded = () => seqOf.current.get(vars) !== seqs.current.get(vars.key);
+      if (superseded()) throw new SupersededError();
+      const result = await api.put<AnswerResult>(`/responses/${id}/answers/${vars.key}/`, { value: vars.value });
+      if (superseded()) {
+        // Persisted, but a newer save is already in flight: the caller must not
+        // act on it. Its value is what a failure of that newer save reverts to.
+        baselines.current.set(vars.key, { previous: result.answer.value, had: true });
+        throw new SupersededError();
+      }
+      return result;
     },
-    retry: (count, error) => count < 3 && !(error instanceof SupersededError) && !(error instanceof Error && "status" in error && (error as { status: number }).status < 500),
+    retry: (count, error) => count < 3 && !(error instanceof SupersededError) && !(error instanceof ApiError && error.status < 500),
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     onMutate: async (vars): Promise<SavedAnswerContext> => {
       const { key, value } = vars;

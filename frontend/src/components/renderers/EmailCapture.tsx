@@ -11,7 +11,7 @@ interface Props extends RendererProps<EmailValue> {
 }
 
 /** Contact/identity capture (Q-11, CON-3/4): the address goes to its own endpoint, never into the answer. */
-export function EmailCapture({ question, value, onChange, onSubmitEmail, disabled }: Props) {
+export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props) {
   const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, disable
             aria-label={question.text as string}
             aria-invalid={Boolean(error)}
             value={email}
-            disabled={disabled || busy}
+            disabled={busy}
             onChange={(e) => setEmail(e.target.value)}
             data-testid="email-input"
           />
@@ -65,10 +65,10 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, disable
             </Alert>
           )}
           <div className="flex flex-wrap gap-3">
-            <Button variant="primary" size="runner" onClick={submit} disabled={disabled || busy || !email} data-testid="email-save">
+            <Button variant="primary" size="runner" onClick={submit} disabled={busy || !email} data-testid="email-save">
               {t("email.save")}
             </Button>
-            <Button variant="surface" size="runner" onClick={() => onChange({ provided: false }, { commit: true, advance: true })} disabled={disabled || busy} data-testid="email-skip">
+            <Button variant="surface" size="runner" onClick={() => onChange({ provided: false }, { commit: true, advance: true })} disabled={busy} data-testid="email-skip">
               {t("email.skip")}
             </Button>
           </div>

@@ -1,4 +1,3 @@
-import { MAX_OTHER_TEXT } from "@/survey/answers";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -6,13 +5,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { inputClass, type RendererProps } from "./types";
-import type { Option, RankingValue } from "@/survey/types";
+import { OtherTextInput } from "./OtherTextInput";
+import type { RendererProps } from "./types";
+import { optionLabel, type Option, type RankingValue } from "@/survey/types";
 import { cn } from "@/lib/utils";
 
 /** Ranking with drag **and** ▲▼ buttons, live position announcements, optional items (Q-6). */
-export function Ranking({ question, value, onChange, disabled }: RendererProps<RankingValue>) {
+export function Ranking({ question, value, onChange }: RendererProps<RankingValue>) {
   const { t } = useTranslation();
   const options = question.options ?? [];
   const optional = new Set(question.config?.optional_items ?? []);
@@ -22,7 +21,7 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
   // An untouched required ranking already holds its displayed order as the
   // draft (survey/answers.ts implicitAnswer), so `value` is only undefined for
   // an optional ranking, which stays skippable.
-  const labelOf = (key: string) => (options.find((o) => o.key === key)?.label as string) ?? key;
+  const labelOf = (key: string) => optionLabel(question, key) ?? key;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   const commit = (next: string[], otherText = value?.other_text) => {
@@ -62,12 +61,12 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
                 index={i}
                 total={order.length}
                 option={options.find((o) => o.key === key)!}
-                disabled={disabled}
                 onUp={() => move(key, -1)}
                 onDown={() => move(key, 1)}
                 onRemove={optional.has(key) ? () => commit(order.filter((k) => k !== key), undefined) : undefined}
                 otherText={value?.other_text}
-                onOtherText={(text, done) => (done ? commit(order, text.trim() || undefined) : onChange({ order, other_text: text }))}
+                onOtherText={(text) => onChange({ order, other_text: text })}
+                onOtherTextCommit={(text) => commit(order, text)}
               />
             ))}
           </ol>
@@ -79,7 +78,7 @@ export function Ranking({ question, value, onChange, disabled }: RendererProps<R
           {unranked.map((o) => (
             <div key={o.key} className="mt-2 flex items-center justify-between gap-3">
               <span>{o.label as string}</span>
-              <Button variant="surface" size="runner-sm" onClick={() => commit([...order, o.key])} disabled={disabled} data-testid={`ranking-include-${o.key}`}>
+              <Button variant="surface" size="runner-sm" onClick={() => commit([...order, o.key])} data-testid={`ranking-include-${o.key}`}>
                 {t("ranking.include")}
               </Button>
             </div>
@@ -98,15 +97,15 @@ function SortableItem(p: {
   index: number;
   total: number;
   option: Option;
-  disabled?: boolean;
   onUp: () => void;
   onDown: () => void;
   onRemove?: () => void;
   otherText?: string;
-  onOtherText: (text: string, done: boolean) => void;
+  onOtherText: (text: string) => void;
+  onOtherTextCommit: (text: string | undefined) => void;
 }) {
   const { t } = useTranslation();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id, disabled: p.disabled });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id });
   const label = p.option.label as string;
   return (
     <li
@@ -123,13 +122,13 @@ function SortableItem(p: {
           <span className="sr-only">{p.index + 1}. </span>
           {label}
         </span>
-        <Button variant="text" size="runner-icon" className="cursor-grab text-muted-foreground" aria-label={t("ranking.drag", { label })} {...attributes} {...listeners} disabled={p.disabled}>
+        <Button variant="text" size="runner-icon" className="cursor-grab text-muted-foreground" aria-label={t("ranking.drag", { label })} {...attributes} {...listeners}>
           <GripVerticalIcon className="size-5" />
         </Button>
-        <Button variant="text" size="runner-icon" onClick={p.onUp} disabled={p.disabled || p.index === 0} aria-label={t("ranking.moveUp", { label })} data-testid={`ranking-up-${p.id}`}>
+        <Button variant="text" size="runner-icon" onClick={p.onUp} disabled={p.index === 0} aria-label={t("ranking.moveUp", { label })} data-testid={`ranking-up-${p.id}`}>
           <ChevronUpIcon className="size-5" />
         </Button>
-        <Button variant="text" size="runner-icon" onClick={p.onDown} disabled={p.disabled || p.index === p.total - 1} aria-label={t("ranking.moveDown", { label })} data-testid={`ranking-down-${p.id}`}>
+        <Button variant="text" size="runner-icon" onClick={p.onDown} disabled={p.index === p.total - 1} aria-label={t("ranking.moveDown", { label })} data-testid={`ranking-down-${p.id}`}>
           <ChevronDownIcon className="size-5" />
         </Button>
         {p.onRemove && (
@@ -138,19 +137,7 @@ function SortableItem(p: {
           </Button>
         )}
       </div>
-      {p.option.free_text && (
-        <Input
-          type="text"
-          className={`${inputClass} mt-3`}
-          placeholder={t("single.other")}
-          aria-label={t("single.other")}
-          maxLength={MAX_OTHER_TEXT}
-          value={p.otherText ?? ""}
-          onChange={(e) => p.onOtherText(e.target.value, false)}
-          onBlur={(e) => p.onOtherText(e.target.value, true)}
-          data-testid="other-text"
-        />
-      )}
+      {p.option.free_text && <OtherTextInput value={p.otherText} onChange={p.onOtherText} onCommit={p.onOtherTextCommit} />}
     </li>
   );
 }

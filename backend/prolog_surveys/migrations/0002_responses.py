@@ -3,6 +3,7 @@
 import uuid
 
 import django.db.models.deletion
+import django.utils.timezone
 from django.db import migrations, models
 
 
@@ -13,12 +14,15 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
+            # Contact rows carry no join key to a response (CON-3): a random pk
+            # and a capture *date*, so nothing pairs a contact with the
+            # response whose capture marker was written in the same request.
             name="SurveyContact",
             fields=[
                 (
                     "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
                     ),
                 ),
                 ("email", models.EmailField(max_length=254)),
@@ -27,7 +31,7 @@ class Migration(migrations.Migration):
                     "consent_text",
                     models.TextField(help_text="The notice shown when the address was given."),
                 ),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("captured_on", models.DateField(default=django.utils.timezone.localdate)),
                 (
                     "survey_version",
                     models.ForeignKey(
@@ -38,7 +42,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "ordering": ["-created_at"],
+                "ordering": ["-captured_on"],
             },
         ),
         migrations.CreateModel(

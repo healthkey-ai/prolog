@@ -8,7 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { OptionCard } from "@/components/ui/OptionCard";
 import { RadioGroup } from "@/components/ui/radio-group";
-import { languageName } from "@/components/Shell";
+import { Eyebrow } from "@/components/Eyebrow";
+import { languageName } from "@/i18n/languageName";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
@@ -51,13 +52,19 @@ export function IntroPage() {
   if (definition.isLoading) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
   if (definition.isError || !definition.data) {
     const status = definition.error instanceof ApiError ? definition.error.status : 0;
-    return <p className="p-8 text-error">{status === 404 ? t("app.notFound") : t("app.error")}</p>;
+    return <p className="p-8 text-error">{status === 404 ? t("app.notFound") : status === 410 ? t("app.closed") : t("app.error")}</p>;
   }
   const def = definition.data;
   const consent = def.consent;
   const consentRequired = Boolean(consent && (consent.required ?? true));
   // "none": no resume on a later visit (shared devices); the id lives only in this tab.
   const resumable = def.participation?.resume !== "none";
+  // An anonymous survey takes no invitation (linking would join an address to the
+  // answers); a stray or stale ?invite= on its link is ignored, as the server does on GET.
+  const invitation = invite && !def.participation?.anonymous ? invite : undefined;
+  // "Start again" can only discard when the server would create a fresh response:
+  // an invitation link and an account survey both resume the same response instead.
+  const canStartAgain = !invite && def.participation?.resume !== "account";
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
@@ -85,7 +92,7 @@ export function IntroPage() {
         // previous localisation (keepPreviousData) until the new one arrives.
         language: language ?? def.language,
         consent: consent && agreed ? { version: consent.version, agreed: true } : undefined,
-        invitation: invite,
+        invitation,
       });
     } catch {
       return; // create.isError renders the message
@@ -123,7 +130,7 @@ export function IntroPage() {
       {immersive && <Decor />}
       <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-6 px-6 py-12 sm:py-20">
         <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
-        <p className={`text-[13px] font-medium uppercase tracking-[0.08em] ${immersive ? "text-on-primary/80" : "text-ink-soft"}`}>{t("intro.eyebrow")}</p>
+        <Eyebrow onPrimary={immersive}>{t("intro.eyebrow")}</Eyebrow>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{def.title as string}</h1>
         {def.intro && <p className={`text-[1.05rem] ${soft}`}>{def.intro as string}</p>}
         <div className="flex flex-wrap gap-2">
@@ -140,9 +147,11 @@ export function IntroPage() {
                 {t("intro.continue")}
               </Button>
               {existing.data!.status !== "submitted" ? (
-                <Button variant="text" size="runner" onClick={startAgain} data-testid="start-again">
-                  {t("intro.startAgain")}
-                </Button>
+                canStartAgain && (
+                  <Button variant="text" size="runner" onClick={startAgain} data-testid="start-again">
+                    {t("intro.startAgain")}
+                  </Button>
+                )
               ) : invite ? null : ( // an invitation is answered once; the server would return the same response
                 <Button
                   variant="text"
@@ -195,7 +204,7 @@ export function IntroPage() {
               </Button>
               {create.isError && (
                 <p className="mt-2 text-sm" role="alert">
-                  {t("app.error")}
+                  {create.error instanceof ApiError && create.error.status === 410 ? t("app.closed") : t("app.error")}
                 </p>
               )}
             </div>

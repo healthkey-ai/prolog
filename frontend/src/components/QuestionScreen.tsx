@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { Eyebrow } from "./Eyebrow";
 import { DateInput } from "./renderers/DateInput";
 import { Dropdown } from "./renderers/Dropdown";
 import { EmailCapture } from "./renderers/EmailCapture";
@@ -8,7 +9,6 @@ import { NumberInput } from "./renderers/NumberInput";
 import { Scale } from "./renderers/Scale";
 import { SingleChoice } from "./renderers/SingleChoice";
 import { TextInput } from "./renderers/TextInput";
-import { Unsupported } from "./renderers/Unsupported";
 import type { RendererProps } from "./renderers/types";
 import { extraRenderers } from "./renderers/registry";
 import { questionRequired, type AnswerValue, type Question } from "@/survey/types";
@@ -33,10 +33,10 @@ export function QuestionScreen(props: Props) {
 
   return (
     <div className="animate-[fadeUp_200ms_ease-out]" data-testid={`question-${question.key}`} data-type={question.type}>
-      <p className="text-[13px] font-medium uppercase tracking-[0.08em] text-ink-soft">
+      <Eyebrow>
         {isInfo ? t("question.info") : t("question.eyebrow", { number: questionNumber, total: questionTotal })}
         {!isInfo && !required && <span className="ml-2 rounded bg-tint px-2 py-0.5 normal-case tracking-normal text-ink">{t("question.optional")}</span>}
-      </p>
+      </Eyebrow>
       <fieldset className="mt-2 border-0 p-0">
         <legend className="w-full">
           <h1 ref={heading} tabIndex={-1} className="text-[1.4rem] leading-snug outline-none sm:text-[1.65rem]">
@@ -73,12 +73,10 @@ function renderControl(question: Question, props: Props) {
       return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => {})} />;
     default: {
       const Extra = extraRenderers[question.type];
-      return Extra ? (
+      return (
         <Suspense fallback={<p className="text-ink-soft">…</p>}>
           <Extra {...p} answers={props.answers} questions={props.questions} />
         </Suspense>
-      ) : (
-        <Unsupported type={question.type} />
       );
     }
   }

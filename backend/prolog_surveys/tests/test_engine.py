@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from prolog_surveys.definitions.normalize import normalize
+from prolog_surveys.definitions.schema import read_json
 from prolog_surveys.engine.answers import AnswerError, validate_answer
 from prolog_surveys.engine.cascade import apply_cascade
 from prolog_surveys.engine.completion import missing_keys, progress
@@ -15,19 +16,19 @@ from prolog_surveys.engine.localize import localize
 from prolog_surveys.engine.visibility import (
     evaluate_condition,
     is_answered,
+    iter_questions,
     question_by_key,
     visible_keys,
 )
 from prolog_surveys.options import iso3166
+from prolog_surveys.tests.conftest import EXAMPLES_DIR
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLES = REPO_ROOT / "examples"
-VECTORS = sorted((EXAMPLES / "vectors").glob("*.json"))
+VECTORS = sorted((EXAMPLES_DIR / "vectors").glob("*.json"))
 ISO_KEYS = iso3166.country_keys()
 
 
 def load_definition(name: str) -> dict:
-    return normalize(json.loads((EXAMPLES / name).read_text()))
+    return normalize(read_json(EXAMPLES_DIR / name))
 
 
 def store(definition: dict, answers: dict, key: str, raw: dict) -> dict:
@@ -75,6 +76,15 @@ def test_vector(vector_path: Path):
                 assert answers[k] == v, key
         if "missing" in expect:
             assert missing_keys(definition, answers) == expect["missing"], key
+
+    for case in vector.get("retained", []):
+        given = dict(case["given"])
+        result = store(definition, given, case["answer"]["key"], case["answer"]["value"])
+        expect = case["expect"]
+        assert result.invalidated == expect["invalidated"]
+        assert result.visible == expect["visible"]
+        assert given == expect["answers"]
+        assert missing_keys(definition, given) == expect["missing"]
 
     for case in vector.get("reject", []):
         answers = dict(case.get("given", {}))
@@ -226,3 +236,49 @@ def test_rows_from_matrix_hidden_until_its_source_has_a_selection():
     assert "symptom_impact" not in visible_keys(definition, answers)
     assert result.invalidated == ["symptom_impact"]
     assert "symptom_impact" not in answers
+
+
+def test_progress_agrees_with_missing_after_pruning():
+    definition = load_definition("sample-wellbeing.json")
+    answers: dict = {}
+    store(definition, answers, "has_symptoms", {"option": "yes"})
+    store(definition, answers, "symptoms", {"options": ["fatigue", "pain"]})
+    store(definition, answers, "symptom_impact", {"ratings": {"fatigue": 1, "pain": 2}})
+    before = progress(definition, answers)
+    # Pruned to {fatigue: 1} while the rows are now [fatigue, sleep]: open again.
+    result = store(definition, answers, "symptoms", {"options": ["fatigue", "sleep"]})
+    assert result.invalidated == ["symptom_impact"]
+    assert "symptom_impact" in missing_keys(definition, answers)
+    after = progress(definition, answers)
+    assert after["total"] == before["total"]
+    assert after["answered"] == before["answered"] - 1
+    # A skip is an answer for progress purposes.
+    store(definition, answers, "symptom_impact", {"skipped": True})
+    assert progress(definition, answers)["answered"] == before["answered"]
+
+
+def test_cascade_retains_a_hidden_capture_marker():
+    definition = load_definition("sample-wellbeing.json")
+    for _, _, q in iter_questions(definition):
+        if q["type"] == "email":
+            q["visible_if"] = [{"question": "has_symptoms", "op": "eq", "value": "yes"}]
+    answers = {"has_symptoms": {"option": "yes"}, "contact_email": {"provided": True}}
+    result = store(definition, answers, "has_symptoms", {"option": "no"})
+    assert result.invalidated == []
+    assert answers["contact_email"] == {"provided": True}
+    assert "contact_email" not in result.visible
+    # A decline is an ordinary answer and goes with the question.
+    answers = {"has_symptoms": {"option": "yes"}, "contact_email": {"provided": False}}
+    result = store(definition, answers, "has_symptoms", {"option": "no"})
+    assert result.invalidated == ["contact_email"]
+
+
+def test_answer_errors_carry_codes_and_params():
+    q = {"key": "t", "type": "text", "text": {"en": "t"}, "config": {"max_length": 6}}
+    with pytest.raises(AnswerError) as exc:
+        validate_answer(q, {"text": "x" * 7}, {})
+    assert exc.value.codes == ["text_too_long"]
+    assert exc.value.as_list() == [
+        {"code": "text_too_long", "params": {"max": 6}, "message": "text exceeds 6 characters"}
+    ]
+    assert str(exc.value) == "text exceeds 6 characters"
