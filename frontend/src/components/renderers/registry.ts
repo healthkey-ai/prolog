@@ -1,7 +1,4 @@
-import type { ComponentType } from "react";
-import { Matrix } from "./Matrix";
-import { MultiChoice } from "./MultiChoice";
-import { Ranking } from "./Ranking";
+import { lazy, type ComponentType } from "react";
 import type { RendererProps } from "./types";
 import type { AnswerValue, Question, QuestionType } from "@/survey/types";
 
@@ -13,11 +10,14 @@ export interface ExtraProps {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRenderer = ComponentType<any>;
 
-/** Renderers for the complex question types (Phase 4). */
+/**
+ * Renderers for the complex question types, code-split so the common path
+ * (single/dropdown/scale/text) does not pay for dnd-kit (NFR-7).
+ */
 export const extraRenderers: Partial<Record<QuestionType, AnyRenderer>> = {
-  multi: MultiChoice,
-  ranking: Ranking,
-  matrix: Matrix,
+  multi: lazy(() => import("./MultiChoice").then((m) => ({ default: m.MultiChoice }))),
+  ranking: lazy(() => import("./Ranking").then((m) => ({ default: m.Ranking }))),
+  matrix: lazy(() => import("./Matrix").then((m) => ({ default: m.Matrix }))),
 };
 
 export type { RendererProps };

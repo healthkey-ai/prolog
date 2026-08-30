@@ -10,12 +10,26 @@ final phase.
 
 - Requirements: [docs/requirements.md](docs/requirements.md)
 - Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
+- Deployment and operations: [docs/deployment.md](docs/deployment.md)
+- Theming: [docs/theming.md](docs/theming.md)
 - Working agreements: [CLAUDE.md](CLAUDE.md)
+
+## Quick start
+
+```sh
+cd backend && uv sync && createdb prolog && uv run python manage.py migrate
+uv run python manage.py load_definition ../examples/sample-wellbeing.json --activate
+uv run python manage.py runserver 8000
+cd ../frontend && npm ci && npm run dev        # open http://localhost:5173/s/sample-wellbeing
+```
+
+Tests: `uv run pytest` · `npm test` · `npm run e2e` (see docs/deployment.md).
 
 ## Layout
 
 - `schema/` — survey definition and theme contracts (JSON Schema 2020-12).
-- `themes/default/` — the neutral built-in theme.
+- `themes/` — built-in themes (`default`, `contrast`).
+- `examples/` — neutral sample instrument and the shared engine test vectors.
 - `backend/` — Django project and the reusable `prolog_surveys` app.
 - `frontend/` — React/Vite runner (designer later).
 - `docs/` — requirements, plan, integration decisions.

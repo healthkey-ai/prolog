@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { DateInput } from "./renderers/DateInput";
 import { Dropdown } from "./renderers/Dropdown";
@@ -80,7 +80,13 @@ function renderControl(question: Question, props: Props) {
       return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => {})} />;
     default: {
       const Extra = extraRenderers[question.type];
-      return Extra ? <Extra {...p} answers={props.answers} questions={props.questions} /> : <Unsupported type={question.type} />;
+      return Extra ? (
+        <Suspense fallback={<p className="text-ink-soft">…</p>}>
+          <Extra {...p} answers={props.answers} questions={props.questions} />
+        </Suspense>
+      ) : (
+        <Unsupported type={question.type} />
+      );
     }
   }
 }
