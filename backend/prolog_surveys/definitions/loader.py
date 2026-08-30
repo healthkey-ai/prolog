@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from .schema import Issue, read_json, validate_schema
 from .validate import has_errors, validate_semantics
 
 DEFINITION_GLOB = "*.json"
+log = logging.getLogger(__name__)
 
 
 class DefinitionError(Exception):
@@ -60,7 +62,9 @@ def unreviewed_languages(definition: dict[str, Any]) -> list[str]:
 
 
 @transaction.atomic
-def load_definition(doc: Any, *, source: str = "", activate: bool = False) -> LoadResult:
+def load_definition(
+    doc: Any, *, source: str = "", activate: bool = False, allow_unreviewed: bool = False
+) -> LoadResult:
     issues = validate_definition(doc)
     if has_errors(issues):
         raise DefinitionError(issues)
@@ -107,7 +111,7 @@ def load_definition(doc: Any, *, source: str = "", activate: bool = False) -> Lo
 
     activated = False
     if activate and version.status != LifecycleStatus.ACTIVE:
-        activate_version(version)
+        activate_version(version, allow_unreviewed=allow_unreviewed)
         activated = True
     return LoadResult(
         version=version, created=created, changed=changed, activated=activated, issues=issues
@@ -115,16 +119,27 @@ def load_definition(doc: Any, *, source: str = "", activate: bool = False) -> Lo
 
 
 @transaction.atomic
-def activate_version(version: SurveyVersion) -> None:
-    """Make ``version`` the single active version of its survey (DEF-4, DEF-5)."""
+def activate_version(version: SurveyVersion, *, allow_unreviewed: bool = False) -> None:
+    """Make ``version`` the single active version of its survey (DEF-4, DEF-5).
+
+    ``allow_unreviewed`` bypasses the translation gate for local/staging review
+    of machine-translated content; it logs loudly and must never be used for a
+    production launch.
+    """
     if version.status == LifecycleStatus.ARCHIVED:
         raise ActivationError(
             "an archived version cannot be re-activated; load it as a new version"
         )
     pending = unreviewed_languages(version.definition)
-    if pending:
+    if pending and not allow_unreviewed:
         raise ActivationError(
             "cannot activate while translations are not reviewed: " + ", ".join(pending)
+        )
+    if pending:
+        log.warning(
+            "activating %s with UNREVIEWED translations (%s) — review use only, not for launch",
+            version,
+            ", ".join(pending),
         )
     now = timezone.now()
     for current in version.survey.versions.filter(status=LifecycleStatus.ACTIVE).exclude(
@@ -178,9 +193,13 @@ def materialize(version: SurveyVersion) -> None:
             )
 
 
-def load_file(path: str | Path, *, activate: bool = False) -> LoadResult:
+def load_file(
+    path: str | Path, *, activate: bool = False, allow_unreviewed: bool = False
+) -> LoadResult:
     path = Path(path)
-    return load_definition(read_json(path), source=str(path), activate=activate)
+    return load_definition(
+        read_json(path), source=str(path), activate=activate, allow_unreviewed=allow_unreviewed
+    )
 
 
 def discover(paths: list[str | Path] | None = None) -> list[Path]:

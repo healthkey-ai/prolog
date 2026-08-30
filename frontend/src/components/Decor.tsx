@@ -1,6 +1,7 @@
 import { useThemeDecor } from "@/theme/useTheme";
 
-const POSITIONS = ["-right-16 -top-16 w-72 rotate-12", "-left-20 bottom-8 w-80 -rotate-6", "right-8 bottom-24 w-40"];
+// Copy is left-aligned, so shapes hug the right edge and the corners — never behind text.
+const POSITIONS = ["-right-16 -top-16 w-72 rotate-12", "-right-28 -bottom-28 w-80 -rotate-6", "-right-12 top-1/2 w-32"];
 
 /** Decorative theme shapes on immersive screens (aria-hidden, never behind copy). */
 export function Decor() {

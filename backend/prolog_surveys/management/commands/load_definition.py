@@ -13,6 +13,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("paths", nargs="+", help="Definition files or directories")
         parser.add_argument("--activate", action="store_true")
+        parser.add_argument(
+            "--allow-unreviewed",
+            action="store_true",
+            help="Activate even if some translations are 'machine' (local/staging review only).",
+        )
 
     def handle(self, *args, **options):
         files = discover(options["paths"])
@@ -20,7 +25,11 @@ class Command(BaseCommand):
             raise CommandError("no definition files found")
         for path in files:
             try:
-                result = load_file(path, activate=options["activate"])
+                result = load_file(
+                    path,
+                    activate=options["activate"],
+                    allow_unreviewed=options["allow_unreviewed"],
+                )
             except DefinitionError as exc:
                 report(self, exc.issues)
                 raise CommandError(f"invalid definition: {path}") from exc

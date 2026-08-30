@@ -322,6 +322,17 @@ def test_activation_refused_while_machine_translated(example):
 
 
 @pytest.mark.django_db
+def test_allow_unreviewed_override_logs(example, caplog):
+    example["translation_status"]["fr"] = "machine"
+    version = load_definition(example).version
+    with pytest.raises(ActivationError):
+        activate_version(version)
+    activate_version(version, allow_unreviewed=True)
+    assert SurveyVersion.objects.get(pk=version.pk).status == LifecycleStatus.ACTIVE
+    assert "UNREVIEWED" in caplog.text
+
+
+@pytest.mark.django_db
 def test_activation_archives_previous_and_materializes(example):
     v1 = load_definition(example, activate=True).version
     assert v1.status == LifecycleStatus.ACTIVE
@@ -374,3 +385,5 @@ def test_load_command_and_startup_loader(tmp_path, example, settings, capsys):
     assert "unchanged" in capsys.readouterr().out
     with pytest.raises(CommandError):
         call_command("load_definition", str(tmp_path), "--activate")  # fr is machine
+    call_command("load_definition", str(tmp_path), "--activate", "--allow-unreviewed")
+    assert "activated" in capsys.readouterr().out
