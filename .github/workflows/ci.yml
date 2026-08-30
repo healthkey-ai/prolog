@@ -58,6 +58,30 @@ jobs:
       - run: uv run python manage.py makemigrations --check --dry-run
       - run: uv run pytest
 
+  backend-integrated:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      POSTGRES_DB: prolog_integrated
+      POSTGRES_USER: prolog
+      POSTGRES_PASSWORD: prolog
+      POSTGRES_HOST: localhost
+      PROLOG_PROFILE: integrated
+      PROLOG_PARTICIPANT_MODEL: auth.User
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run pytest --no-migrations --create-db
+
   frontend:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: frontend } }

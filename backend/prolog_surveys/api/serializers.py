@@ -7,6 +7,13 @@ class CreateResponseSerializer(serializers.Serializer):
     slug = serializers.SlugField()
     language = serializers.CharField(max_length=12)
     consent = serializers.DictField(required=False)
+    invitation = serializers.UUIDField(
+        required=False, help_text="Administration id from an invitation link"
+    )
+
+
+class IdentitySerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254)
 
 
 class PatchResponseSerializer(serializers.Serializer):

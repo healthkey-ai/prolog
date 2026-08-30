@@ -30,6 +30,9 @@ DEFAULTS: dict[str, Any] = {
     "PROLOG_SCHEMA_DIR": str(Path(__file__).resolve().parent.parent.parent / "schema"),
     # Dotted path to a callable implementing IdentityService (integrated only).
     "PROLOG_IDENTITY_SERVICE": None,
+    # Dotted path to a callable (request) -> participant pk or None. Default: the
+    # authenticated user's pk when PROLOG_PARTICIPANT_MODEL is AUTH_USER_MODEL.
+    "PROLOG_PARTICIPANT_RESOLVER": None,
     # Salt for hashed client keys used by throttling (never stores raw IPs).
     "PROLOG_CLIENT_KEY_SALT": "prolog",
     # In-progress responses older than this are purged by `purge_abandoned_responses`.

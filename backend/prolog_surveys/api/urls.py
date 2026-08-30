@@ -20,4 +20,7 @@ urlpatterns = [
     ),
     path("responses/<uuid:response_id>/submit/", views.SubmitView.as_view(), name="run-submit"),
     path("responses/<uuid:response_id>/contact/", views.ContactView.as_view(), name="run-contact"),
+    path(
+        "responses/<uuid:response_id>/identity/", views.IdentityView.as_view(), name="run-identity"
+    ),
 ]

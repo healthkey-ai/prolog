@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
+
+PARTICIPANT_MODEL = getattr(settings, "PROLOG_PARTICIPANT_MODEL", None)
 
 
 class LifecycleStatus(models.TextChoices):
@@ -159,6 +162,27 @@ class SurveyResponse(models.Model):
     user_agent_hash = models.CharField(
         max_length=64, blank=True, default="", help_text="Salted hash; never the raw user agent."
     )
+    # Integrated profile only (DEP-2): the field exists when PROLOG_PARTICIPANT_MODEL
+    # is set; the host project generates the migration that adds it.
+    if PARTICIPANT_MODEL:
+        participant = models.ForeignKey(
+            PARTICIPANT_MODEL,
+            null=True,
+            blank=True,
+            on_delete=models.PROTECT,
+            related_name="prolog_survey_responses",
+        )
+    identity_linked_at = models.DateTimeField(
+        null=True, blank=True, help_text="When identity capture linked this response (CON-4)."
+    )
+    administration = models.OneToOneField(
+        "SurveyAdministration",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="response",
+        help_text="The invitation occurrence this response answers (RUN-5).",
+    )
 
     class Meta:
         ordering = ["-started_at"]
@@ -166,6 +190,10 @@ class SurveyResponse(models.Model):
 
     def __str__(self) -> str:
         return f"{self.id} ({self.status})"
+
+    @property
+    def participant_id_or_none(self):
+        return getattr(self, "participant_id", None)
 
     @property
     def is_submitted(self) -> bool:
@@ -241,3 +269,64 @@ class SurveyConsent(models.Model):
 
     def __str__(self) -> str:
         return f"consent {self.consent_version} for {self.response_id}"
+
+
+class SurveyInvitation(models.Model):
+    """An invited participant of a non-anonymous survey (RUN-5).
+
+    Identified by a participant record (integrated profile) and/or an email
+    address; the invitation token in the link is the credential when no
+    account is involved.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name="invitations")
+    email = models.EmailField(blank=True, default="")
+    if PARTICIPANT_MODEL:
+        participant = models.ForeignKey(
+            PARTICIPANT_MODEL,
+            null=True,
+            blank=True,
+            on_delete=models.CASCADE,
+            related_name="prolog_survey_invitations",
+        )
+    language = models.CharField(max_length=12, blank=True, default="")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["survey", "created_at"]
+
+    def __str__(self) -> str:
+        return f"invitation {self.id} to {self.survey.slug}"
+
+
+class SurveyAdministration(models.Model):
+    """One occurrence of a survey being offered to an invited participant (RUN-5)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invitation = models.ForeignKey(
+        SurveyInvitation, on_delete=models.CASCADE, related_name="administrations"
+    )
+    survey_version = models.ForeignKey(
+        SurveyVersion,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="administrations",
+        help_text="Scheduled version; null = the version active when the participant starts.",
+    )
+    due_at = models.DateField()
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["invitation", "due_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invitation", "due_at"], name="prolog_administration_unique"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"administration {self.due_at} of {self.invitation_id}"

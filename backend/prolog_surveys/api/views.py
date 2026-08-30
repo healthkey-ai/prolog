@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -18,10 +19,19 @@ from ..engine.cascade import apply_cascade
 from ..engine.completion import missing_keys, progress
 from ..engine.localize import localize, pick
 from ..engine.visibility import question_by_key, visible_keys
+from ..identity import (
+    IdentityRequest,
+    IdentityServiceError,
+    get_identity_service,
+    idempotency_key,
+    resolve_participant,
+)
+from ..invitations import version_for
 from ..models import (
     LifecycleStatus,
     ResponseStatus,
     Survey,
+    SurveyAdministration,
     SurveyAnswer,
     SurveyConsent,
     SurveyContact,
@@ -33,6 +43,7 @@ from .serializers import (
     AnswerSerializer,
     ContactSerializer,
     CreateResponseSerializer,
+    IdentitySerializer,
     PatchResponseSerializer,
     ResponseSerializer,
 )
@@ -52,11 +63,32 @@ def _active_version(slug: str):
     return survey, version
 
 
-def _check_access(request, definition: dict) -> None:
-    if definition["participation"]["anonymous"]:
+def _check_access(request, definition: dict, *, invited: bool = False) -> None:
+    if definition["participation"]["anonymous"] or invited:
         return
     if not request.user.is_authenticated:
-        raise PermissionDenied("this survey requires an account")
+        raise PermissionDenied("this survey requires an account or an invitation")
+
+
+def _administration(request, ser_data: dict) -> SurveyAdministration | None:
+    token = ser_data.get("invitation") or request.query_params.get("invite")
+    if not token:
+        return None
+    try:
+        return SurveyAdministration.objects.select_related("invitation__survey").get(pk=token)
+    except (SurveyAdministration.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:
+        raise PermissionDenied("invalid invitation") from exc
+
+
+def _owns(request, response: SurveyResponse) -> None:
+    """Account surveys: only the linked participant may read or write the response."""
+    if response.definition["participation"]["anonymous"]:
+        return
+    if response.administration_id:
+        return  # the administration id in the link is the credential
+    participant = resolve_participant(request)
+    if participant is None or participant != response.participant_id_or_none:
+        raise PermissionDenied("not your response")
 
 
 def _language(request, definition: dict) -> str:
@@ -85,7 +117,7 @@ class SurveyDefinitionView(APIView):
     def get(self, request, slug: str):
         survey, version = _active_version(slug)
         definition = version.definition
-        _check_access(request, definition)
+        _check_access(request, definition, invited=_administration(request, {}) is not None)
         lang = _language(request, definition)
         etag = _etag(version, lang)
         if request.headers.get("If-None-Match") == etag:
@@ -118,14 +150,40 @@ class ResponseCreateView(APIView):
     def post(self, request):
         ser = CreateResponseSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        survey, version = _active_version(ser.validated_data["slug"])
+        data = ser.validated_data
+        administration = _administration(request, data)
+        if administration is not None and administration.invitation.survey.slug != data["slug"]:
+            raise PermissionDenied("invitation is for another survey")
+        survey, version = _active_version(data["slug"])
+        if administration is not None:
+            version = version_for(administration) or version
         definition = version.definition
-        _check_access(request, definition)
-        lang = ser.validated_data["language"]
+        _check_access(request, definition, invited=administration is not None)
+        lang = data["language"]
         if lang not in definition["languages"]:
             raise ValidationError({"language": "not offered by this survey"})
+
+        # Account resume (RUN-3): return the participant's in-progress response.
+        participant = (
+            None if definition["participation"]["anonymous"] else resolve_participant(request)
+        )
+        if administration is not None and getattr(administration, "response", None) is not None:
+            return Response(_response_payload(administration.response), status=status.HTTP_200_OK)
+        if participant is not None and definition["participation"].get("resume") == "account":
+            existing = (
+                SurveyResponse.objects.filter(
+                    survey_version=version,
+                    status=ResponseStatus.IN_PROGRESS,
+                    participant_id=participant,
+                )
+                .order_by("-started_at")
+                .first()
+            )
+            if existing is not None:
+                return Response(_response_payload(existing), status=status.HTTP_200_OK)
+
         consent_cfg = definition.get("consent")
-        consent = ser.validated_data.get("consent")
+        consent = data.get("consent")
         if consent_cfg and consent_cfg.get("required", True):
             if (
                 not consent
@@ -141,9 +199,19 @@ class ResponseCreateView(APIView):
             if ua
             else ""
         )
-        response = SurveyResponse.objects.create(
-            survey_version=version, language=lang, user_agent_hash=ua_hash
-        )
+        fields = {"survey_version": version, "language": lang, "user_agent_hash": ua_hash}
+        if administration is not None:
+            fields["administration"] = administration
+            invited = (
+                administration.invitation.participant_id_or_none
+                if hasattr(administration.invitation, "participant_id_or_none")
+                else getattr(administration.invitation, "participant_id", None)
+            )
+            if invited is not None:
+                fields["participant_id"] = invited
+        elif participant is not None:
+            fields["participant_id"] = participant
+        response = SurveyResponse.objects.create(**fields)
         if consent_cfg and consent:
             text = pick(consent_cfg["text"], lang, definition["default_language"])
             SurveyConsent.objects.create(
@@ -157,9 +225,11 @@ class ResponseCreateView(APIView):
 
 class ResponseMixin:
     def get_response(self, response_id) -> SurveyResponse:
-        return get_object_or_404(
+        response = get_object_or_404(
             SurveyResponse.objects.select_related("survey_version__survey"), pk=response_id
         )
+        _owns(self.request, response)
+        return response
 
     def writable(self, response_id) -> SurveyResponse:
         response = self.get_response(response_id)
@@ -318,6 +388,62 @@ class ContactView(ResponseMixin, APIView):
             language=response.language,
             consent_text=notice,
         )
+        SurveyAnswer.objects.update_or_create(
+            response=response,
+            question_key=question["key"],
+            defaults={"value": {"provided": True}, "option_keys": []},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class IdentityView(ResponseMixin, APIView):
+    """Identity capture (CON-4): the email goes to the host platform's identity service only."""
+
+    throttle_classes = [ResponseThrottle]
+
+    @transaction.atomic
+    def post(self, request, response_id):
+        try:
+            response = self.writable(response_id)
+        except ReadOnly:
+            return _read_only()
+        if not conf.is_integrated():
+            raise NotFound("identity capture is only available in the integrated profile")
+        ser = IdentitySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        definition = response.definition
+        question = _email_question(definition)
+        if question is None or not question["config"].get("link_identity"):
+            raise NotFound("this survey has no identity capture")
+        if question["key"] not in visible_keys(definition, response.answer_map()):
+            raise ValidationError({"email": ["identity capture is not currently shown"]})
+        service = get_identity_service()
+        if service is None:
+            raise NotFound("no identity service is configured")
+        if response.participant_id_or_none is None:
+            try:
+                result = service.create_or_link(
+                    IdentityRequest(
+                        email=ser.validated_data["email"],
+                        idempotency_key=idempotency_key(response.id),
+                        survey_slug=response.survey_version.survey.slug,
+                        language=response.language,
+                    )
+                )
+            except IdentityServiceError as exc:
+                return (
+                    Response(
+                        {
+                            "detail": "identity service unavailable; you can still submit anonymously"
+                        },
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
+                    if str(exc)
+                    else Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                )
+            response.participant_id = result.participant_pk
+            response.identity_linked_at = timezone.now()
+            response.save(update_fields=["participant", "identity_linked_at", "updated_at"])
         SurveyAnswer.objects.update_or_create(
             response=response,
             question_key=question["key"],

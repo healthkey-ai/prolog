@@ -3,9 +3,11 @@ from django.db.models import Count, Q
 
 from .models import (
     Survey,
+    SurveyAdministration,
     SurveyAnswer,
     SurveyConsent,
     SurveyContact,
+    SurveyInvitation,
     SurveyOption,
     SurveyQuestion,
     SurveyResponse,
@@ -110,3 +112,17 @@ class ContactAdmin(ReadOnlyMixin, admin.ModelAdmin):
 @admin.register(SurveyConsent)
 class ConsentAdmin(ReadOnlyMixin, admin.ModelAdmin):
     list_display = ("response", "consent_version", "language", "agreed_at")
+
+
+class AdministrationInline(ReadOnlyMixin, admin.TabularInline):
+    model = SurveyAdministration
+    fields = ("due_at", "survey_version", "sent_at")
+    readonly_fields = fields
+    extra = 0
+
+
+@admin.register(SurveyInvitation)
+class InvitationAdmin(admin.ModelAdmin):
+    list_display = ("id", "survey", "language", "active", "created_at")
+    list_filter = ("survey", "active")
+    inlines = [AdministrationInline]

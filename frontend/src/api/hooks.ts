@@ -9,10 +9,14 @@ export const keys = {
   options: (source: string, lang: string) => ["options", source, lang] as const,
 };
 
-export function useSurveyDefinition(slug: string | undefined, lang?: string) {
+export function useSurveyDefinition(slug: string | undefined, lang?: string, invite?: string) {
+  const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
+  if (invite) params.set("invite", invite);
+  const qs = params.toString();
   return useQuery({
-    queryKey: keys.definition(slug ?? "", lang),
-    queryFn: () => api.get<RunnerDefinition>(`/surveys/${slug}/${lang ? `?lang=${encodeURIComponent(lang)}` : ""}`),
+    queryKey: [...keys.definition(slug ?? "", lang), invite ?? ""],
+    queryFn: () => api.get<RunnerDefinition>(`/surveys/${slug}/${qs ? `?${qs}` : ""}`),
     enabled: Boolean(slug),
     staleTime: Infinity,
   });
@@ -39,7 +43,7 @@ export function useOptionsSource(source: string | undefined, lang: string) {
 export function useCreateResponse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { slug: string; language: string; consent?: { version: string; agreed: boolean } }) =>
+    mutationFn: (body: { slug: string; language: string; consent?: { version: string; agreed: boolean }; invitation?: string }) =>
       api.post<ResponseSummary>("/responses/", body),
     onSuccess: (data) => qc.setQueryData(keys.response(data.id), data),
   });

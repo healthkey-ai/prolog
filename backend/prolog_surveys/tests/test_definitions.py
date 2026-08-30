@@ -137,7 +137,7 @@ def test_schema_rejects_both_email_modes(example):
 )
 def test_semantic_errors(example, mutate, expected):
     mutate(example)
-    issues = validate_definition(example)
+    issues = validate_definition(example, profile="standalone")
     assert expected in codes(issues), [str(i) for i in issues]
 
 

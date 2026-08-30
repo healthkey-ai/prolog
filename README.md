@@ -11,6 +11,7 @@ final phase.
 - Requirements: [docs/requirements.md](docs/requirements.md)
 - Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
 - Deployment and operations: [docs/deployment.md](docs/deployment.md)
+- Integrated profile (inside a host platform): [docs/integration.md](docs/integration.md)
 - Theming: [docs/theming.md](docs/theming.md)
 - Working agreements: [CLAUDE.md](CLAUDE.md)
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError } from "@/api/client";
 import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
 import { Button } from "@/components/ui/Button";
@@ -14,10 +14,12 @@ import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
 
 export function IntroPage() {
   const { slug = "" } = useParams();
+  const [search] = useSearchParams();
+  const invite = search.get("invite") ?? undefined;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [language, setLanguage] = useState<string | undefined>(undefined);
-  const definition = useSurveyDefinition(slug, language);
+  const definition = useSurveyDefinition(slug, language, invite);
   const existingId = storedResponseId(slug);
   const existing = useResponse(existingId);
   const create = useCreateResponse();
@@ -51,6 +53,7 @@ export function IntroPage() {
       slug,
       language: def.language,
       consent: consent ? { version: consent.version, agreed } : undefined,
+      invitation: invite,
     });
     storeResponseId(slug, response.id);
     const key = firstOpenKey(def, response.answers, response.last_question_key);

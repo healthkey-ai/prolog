@@ -1,0 +1,5 @@
+You are invited to complete: {{ title }}
+
+Open your survey: {{ link }}
+
+This link is personal to you. If you did not expect this email, you can ignore it.
