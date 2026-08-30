@@ -1,0 +1,58 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme inline {
+  --color-primary: var(--p-primary);
+  --color-primary-deep: var(--p-primary-deep);
+  --color-on-primary: var(--p-on-primary);
+  --color-secondary: var(--p-secondary);
+  --color-accent: var(--p-accent);
+  --color-focus: var(--p-focus);
+  --color-ground: var(--p-ground);
+  --color-surface: var(--p-surface);
+  --color-tint: var(--p-tint);
+  --color-ink: var(--p-ink);
+  --color-ink-soft: var(--p-ink-soft);
+  --color-line: var(--p-line);
+  --color-error: var(--p-error);
+  --color-success: var(--p-success);
+  --font-heading: var(--p-font-heading);
+  --font-body: var(--p-font-body);
+  --radius-card: var(--p-radius-card);
+  --radius-input: var(--p-radius-input);
+  --radius-button: var(--p-radius-button);
+  --radius-sheet: var(--p-radius-sheet);
+}
+
+html {
+  font-size: var(--p-base-size);
+}
+
+body {
+  margin: 0;
+  background: var(--p-ground);
+  color: var(--p-ink);
+  font-family: var(--p-font-body);
+  font-weight: var(--p-weight-body);
+  letter-spacing: var(--p-tracking);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-heading {
+  font-family: var(--p-font-heading);
+  font-weight: var(--p-weight-heading);
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--p-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

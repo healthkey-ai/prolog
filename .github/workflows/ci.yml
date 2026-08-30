@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+jobs:
+  neutrality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 scripts/check_neutrality.py
+        env:
+          NEUTRALITY_DENYLIST: ${{ secrets.NEUTRALITY_DENYLIST }}
+
+  schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install jsonschema
+      - run: |
+          python - <<'PY'
+          import json, glob, jsonschema
+          for schema_path, pattern in [("schema/survey-definition.schema.json", "examples/*.json"),
+                                       ("schema/theme.schema.json", "themes/*/theme.json")]:
+              schema = json.load(open(schema_path))
+              jsonschema.Draft202012Validator.check_schema(schema)
+              for f in glob.glob(pattern):
+                  jsonschema.validate(json.load(open(f)), schema, cls=jsonschema.Draft202012Validator)
+                  print("ok", f)
+          PY
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_DB: prolog, POSTGRES_USER: prolog, POSTGRES_PASSWORD: prolog }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolog" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      POSTGRES_DB: prolog
+      POSTGRES_USER: prolog
+      POSTGRES_PASSWORD: prolog
+      POSTGRES_HOST: localhost
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
