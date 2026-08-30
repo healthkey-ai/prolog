@@ -81,3 +81,34 @@ Playwright.
 - WCAG 2.2 AA: real `fieldset`/`legend`, ≥44 px targets, `:focus-visible`
   rings, `prefers-reduced-motion`.
 - All runner chrome strings go through i18next (`frontend/src/i18n/`).
+
+## Code review loop
+
+When asked to review and fix a branch/PR "until clean", run the `code-review`
+skill (`high --fix <base>...<head>`) from this directory in a loop and:
+
+- **Fix every confirmed finding**, not only the top-10 the skill reports —
+  including the cleanup / reuse / simplification / efficiency angles. A pass
+  that leaves a "confirmed but below the cap" tail does not converge.
+- **Verify before committing**: backend pytest in both profiles (standalone,
+  and integrated with `POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated
+  PROLOG_PARTICIPANT_MODEL=auth.User --no-migrations`), ruff, `tsc -b`,
+  vitest, Playwright (twice if anything looked flaky). One commit per pass,
+  pushed to the PR branch.
+- **Convergence**: stop when a pass returns only items already decided below,
+  or nothing.
+- If a review agent stalls waiting on child verifiers that are not running,
+  resume it with a message to verify in-context and continue.
+
+Decisions that reviewers must treat as settled (implement, don't re-report):
+
+| Topic | Decision |
+| --- | --- |
+| `presentation.mode: "section"` | Not implemented in this release; the validator rejects it, docs mark it planned. |
+| Invitation schedules | Never back-fill past due dates; an invitation with no administrations gets the current cycle only. |
+| Throttle cache | Optional shared cache via `CACHE_URL` (Redis / memcached); LocMem is per process and multiplies limits by worker count (documented). |
+| Validation messages | Structured error codes (code + params) in both engines and in the API 400 body, mapped to i18n strings in the runner; never match on English text. |
+| Neutrality CI guard | Advisory until the `NEUTRALITY_DENYLIST` repository secret exists; enforcing afterwards. Do not re-report. |
+| Anonymous surveys and invitations | No invitation link may bind to an anonymous response: `send_pending` skips anonymous surveys and `?invite=` is ignored on them. |
+| `DEBUG` | Defaults to `false`; `prolog.settings_dev` (used by `manage.py`/pytest) turns it on locally; the image sets `DEBUG=false` and the placeholder-`SECRET_KEY` guard stays. |
+| `--allow-unreviewed` | A review-only activation override that logs loudly; not a bug. |
