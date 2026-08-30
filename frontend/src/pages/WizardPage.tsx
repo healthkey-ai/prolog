@@ -13,7 +13,7 @@ import { storedResponseId } from "@/lib/storage";
 import { validateAnswer } from "@/survey/answers";
 import { firstOpenKey, overview, position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue } from "@/survey/types";
-import { isAnswered } from "@/survey/visibility";
+import { isAnswered, questionByKey } from "@/survey/visibility";
 import { useThemeLogo } from "@/theme/useTheme";
 
 export function WizardPage() {
@@ -42,6 +42,7 @@ export function WizardPage() {
   const def = definition.data;
   const answers = response.data?.answers ?? {};
   const pos = useMemo(() => (def ? position(def, answers, key) : null), [def, answers, key]);
+  const questions = useMemo(() => (def ? questionByKey(def) : {}), [def]);
   const country = useOptionsSource(def && pos?.visible.some((v) => v.question.config?.options_source) ? "iso3166_countries" : undefined, def?.language ?? "en");
   const countryLabels = useMemo(() => Object.fromEntries((country.data?.options ?? []).map((o) => [o.key, o.label])), [country.data]);
 
@@ -262,8 +263,11 @@ export function WizardPage() {
             questionTotal={pos.questionTotal}
             errors={localErrors}
             answers={answers}
+            questions={questions}
             onSubmitEmail={async (email) => {
               await contact.mutateAsync(email);
+              setDraftKey(key);
+              setDraft({ provided: true });
               flashSaved();
             }}
           />

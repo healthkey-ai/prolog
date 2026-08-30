@@ -18,6 +18,7 @@ interface Props extends RendererProps {
   questionTotal: number;
   onSubmitEmail?: (email: string) => Promise<void>;
   answers: Record<string, AnswerValue>;
+  questions: Record<string, Question>;
 }
 
 export function QuestionScreen(props: Props) {
@@ -34,7 +35,7 @@ export function QuestionScreen(props: Props) {
     <div className="animate-[fadeUp_200ms_ease-out]" data-testid={`question-${question.key}`} data-type={question.type}>
       <p className="text-[13px] font-medium uppercase tracking-[0.08em] text-ink-soft">
         {isInfo ? t("question.info") : t("question.eyebrow", { number: questionNumber, total: questionTotal })}
-        {!isInfo && !required && <span className="ml-2 rounded bg-tint px-2 py-0.5 normal-case tracking-normal">{t("question.optional")}</span>}
+        {!isInfo && !required && <span className="ml-2 rounded bg-tint px-2 py-0.5 normal-case tracking-normal text-ink">{t("question.optional")}</span>}
       </p>
       <fieldset className="mt-2 border-0 p-0">
         <legend className="w-full">
@@ -79,7 +80,7 @@ function renderControl(question: Question, props: Props) {
       return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => {})} />;
     default: {
       const Extra = extraRenderers[question.type];
-      return Extra ? <Extra {...p} answers={props.answers} /> : <Unsupported type={question.type} />;
+      return Extra ? <Extra {...p} answers={props.answers} questions={props.questions} /> : <Unsupported type={question.type} />;
     }
   }
 }

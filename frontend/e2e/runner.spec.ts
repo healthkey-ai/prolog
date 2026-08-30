@@ -1,12 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { expectAccessible } from "./helpers";
 
 const SLUG = "sample-wellbeing";
-
-export async function expectAccessible(page: Page, context: string) {
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
-  expect(results.violations.map((v) => `${context}: ${v.id} — ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`)).toEqual([]);
-}
 
 async function start(page: Page) {
   await page.emulateMedia({ reducedMotion: "reduce" });
