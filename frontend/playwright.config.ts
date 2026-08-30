@@ -21,6 +21,7 @@ export default defineConfig({
     {
       command: "cd ../backend && uv run python manage.py runserver 8765 --noreload",
       url: "http://localhost:8765/api/health/",
+      env: { PROLOG_THEME_DIRS: `${process.cwd()}/../themes:${process.cwd()}/e2e/fixtures/themes` },
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

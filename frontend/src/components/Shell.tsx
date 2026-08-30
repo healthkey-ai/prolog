@@ -46,7 +46,7 @@ export function Shell(p: ShellProps) {
     <div className="flex min-h-dvh flex-col bg-ground">
       <header className="sticky top-0 z-10 bg-surface">
         <div className="mx-auto flex max-w-[var(--p-content-max)] items-center gap-3 px-4 py-3">
-          <div className="flex items-center gap-3 overflow-hidden" data-logo-slot>
+          <div className="flex items-center gap-3 overflow-hidden">
             {p.logo}
             <p className="truncate text-[13px] font-medium uppercase tracking-[0.08em] text-ink-soft">
               {t("header.section", { number: p.sectionNumber, total: p.sectionTotal })}

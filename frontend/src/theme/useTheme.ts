@@ -1,13 +1,30 @@
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
+import { useThemeContext } from "./ThemeProvider";
 
-/**
- * Theme hooks. Phase 3 ships the neutral defaults; Phase 5 replaces these with
- * values loaded from the theme API without touching the pages.
- */
-export function useThemeLayout(): { immersiveIntro: boolean; copyAlignment: "left" | "center"; logoPlacement: "top-left" | "top-right" } {
-  return { immersiveIntro: false, copyAlignment: "left", logoPlacement: "top-left" };
+export interface ThemeLayout {
+  immersiveIntro: boolean;
+  copyAlignment: "left" | "center";
+  logoPlacement: "top-left" | "top-right";
 }
 
-export function useThemeLogo(): ReactNode {
-  return null;
+export function useThemeLayout(): ThemeLayout {
+  const { theme } = useThemeContext();
+  return {
+    immersiveIntro: theme?.layout?.immersive_intro ?? false,
+    copyAlignment: theme?.layout?.copy_alignment ?? "left",
+    logoPlacement: theme?.layout?.logo_placement ?? "top-left",
+  };
+}
+
+/** Logo for light surfaces (header) or for the primary ground (immersive screens). */
+export function useThemeLogo(onPrimary = false): ReactNode {
+  const { theme } = useThemeContext();
+  const src = onPrimary ? (theme?.assets?.logo_on_primary ?? theme?.assets?.logo) : theme?.assets?.logo;
+  if (!src) return null;
+  return createElement("img", { src, alt: theme?.name ?? "", className: "h-8 w-auto shrink-0", "data-testid": "theme-logo" });
+}
+
+export function useThemeDecor(): string[] {
+  const { theme } = useThemeContext();
+  return theme?.assets?.decor ?? [];
 }

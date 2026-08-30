@@ -9,7 +9,8 @@ import { languageName } from "@/components/Shell";
 import { clearResponseId, storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import i18n from "@/i18n";
-import { useThemeLayout } from "@/theme/useTheme";
+import { Decor } from "@/components/Decor";
+import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
 
 export function IntroPage() {
   const { slug = "" } = useParams();
@@ -23,6 +24,7 @@ export function IntroPage() {
   const [agreed, setAgreed] = useState(false);
   const [consentError, setConsentError] = useState(false);
   const layout = useThemeLayout();
+  const logo = useThemeLogo(layout.immersiveIntro);
 
   useEffect(() => {
     if (definition.data) void i18n.changeLanguage(definition.data.language);
@@ -77,9 +79,9 @@ export function IntroPage() {
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
-      {immersive && <div className="pointer-events-none absolute inset-0" aria-hidden data-decor-slot />}
+      {immersive && <Decor />}
       <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-6 px-6 py-12 sm:py-20">
-        <div className="flex items-center justify-between" data-logo-slot />
+        <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
         <p className={`text-[13px] font-medium uppercase tracking-[0.08em] ${immersive ? "text-on-primary/80" : "text-ink-soft"}`}>{t("intro.eyebrow")}</p>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{def.title as string}</h1>
         {def.intro && <p className={`text-[1.05rem] ${soft}`}>{def.intro as string}</p>}

@@ -73,3 +73,9 @@ h1, h2, h3, .font-heading {
   white-space: nowrap;
   border: 0;
 }
+
+:root[data-align="center"] main,
+:root[data-align="center"] h1,
+:root[data-align="center"] h2 {
+  text-align: center;
+}

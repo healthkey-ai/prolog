@@ -1,10 +1,16 @@
 from django.urls import path
 
-from . import views
+from . import themes, views
 
 urlpatterns = [
     path("surveys/<slug:slug>/", views.SurveyDefinitionView.as_view(), name="run-survey"),
     path("options/<slug:source>/", views.OptionsSourceView.as_view(), name="run-options"),
+    path("themes/<slug:code>/", themes.ThemeView.as_view(), name="run-theme"),
+    path(
+        "themes/<slug:code>/assets/<path:path>",
+        themes.ThemeAssetView.as_view(),
+        name="run-theme-asset",
+    ),
     path("responses/", views.ResponseCreateView.as_view(), name="run-response-create"),
     path("responses/<uuid:response_id>/", views.ResponseDetailView.as_view(), name="run-response"),
     path(

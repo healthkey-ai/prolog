@@ -1,0 +1,168 @@
+"""Theme discovery, validation and lookup (THM-1, THM-2, THM-3, THM-7, THM-8)."""
+
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .. import conf
+from ..definitions.schema import Issue, theme_schema, validate_against
+from .contrast import palette_warnings
+
+log = logging.getLogger(__name__)
+
+DEFAULT_THEME = "default"
+ASSET_EXTENSIONS = {
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+}
+ASSET_KEYS = ("logo", "logo_on_primary", "favicon")
+
+
+class ThemeError(Exception):
+    def __init__(self, issues: list[Issue]):
+        self.issues = issues
+        super().__init__("; ".join(str(i) for i in issues if i.level == "error"))
+
+
+@dataclass
+class Theme:
+    code: str
+    directory: Path
+    data: dict[str, Any]
+    warnings: list[str] = field(default_factory=list)
+
+    def asset_path(self, relative: str) -> Path | None:
+        """Resolve an asset inside the theme directory; None if outside or disallowed."""
+        if not relative or relative.startswith(("/", "\\")):
+            return None
+        candidate = (self.directory / relative).resolve()
+        try:
+            candidate.relative_to(self.directory.resolve())
+        except ValueError:
+            return None
+        if candidate.suffix.lower() not in ASSET_EXTENSIONS or not candidate.is_file():
+            return None
+        return candidate
+
+    def asset_references(self) -> list[str]:
+        assets = self.data.get("assets", {})
+        refs = [assets[k] for k in ASSET_KEYS if assets.get(k)]
+        refs += list(assets.get("decor", []))
+        refs += [f["src"] for f in self.data.get("typography", {}).get("font_faces", [])]
+        return refs
+
+    def public(self, asset_url: callable) -> dict[str, Any]:  # type: ignore[valid-type]
+        """Theme document with asset paths rewritten through ``asset_url(relative)``."""
+        doc = json.loads(json.dumps(self.data))
+        doc.pop("$schema", None)
+        assets = doc.get("assets", {})
+        for k in ASSET_KEYS:
+            if assets.get(k):
+                assets[k] = asset_url(assets[k])
+        if assets.get("decor"):
+            assets["decor"] = [asset_url(a) for a in assets["decor"]]
+        for face in doc.get("typography", {}).get("font_faces", []):
+            face["src"] = asset_url(face["src"])
+        return doc
+
+
+def validate_theme(directory: Path) -> tuple[dict[str, Any], list[Issue]]:
+    """Schema + asset + contrast validation of ``directory/theme.json``."""
+    path = directory / "theme.json"
+    if not path.is_file():
+        return {}, [Issue("missing", "$", f"{path} not found")]
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    issues = validate_against(theme_schema(), data)
+    if any(i.level == "error" for i in issues):
+        return data, issues
+    theme = Theme(code=data["code"], directory=directory, data=data)
+    for ref in theme.asset_references():
+        if theme.asset_path(ref) is None:
+            issues.append(
+                Issue(
+                    "asset",
+                    "$.assets",
+                    f"asset '{ref}' is missing, outside the theme directory, or has a disallowed type",
+                )
+            )
+    for name, palette in data.get("colors", {}).items():
+        for warning in palette_warnings(palette):
+            issues.append(Issue("contrast", f"$.colors.{name}", warning, "warning"))
+    if data.get("color_scheme") == "light-dark" and "dark" not in data.get("colors", {}):
+        issues.append(
+            Issue("dark", "$.colors", "light-dark themes should define colors.dark", "warning")
+        )
+    return data, issues
+
+
+class ThemeRegistry:
+    def __init__(self) -> None:
+        self._themes: dict[str, Theme] | None = None
+        self._lock = threading.Lock()
+
+    def reload(self) -> dict[str, Theme]:
+        themes: dict[str, Theme] = {}
+        for root in (Path(p) for p in conf.get("PROLOG_THEME_DIRS")):
+            if not root.is_dir():
+                log.warning("theme directory does not exist: %s", root)
+                continue
+            for directory in sorted(p for p in root.iterdir() if p.is_dir()):
+                if not (directory / "theme.json").is_file():
+                    continue
+                data, issues = validate_theme(directory)
+                errors = [i for i in issues if i.level == "error"]
+                if errors:
+                    log.error("theme %s rejected: %s", directory, "; ".join(map(str, errors)))
+                    continue
+                warnings = [i.message for i in issues if i.level == "warning"]
+                for w in warnings:
+                    log.warning("theme %s: %s", data["code"], w)
+                if data["code"] in themes:
+                    log.warning(
+                        "theme code %s defined twice; keeping %s",
+                        data["code"],
+                        themes[data["code"]].directory,
+                    )
+                    continue
+                themes[data["code"]] = Theme(
+                    code=data["code"], directory=directory, data=data, warnings=warnings
+                )
+        if DEFAULT_THEME not in themes:
+            log.error("no '%s' theme found in PROLOG_THEME_DIRS", DEFAULT_THEME)
+        with self._lock:
+            self._themes = themes
+        return themes
+
+    def all(self) -> dict[str, Theme]:
+        if self._themes is None:
+            self.reload()
+        return self._themes or {}
+
+    def get(self, code: str | None) -> Theme | None:
+        return self.all().get(code or DEFAULT_THEME)
+
+    def resolve(self, code: str | None) -> Theme | None:
+        """Theme for ``code`` or the default, logging unknown codes (THM-3)."""
+        themes = self.all()
+        if code and code in themes:
+            return themes[code]
+        if code and code != DEFAULT_THEME:
+            log.warning("unknown theme code '%s'; falling back to %s", code, DEFAULT_THEME)
+        return themes.get(DEFAULT_THEME)
+
+
+registry = ThemeRegistry()

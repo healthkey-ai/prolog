@@ -1,8 +1,9 @@
-import { Navigate, Route, Routes } from "react-router";
+import { Navigate, Outlet, Route, Routes } from "react-router";
 import { useTranslation } from "react-i18next";
 import { CompletePage } from "./pages/CompletePage";
 import { IntroPage } from "./pages/IntroPage";
 import { WizardPage } from "./pages/WizardPage";
+import { ThemeProvider } from "./theme/ThemeProvider";
 
 function Home() {
   const { t } = useTranslation();
@@ -21,9 +22,18 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/s/:slug" element={<IntroPage />} />
-      <Route path="/s/:slug/q/:key" element={<WizardPage />} />
-      <Route path="/s/:slug/complete" element={<CompletePage />} />
+      <Route
+        path="/s/:slug"
+        element={
+          <ThemeProvider>
+            <Outlet />
+          </ThemeProvider>
+        }
+      >
+        <Route index element={<IntroPage />} />
+        <Route path="q/:key" element={<WizardPage />} />
+        <Route path="complete" element={<CompletePage />} />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -28,6 +28,7 @@ from ..models import (
     SurveyResponse,
 )
 from ..options import iso3166
+from ..themes import registry as theme_registry
 from .serializers import (
     AnswerSerializer,
     ContactSerializer,
@@ -90,7 +91,8 @@ class SurveyDefinitionView(APIView):
         if request.headers.get("If-None-Match") == etag:
             return Response(status=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
         payload = localize(definition, lang)
-        payload["theme_code"] = survey.theme_code or "default"
+        theme = theme_registry.resolve(survey.theme_code)
+        payload["theme_code"] = theme.code if theme else "default"
         payload["translation_status"] = definition.get("translation_status", {})
         return Response(payload, headers={"ETag": etag, "Cache-Control": "private, max-age=60"})
 
