@@ -142,6 +142,28 @@ def validate_theme(directory: Path) -> tuple[dict[str, Any], list[Issue]]:
     return data, issues
 
 
+def builtin_theme_dir() -> Path | None:
+    """The themes the app ships, if this is an installed copy.
+
+    `default` is part of the app's contract, not a deployment's choice: a
+    definition that names no theme falls back to it, and the health check calls
+    a deployment without it degraded. A source checkout finds it through
+    PROLOG_THEME_DIRS; a wheel carries it here.
+    """
+    packaged = Path(__file__).resolve().parent.parent / "themes_builtin"
+    return packaged if packaged.is_dir() else None
+
+
+def _theme_roots() -> list[Path]:
+    """Packaged themes first, then the deployment's — a deployment may override."""
+    roots = []
+    builtin = builtin_theme_dir()
+    if builtin is not None:
+        roots.append(builtin)
+    roots += [Path(p) for p in conf.get("PROLOG_THEME_DIRS")]
+    return roots
+
+
 class ThemeRegistry:
     def __init__(self) -> None:
         self._themes: dict[str, Theme] | None = None
@@ -152,7 +174,7 @@ class ThemeRegistry:
 
     def reload(self) -> dict[str, Theme]:
         themes: dict[str, Theme] = {}
-        for root in (Path(p) for p in conf.get("PROLOG_THEME_DIRS")):
+        for root in _theme_roots():
             if not root.is_dir():
                 log.warning("theme directory does not exist: %s", root)
                 continue

@@ -10,10 +10,10 @@ from django.http import FileResponse, Http404
 from django.urls import reverse
 from django.utils.cache import get_conditional_response
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from ..themes import registry
 from .throttles import ClientKeyThrottle
+from .views import RunnerView
 
 # Asset URLs in the theme document carry ``?v=<content hash>``; only that URL
 # may be cached without revalidation (THM-7: replacing a logo or font file and
@@ -34,7 +34,7 @@ def asset_version(file: Path) -> str:
     return _digest(str(file), st.st_mtime_ns, st.st_size)
 
 
-class ThemeView(APIView):
+class ThemeView(RunnerView):
     throttle_classes = [ClientKeyThrottle]
 
     def get(self, request, code: str):
@@ -54,7 +54,7 @@ class ThemeView(APIView):
         return Response(doc, headers={"Cache-Control": "public, max-age=300"})
 
 
-class ThemeAssetView(APIView):
+class ThemeAssetView(RunnerView):
     throttle_classes: list = []
 
     def get(self, request, code: str, path: str):
