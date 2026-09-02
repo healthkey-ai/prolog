@@ -5,14 +5,21 @@
 **Requirements:** [requirements.md](requirements.md) (IDs referenced below)  
 **Contracts:** [schema/survey-definition.schema.json](../schema/survey-definition.schema.json) · [schema/theme.schema.json](../schema/theme.schema.json) · [themes/default/theme.json](../themes/default/theme.json)
 
+
+> **How the backend gets there:** the phases below describe the runner as it should
+> be. The steps that move it from a standalone service into an app inside PRomop —
+> stack pins, app boundary, migrations, RUN-2, retiring the standalone profile —
+> are planned separately in [`promop-migration-plan.md`](promop-migration-plan.md).
+
 ## 1. Goal and shape of the work
 
 Ship a brand-neutral **survey runner** that executes any survey definition
 conforming to the schema in this repository, themed per customer at runtime,
-deployable standalone (own PostgreSQL) or inside PRomop. The first customer
-instrument is maintained in a private repository and is run by mounting its
-definition and theme into a PROlog deployment; nothing customer-specific is
-committed here.
+installed as a Django app **inside PRomop, which owns the database** (revision
+2026-08-31). Every response is bound to a PRomop `Person`; an email question
+turns that person into an account. The first customer instrument is maintained
+in a private repository and is run by mounting its definition and theme into a
+PROlog deployment; nothing customer-specific is committed here.
 
 The **designer/editor is the last phase**. Until it ships, survey authors edit
 definition JSON files, validate them with the CLI, and load them with a
@@ -24,14 +31,14 @@ Order of phases (each is independently mergeable to `dev`):
 
 | Phase | Deliverable | Requirement IDs |
 | --- | --- | --- |
-| 0 | Neutral scaffold, stack pins, deployment profiles, CI | DEP-1…6 |
+| 0 | Neutral scaffold, stack pins, PRomop-hosted deployment, CI | DEP-1…7 |
 | 1 | Definition schema, semantic validation, loader, versioning | DEF-1…9 |
-| 2 | Response engine API | RUN-1…5, RUN-14…19, Q-1…12, CON-3, CON-5, CON-6 |
+| 2 | Response engine API, incl. person binding on response create | RUN-1…5, RUN-14…19, Q-1…12, CON-3, CON-5…8 |
 | 3 | Runner core UI | RUN-6…13, THM-4 (token plumbing only) |
 | 4 | Complex question types | Q-4, Q-6, Q-7, RUN-16 |
 | 5 | Theming | THM-1…8 |
-| 6 | i18n, accessibility, export, hardening → first standalone launch | DEF-5, NFR-1…8 |
-| 7 | Integrated profile: participant link, identity capture, consent, repeat administration | DEP-2, CON-1, CON-2, CON-4, RUN-5 |
+| 6 | i18n, accessibility, export, hardening → first launch | DEF-5, NFR-1…8 |
+| 7 | Accounts: identity capture and account creation, consent, repeat administration | CON-1, CON-2, CON-4, CON-7, RUN-5 |
 | 8 | Designer and preview | Designer section |
 | 9 | Mapping review, concept search, OMOP write-back | Mapping section |
 
@@ -119,7 +126,7 @@ prolog/
 
 ### Phase 0 — Neutral scaffold and deployment profiles
 
-Goal: a clean, brand-free, correctly-pinned skeleton that runs standalone.
+Goal: a clean, brand-free, correctly-pinned skeleton that installs into PRomop.
 
 - Remove all customer references from the scaffold (`frontend/src/main.tsx`
   currently contains a named customer instrument; replace with a neutral
@@ -129,26 +136,31 @@ Goal: a clean, brand-free, correctly-pinned skeleton that runs standalone.
   cleanly inside PRomop without clashing.
 - Move to `pyproject.toml`/`uv`; pin the stack from §2; add
   `docker-compose.yml` (postgres:18) and a `Dockerfile` that builds the runner
-  and serves it from Django (`whitenoise`) so one image is a full standalone
-  deployment (DEP-5).
-- `conf.py`: `PROLOG_PROFILE = "standalone" | "integrated"`,
-  `PROLOG_PARTICIPANT_MODEL` (default `None`), `PROLOG_DEFINITION_DIRS`,
+  and serves it from Django (`whitenoise`). The image is PRomop with
+  `prolog_surveys` installed; the database in it is PRomop's (DEP-5). A
+  survey-only deployment is that same image configured to expose nothing but
+  the runner.
+- `conf.py`: `PROLOG_PARTICIPANT_MODEL` (PRomop `omop_core.Person`),
+  `PROLOG_PARTICIPANT_RESOLVER`, `PROLOG_PARTICIPANT_FACTORY` (creates the
+  unidentified `Person` for RUN-2), `PROLOG_DEFINITION_DIRS`,
   `PROLOG_THEME_DIRS`, `PROLOG_IDENTITY_SERVICE` (dotted path), throttling
   rates.
-- Participant FK: `SurveyResponse.participant` is created only when
-  `PROLOG_PARTICIPANT_MODEL` is set (pattern: `settings.AUTH_USER_MODEL`-style
-  string resolved at model definition time); migrations for the standalone
-  profile omit it. Integrated migrations are generated inside PRomop (DEP-2).
+- Participant FK: `SurveyResponse.participant` targets
+  `PROLOG_PARTICIPANT_MODEL` and is set on every response (DEP-2). The
+  development harness may point it at `auth.User` so the app's own test suite
+  runs without the full PRomop schema, but that is a test fixture, not a
+  deployment profile.
 - Frontend scaffold: Vite 8 + React 19 + TS 7 + Tailwind 4 (`@tailwindcss/vite`)
   + shadcn init + React Query + React Router + i18next. Strict TS, Vitest.
 - GitHub Actions (`.github/workflows/ci.yml`, mirrored by the `Makefile`):
   backend (ruff check/format, `makemigrations --check`, append-only
-  migrations guard, pytest with a Postgres service, in both profiles),
+  migrations guard, pytest with a Postgres service),
   frontend (tsc, vitest, build), Playwright e2e, schema validation of
   `examples/*.json` and `themes/*/theme.json`, and the neutrality guard.
 
 Acceptance: `docker compose up` serves the placeholder runner at `/` and
-`/api/health/`; CI green; no customer names in the repository.
+`/api/health/` from a PRomop database; creating a response creates the person
+it binds to; CI green; no customer names in the repository.
 
 ### Phase 1 — Definition schema, validation, loader
 
@@ -314,7 +326,7 @@ renders in Playwright with the expected computed styles; an invalid theme is
 rejected at registration; the default theme is used when a survey references
 an unknown code.
 
-### Phase 6 — i18n, accessibility, export, hardening → first standalone launch
+### Phase 6 — i18n, accessibility, export, hardening → first launch
 
 - Runner chrome strings in i18next for the default language plus the
   languages the first customer needs; theme `strings` overrides; `lang`
@@ -332,14 +344,21 @@ an unknown code.
   describes composing a customer deployment (image + definition dir + theme
   dir + env) and the promotion flow (draft → validate → activate).
 
-### Phase 7 — Integrated profile
+### Phase 7 — Accounts
 
-- `PROLOG_PARTICIPANT_MODEL` wired to PRomop `omop_core.Person`; migrations
-  generated inside PRomop; `account` resume mode.
+- `account` resume mode: a signed-in participant's in-progress response is
+  resumed rather than duplicated.
 - Identity capture (CON-4): `POST …/identity/` calls
   `PROLOG_IDENTITY_SERVICE` with an idempotency key derived from the response
-  id; links `participant`, sets `identity_linked_at`; never persists the
-  email; failure leaves the response anonymous.
+  id. The service creates or finds the account for the person the response is
+  **already** bound to (PRomop: `Identity` + `PatientUser` for that `Person`),
+  so nothing is re-parented and no answer moves. Sets `identity_linked_at`;
+  never persists the email; failure leaves the person unidentified and the
+  response submittable.
+- Verification posture for a freshly created account (requirements open
+  decision #6): the address is unverified until confirmed, and no existing
+  data is exposed to it before then. This is the guard against a participant
+  typing someone else's address.
 - Consent attestation and re-consent (CON-1, CON-2).
 - Invitations and repeat administration (RUN-5): `SurveyInvitation`,
   `SurveyAdministration`, scheduler command, email templates (themeable).

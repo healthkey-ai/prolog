@@ -1,6 +1,15 @@
-# Integrated profile (installing PROlog in a host platform)
+# Installing PROlog in a host platform
 
-**Requirements:** DEP-1, DEP-2, CON-1, CON-2, CON-4, RUN-3, RUN-5. Standalone deployment is described in [deployment.md](deployment.md).
+> **Design revision 2026-08-31.** This is no longer one profile among two — it
+> is how PROlog is deployed. **PRomop owns the database**; PROlog contributes
+> its tables to PRomop's schema and holds nothing of its own. Every response is
+> bound to a `Person` (created without identifying attributes when the
+> participant is not signed in), and identity capture creates a real account for
+> that person rather than a separate contact row. See
+> [requirements.md](requirements.md) "Changes in this revision"; the
+> settings and migration mechanics below are unchanged by it.
+
+**Requirements:** DEP-1, DEP-2, DEP-7, CON-1, CON-2, CON-4, CON-7, CON-8, RUN-2, RUN-3, RUN-5. Operating a deployment: [deployment.md](deployment.md).
 
 In the integrated profile the `prolog_surveys` app is installed inside a
 host Django project (for example PRomop) that provides participant
@@ -105,10 +114,24 @@ from prolog_surveys.identity import IdentityRequest, IdentityResult, IdentitySer
 
 class IdentityService:
     def create_or_link(self, request: IdentityRequest) -> IdentityResult:
-        # request.email, request.idempotency_key (stable per response), request.survey_slug, request.language
-        person = create_or_find_person(email=request.email, idempotency_key=request.idempotency_key)
-        return IdentityResult(participant_pk=person.pk)
+        # request.email, request.idempotency_key (stable per response),
+        # request.participant_pk (the Person the response is already bound to),
+        # request.survey_slug, request.language
+        account = create_or_find_account(email=request.email,
+                                         person_id=request.participant_pk,
+                                         idempotency_key=request.idempotency_key)
+        return IdentityResult(participant_pk=account.person_id)
 ```
+
+In PRomop this creates an `Identity` and a `PatientUser` for the existing
+`Person`, promoting it from unidentified to identified **in place** — no answer
+is re-parented and no second person record appears. Returning a different
+`participant_pk` than the one passed in means the host matched the address to an
+existing person; PROlog re-points the response, which is the one case where a
+response changes hands. Treat a freshly created account's address as unverified
+until confirmed and expose no pre-existing data to it before then (requirements
+open decision #6): a participant can always mistype, or type, someone else's
+address.
 
 Guarantees: the email is never written to any PROlog table, log or API
 payload; the call is idempotent per response (a retry reuses the same

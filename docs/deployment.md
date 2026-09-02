@@ -1,6 +1,17 @@
-# Deploying PROlog (standalone profile)
+# Deploying PROlog
 
-**Requirements:** DEP-1…DEP-6, NFR-1, NFR-5 in [requirements.md](requirements.md). For the integrated profile (inside PRomop) see [implementation-plan.md](implementation-plan.md) Phase 7.
+> **Design revision 2026-08-31 — read this first.** PROlog is becoming a Django
+> app inside **PRomop, which owns the database**: no PROlog datastore, every
+> response bound to a PRomop `Person`, and an email question that creates a
+> patient account rather than a mailing-list row. See
+> [requirements.md](requirements.md) "Changes in this revision".
+>
+> **The code still ships the two profiles this page documents.** Everything
+> below is accurate for the current release and stays supported until the
+> phase 0/2 work lands; what changes then is that `PROLOG_PROFILE` and the
+> standalone schema go away, not how definitions and themes are mounted.
+
+**Requirements:** DEP-1…DEP-7, NFR-1, NFR-5 in [requirements.md](requirements.md). Installing inside a host platform: [integration.md](integration.md).
 
 ## What a deployment is
 
@@ -60,7 +71,7 @@ Any wording or structure change after activation requires a **new
 | `SECRET_KEY`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `PROLOG_PUBLIC_URL` | Django/CORS basics and the public origin used in links |
 | `DEBUG` | `false` unless set to `true`. The image sets `DEBUG=false`; a bare-host install should set it too. `manage.py` uses the development settings (`DEBUG` on, development key accepted) only while *neither* `DEBUG` nor `SECRET_KEY` is in the environment, so a cron job that exports `SECRET_KEY` runs with production settings; `pytest` always uses `prolog.settings_dev` |
 | `POSTGRES_*` | database connection (no SQLite fallback). `POSTGRES_PASSWORD` has no default in the compose file: it must be set in `.env` |
-| `PROLOG_PROFILE` | `standalone` (default) or `integrated` |
+| `PROLOG_PROFILE` | `standalone` (default) or `integrated`. Being retired: the 2026-08-31 revision makes PRomop-hosted the only shape. |
 | `PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS` | path-separated directory lists |
 | `PROLOG_THROTTLE_CREATE/CAPTURE/ANSWER/READ/WRITE` | throttle rates per hashed client address (create `30/hour`, contact/identity capture `30/hour`, answer `600/hour` per response, read `1200/hour`, answer/submit writes `3000/hour` per client). Behind NAT (clinic Wi-Fi, mobile carriers) many participants share one address: raise `CREATE`/`CAPTURE` (and `WRITE`, which counts every participant's saves) accordingly |
 | `CACHE_BACKEND`, `CACHE_LOCATION` | where throttle counters live. Default: an in-process cache, so each gunicorn worker counts separately and every rate is effectively multiplied by `WEB_CONCURRENCY`. For exact limits use a cache shared by all workers, e.g. `CACHE_BACKEND=django.core.cache.backends.redis.RedisCache CACHE_LOCATION=redis://cache:6379/1` |
