@@ -9,10 +9,10 @@ response is bound to a PRomop `Person`, and a participant who gives an email
 gets an account. A **designer** for authoring instruments is the final phase.
 
 - Requirements: [docs/requirements.md](docs/requirements.md)
-| Administrator's manual — how surveys work and how to publish one | [`docs/administration.md`](docs/administration.md) |
 - Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
 - Deployment and operations: [docs/deployment.md](docs/deployment.md)
 - Installing in a host platform: [docs/integration.md](docs/integration.md)
+- Running surveys (administrator's manual): [docs/administration.md](docs/administration.md)
 - Manuals: [survey definition](docs/definitions/survey-definition.md) · [theme](docs/definitions/theme-definition.md)
 - Working agreements: [CLAUDE.md](CLAUDE.md)
 
