@@ -17,6 +17,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -212,7 +213,22 @@ def _response_payload(
     return data
 
 
-class SurveyDefinitionView(APIView):
+class RunnerView(APIView):
+    """Base for the participant-facing endpoints.
+
+    These are deliberately unauthenticated: a survey is answered by whoever
+    holds the link, and for an in-progress response the id *is* the credential
+    (RUN-1). That has to be stated here rather than inherited from the
+    project's DEFAULT_PERMISSION_CLASSES, because the app is installed into a
+    host whose default is its own — PRomop's is IsAuthenticated, which turns
+    every one of these into a 401. Authorization for a specific response is
+    enforced per view, from the response id and the invitation, not by DRF.
+    """
+
+    permission_classes = [AllowAny]
+
+
+class SurveyDefinitionView(RunnerView):
     throttle_classes = [ClientKeyThrottle]
 
     @method_decorator(ensure_csrf_cookie)
@@ -264,7 +280,7 @@ def _language_tag(raw: str) -> str:
     return lang
 
 
-class OptionsSourceView(APIView):
+class OptionsSourceView(RunnerView):
     throttle_classes = [ClientKeyThrottle]
 
     def get(self, request, source: str):
@@ -278,7 +294,7 @@ class OptionsSourceView(APIView):
         )
 
 
-class ResponseCreateView(APIView):
+class ResponseCreateView(RunnerView):
     throttle_classes = [CreateThrottle]
 
     @transaction.atomic
@@ -415,7 +431,7 @@ class ResponseMixin:
         return response
 
 
-class ResponseDetailView(ResponseMixin, APIView):
+class ResponseDetailView(ResponseMixin, RunnerView):
     throttle_classes = [ClientKeyThrottle]
 
     def get(self, request, response_id):
@@ -461,7 +477,7 @@ def _answer_result(
     }
 
 
-class AnswerView(ResponseMixin, APIView):
+class AnswerView(ResponseMixin, RunnerView):
     # Per response *and* per client: the per-response bucket is fresh for every
     # (random) id, so on its own it would bound nothing.
     throttle_classes = [ResponseThrottle, WriteThrottle]
@@ -544,7 +560,7 @@ class AnswerView(ResponseMixin, APIView):
         )
 
 
-class SubmitView(ResponseMixin, APIView):
+class SubmitView(ResponseMixin, RunnerView):
     throttle_classes = [ResponseThrottle, WriteThrottle]
 
     @transaction.atomic
@@ -589,7 +605,7 @@ def _mark_provided(response: SurveyResponse, key: str) -> None:
 # and the frames beneath it in Django's error reports, and the storage steps
 # are wrapped so no exception carrying the address escapes as an unhandled 500.
 @method_decorator(sensitive_post_parameters("email"), name="dispatch")
-class ContactView(ResponseMixin, APIView):
+class ContactView(ResponseMixin, RunnerView):
     """Contact capture (CON-3): the address is stored with no link to the response.
 
     The address is kept out of error reports (CON-3/4) should anything raise.
@@ -637,7 +653,7 @@ class ContactView(ResponseMixin, APIView):
 
 
 @method_decorator(sensitive_post_parameters("email"), name="dispatch")
-class IdentityView(ResponseMixin, APIView):
+class IdentityView(ResponseMixin, RunnerView):
     """Identity capture (CON-4): the email goes to the host platform's identity service only."""
 
     # The per-client capture budget also caps how often a failing identity service

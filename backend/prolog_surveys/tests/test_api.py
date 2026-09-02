@@ -671,3 +671,22 @@ def test_admin_keeps_loader_owned_survey_fields_readonly(active, rf):
     readonly = set(SurveyAdmin(Survey, site).get_readonly_fields(request, active.survey))
     assert {"slug", "title", "theme_code", "allow_anonymous_participation"} <= readonly
     assert not {"effective_from", "effective_to"} & readonly
+
+
+def test_runner_endpoints_do_not_inherit_a_host_default_permission(settings, api_client, active):
+    # The app is installed into a host whose DEFAULT_PERMISSION_CLASSES is its
+    # own; PRomop's is IsAuthenticated. The runner must still answer, because a
+    # participant is never signed in (RUN-1).
+    from rest_framework.test import APIClient
+
+    settings.REST_FRAMEWORK = {
+        **settings.REST_FRAMEWORK,
+        "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    }
+    anonymous = APIClient()
+    r = anonymous.get("/api/run/surveys/sample-wellbeing/?lang=en")
+    assert r.status_code == 200, r.status_code
+    r = anonymous.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+    assert r.status_code == 201, r.status_code
