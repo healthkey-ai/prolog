@@ -12,6 +12,7 @@ gets an account. A **designer** for authoring instruments is the final phase.
 - Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
 - Deployment and operations: [docs/deployment.md](docs/deployment.md)
 - Installing in a host platform: [docs/integration.md](docs/integration.md)
+- Running surveys (administrator's manual): [docs/administration.md](docs/administration.md)
 - Manuals: [survey definition](docs/definitions/survey-definition.md) · [theme](docs/definitions/theme-definition.md)
 - Working agreements: [CLAUDE.md](CLAUDE.md)
 

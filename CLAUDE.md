@@ -14,6 +14,7 @@ comes last. This repository is **public**.
 - `schema/survey-definition.schema.json` — the survey definition contract
 - `schema/theme.schema.json` — the runner theme contract; `themes/default/` is the neutral theme
 - `docs/definitions/survey-definition.md`, `docs/definitions/theme-definition.md` — field-by-field manuals for both contracts
+- `docs/administration.md` — the administrator's manual: how surveys work, and how to publish one
 
 ## Hard rules
 
