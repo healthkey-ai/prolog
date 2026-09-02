@@ -55,8 +55,14 @@ Everything else PROlog touches predates 5.2 by years. The DRF surface in use is
 all present and unchanged in 3.15.2. `STORAGES` is 4.2+. Nothing uses `db_default`,
 `GeneratedField`, `LoginRequiredMiddleware`, `CompositePrimaryKey`, or the template-partials work.
 
-**Pins become PRomop's:** `Django==5.2.6`, `djangorestframework==3.15.2`,
-`django-cors-headers==4.4.0`, `whitenoise==6.7.0`. `psycopg` already agrees (3.3.x both sides).
+**Ranges, not pins.** The app must *accept* what PRomop pins rather than pin against it: an exact
+pin fails resolution the moment the host takes a patch release, which happened within a day —
+PRomop moved 5.2.6 → 5.2.17 and DRF 3.15.2 → 3.17.2 while this was being written, and
+`Django==5.2.6` in the app made its image unbuildable. So: `Django>=5.2.6,<6.0`,
+`djangorestframework>=3.15.2,<4`, `django-cors-headers>=4.4,<5`, `whitenoise>=6.7,<7` — wide enough
+for the host to move, narrow enough to exclude the majors the app has not been run on. `psycopg`
+already agrees (3.3.x both sides). Both ends of the range are tested, so "compatible" is a claim
+with a run behind it rather than a range someone guessed.
 
 **And PRomop's Python.** Its image is `python:3.12-slim`, so `requires-python` is `>=3.12`, not
 `>=3.13` — pip refuses the wheel outright otherwise (`Package 'prolog' requires a different Python:
