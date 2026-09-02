@@ -44,6 +44,7 @@ packages = ["prolog_surveys"]
 # source of truth and no second copy to drift.
 [tool.hatch.build.targets.wheel.force-include]
 "../schema" = "prolog_surveys/schema"
+"../themes" = "prolog_surveys/themes_builtin"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "prolog.settings_dev"
