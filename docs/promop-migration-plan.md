@@ -257,10 +257,13 @@ Last, because everything above must work first.
   mapping is a "coming soon" card (PRomop #902, #903). When it is built, one existing constraint
   applies: wearable-style provenance types rows 32865 "Patient self-report", never 32883 "Survey",
   after that mislabelling caused a real defect.
-- **PRomop's existing survey feature.** `Survey` and `PatientSurveyResponse` shipped as PHR-S FM
-  phase 4a and are claimed as conformant PH.2.1. Whether PROlog replaces them, and what that does to
-  the conformance claim, blocks nothing in M0–M4 — but until it is answered PRomop has two survey
-  data models in one database, and that should be a recorded decision rather than a state of affairs.
+- **PRomop's existing survey feature is to be retired** (open decision 9, 2026-09-02). `Survey` and
+  `PatientSurveyResponse` shipped as PHR-S FM phase 4a; PROlog replaces them. That is an M5 in its
+  own right and blocks nothing in M0–M4, but it has two parts that need planning rather than
+  discovering: existing responses need a migration path — the two models do not have the same shape,
+  since PRomop's is a flat `values` map against a mutable template and PROlog's is answer rows
+  against an immutable version — and PRomop's **PH.2.1 conformance claim** currently rests on the
+  feature being retired, so it has to be re-examined against this one before the claim is restated.
 
 ---
 
