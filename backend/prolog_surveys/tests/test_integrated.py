@@ -44,13 +44,25 @@ def linked_definition():
     return doc
 
 
+@pytest.fixture
+def _minting(settings):
+    """A host that mints a participant for every response, as PRomop does."""
+    from django.contrib.auth.models import User
+
+    settings.PROLOG_PARTICIPANT_FACTORY = "prolog_surveys.tests.test_integrated._mint"
+    globals()["_mint"] = lambda: User.objects.create(username=f"respondent-{User.objects.count()}")
+    return settings
+
+
 @pytest.mark.django_db
 def test_participant_field_exists():
     assert any(f.name == "participant" for f in SurveyResponse._meta.get_fields())
 
 
 @pytest.mark.django_db
-def test_identity_capture_links_participant(api_client, identity_service, linked_definition):
+def test_identity_capture_links_participant(
+    api_client, identity_service, linked_definition, _minting
+):
     load_definition(linked_definition, activate=True)
     rid = api_client.post(
         "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
@@ -299,7 +311,7 @@ class LockProbeService:
 
     row_locked: bool | None = None
 
-    def create_or_link(self, request):
+    def attach_account(self, request):
         from django.db import OperationalError, connections
 
         conn = connections.create_connection("default")
@@ -313,15 +325,14 @@ class LockProbeService:
                     LockProbeService.row_locked = True
         finally:
             conn.close()
-        user, _ = get_user_model().objects.get_or_create(username="probe")
         from prolog_surveys.identity import IdentityResult
 
-        return IdentityResult(participant_pk=user.pk)
+        return IdentityResult(linked=True)
 
 
 @pytest.mark.django_db(transaction=True)
 def test_identity_service_is_called_without_the_response_lock(
-    api_client, settings, linked_definition
+    api_client, settings, linked_definition, _minting
 ):
     """The host's service is an out-of-process call of unknown latency: it
     must not pin the response row lock (and the connection) for its duration,
@@ -447,3 +458,102 @@ def test_without_a_factory_a_response_is_still_created(settings, api_client, lin
     assert r.status_code == 201
     assert SurveyResponse.objects.get(pk=r.json()["id"]).participant_id is None
     assert not MintedParticipant.objects.exists()
+
+
+@pytest.mark.django_db
+def test_identity_capture_promotes_the_participant_in_place(
+    api_client, identity_service, linked_definition, _minting
+):
+    """CON-4: the participant the response already had gains an account."""
+    from prolog_surveys.models import MintedParticipant
+
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    before = SurveyResponse.objects.get(pk=rid).participant_id
+
+    r = api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "someone@example.org"}, format="json"
+    )
+
+    assert r.status_code == 204
+    response = SurveyResponse.objects.get(pk=rid)
+    assert response.participant_id == before, "promotion is in place; no answer moves"
+    assert response.identity_linked_at is not None
+    assert fake_identity.CALLS[-1].participant_pk == before, "the service is told who to promote"
+    marker = MintedParticipant.objects.get(participant_id=before)
+    assert marker.identified_at is not None, "no longer an unclaimed respondent"
+
+
+@pytest.mark.django_db
+def test_an_address_belonging_to_someone_else_attaches_nothing(
+    api_client, identity_service, linked_definition, _minting, django_user_model
+):
+    """Open decision 7: record the pair, attach nothing, tell the respondent nothing."""
+    from prolog_surveys.models import MintedParticipant, ParticipantMergeCandidate
+
+    owner = django_user_model.objects.create(username="the-real-owner")
+    fake_identity.TAKEN.clear()
+    fake_identity.TAKEN["taken@example.org"] = owner.pk
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    minted = SurveyResponse.objects.get(pk=rid).participant_id
+
+    r = api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "taken@example.org"}, format="json"
+    )
+
+    # Same 204 as success: saying the address is registered would leak that it is.
+    assert r.status_code == 204
+    response = SurveyResponse.objects.get(pk=rid)
+    assert response.participant_id == minted, "the response stays where it was"
+    assert response.identity_linked_at is None, "nothing was linked"
+    assert MintedParticipant.objects.get(participant_id=minted).identified_at is None
+    candidate = ParticipantMergeCandidate.objects.get()
+    assert (candidate.minted_id, candidate.existing_id) == (minted, owner.pk)
+    assert candidate.resolved_at is None
+    fake_identity.TAKEN.clear()
+
+
+@pytest.mark.django_db
+def test_identity_capture_is_not_repeated_for_a_linked_response(
+    api_client, identity_service, linked_definition, _minting
+):
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "someone@example.org"}, format="json"
+    )
+    calls = len(fake_identity.CALLS)
+
+    r = api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "someone@example.org"}, format="json"
+    )
+
+    assert r.status_code == 204
+    assert len(fake_identity.CALLS) == calls, "the host is not asked twice for one response"
+
+
+@pytest.mark.django_db
+def test_identity_capture_without_a_participant_factory_is_unavailable(
+    api_client, identity_service, linked_definition
+):
+    """Nothing to promote: capture needs the participant the response already has."""
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    calls = len(fake_identity.CALLS)
+
+    r = api_client.post(
+        f"/api/run/responses/{rid}/identity/", {"email": "someone@example.org"}, format="json"
+    )
+
+    assert r.status_code == 503
+    assert len(fake_identity.CALLS) == calls, "the host is not asked to promote nobody"
+    assert SurveyResponse.objects.get(pk=rid).identity_linked_at is None

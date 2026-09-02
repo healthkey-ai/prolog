@@ -39,6 +39,7 @@ from ..invitations import takes_invitations, version_for
 from ..models import (
     LifecycleStatus,
     MintedParticipant,
+    ParticipantMergeCandidate,
     ResponseStatus,
     Survey,
     SurveyAdministration,
@@ -694,15 +695,31 @@ class IdentityView(ResponseMixin, RunnerView):
         service = get_identity_service()
         if service is None:
             raise NotFound("no identity service is configured")
-        result = None
         if response.participant_id_or_none is None:
+            # CON-4 promotes the participant the response already has (RUN-2).
+            # With none there is nobody to promote, which means the deployment
+            # configured identity capture without a participant factory.
+            log.error(
+                "identity capture for response %s has no participant to promote; "
+                "PROLOG_PARTICIPANT_FACTORY is not configured",
+                response.id,
+            )
+            return Response(
+                {"detail": "identity capture unavailable; you can still submit anonymously"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        result = None
+        # Already linked: the marker answer makes a repeat harmless, and the
+        # service must not be asked twice for the same response.
+        if response.identity_linked_at is None:
             try:
-                result = service.create_or_link(
+                result = service.attach_account(
                     IdentityRequest(
                         email=ser.validated_data["email"],
                         idempotency_key=idempotency_key(response.id),
                         survey_slug=response.survey_version.survey.slug,
                         language=response.language,
+                        participant_pk=response.participant_id_or_none,
                     )
                 )
             except Exception as exc:
@@ -722,9 +739,31 @@ class IdentityView(ResponseMixin, RunnerView):
                 )
         with transaction.atomic():
             response = self.writable(response_id)
-            if result is not None and response.participant_id_or_none is None:
-                response.participant_id = result.participant_pk
-                response.identity_linked_at = timezone.now()
-                response.save(update_fields=["participant", "identity_linked_at", "updated_at"])
+            if result is not None and response.identity_linked_at is None:
+                if result.linked:
+                    # The participant the response already had now has an
+                    # account: promoted in place, so no answer moves.
+                    response.identity_linked_at = timezone.now()
+                    response.save(update_fields=["identity_linked_at", "updated_at"])
+                    MintedParticipant.objects.filter(
+                        participant_id=response.participant_id_or_none,
+                        identified_at__isnull=True,
+                    ).update(identified_at=response.identity_linked_at)
+                elif result.conflicting_participant_pk is not None:
+                    # The address belongs to somebody else (decision 7). Record
+                    # the pair and attach nothing.
+                    ParticipantMergeCandidate.objects.get_or_create(
+                        minted_id=response.participant_id_or_none,
+                        existing_id=result.conflicting_participant_pk,
+                        resolved_at=None,
+                    )
+                    log.info(
+                        "identity capture for response %s names another participant; "
+                        "recorded a merge candidate and attached nothing",
+                        response.id,
+                    )
+            # Either way the participant answered the question, and either way
+            # they may submit (CON-7). They are told nothing about the conflict:
+            # saying an address is already registered would leak that it is.
             _mark_provided(response, question["key"])
         return Response(status=status.HTTP_204_NO_CONTENT)

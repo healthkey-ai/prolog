@@ -1,7 +1,10 @@
-"""Identity capture for anonymous surveys in the integrated profile (CON-4).
+"""Identity capture (CON-4): an email question gives a participant an account.
 
-The host platform provides a service that turns a consented email into a
-participant record; PROlog only ever stores the resulting participant link.
+The response is already bound to a participant (RUN-2). The host's service is
+asked to give *that* participant an account, so the person is promoted in place
+and no answer moves. PROlog never stores the address — only that a link
+happened, and, where the address turned out to belong to somebody else, the two
+participant ids a human needs to reconcile them.
 """
 
 from __future__ import annotations
@@ -20,22 +23,36 @@ class IdentityRequest:
     idempotency_key: str
     survey_slug: str
     language: str
+    # The participant the response is already bound to. The service gives *this*
+    # record an account rather than returning one of its own choosing.
+    participant_pk: Any
 
 
 @dataclass(frozen=True)
 class IdentityResult:
-    participant_pk: Any
+    """What the host did with the address.
+
+    ``linked``: the participant in the request now has an account.
+
+    Not linked, with ``conflicting_participant_pk`` set: the address already
+    belongs to a different participant (open decision 7). Nothing is attached —
+    joining two participant records is a clinical-safety decision, not a survey
+    side effect — and the pair is recorded for a human to reconcile.
+    """
+
+    linked: bool
+    conflicting_participant_pk: Any | None = None
 
 
 class IdentityService(Protocol):
-    def create_or_link(self, request: IdentityRequest) -> IdentityResult: ...
+    def attach_account(self, request: IdentityRequest) -> IdentityResult: ...
 
 
 class IdentityServiceError(Exception):
-    """Raised by a service when the participant record cannot be created.
+    """Raised by a service when the account cannot be created.
 
-    Any other exception escaping ``create_or_link`` is treated the same way
-    (503, response stays anonymous); only its class name is logged.
+    Any other exception escaping ``attach_account`` is treated the same way
+    (503, the participant stays unidentified); only its class name is logged.
     """
 
 
