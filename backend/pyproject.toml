@@ -5,13 +5,16 @@ description = "PROlog — generic survey runner and designer for patient-reporte
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
-    "Django>=6.1,<6.2",
-    "djangorestframework>=3.18,<3.19",
-    "django-cors-headers>=4.9,<5",
+    # The backend runs inside PRomop's process, so it takes PRomop's pins
+    # (Django 5.2.6, DRF 3.15.2, cors 4.4.0, whitenoise 6.7.0) rather than the
+    # latest stable. See docs/promop-migration-plan.md M0.
+    "Django==5.2.6",
+    "djangorestframework==3.15.2",
+    "django-cors-headers==4.4.0",
     "psycopg[binary]>=3.3,<4",
     "jsonschema>=4.26,<5",
     "pycountry>=24.6",
-    "whitenoise>=6.9",
+    "whitenoise==6.7.0",
     "gunicorn>=23",
 ]
 

@@ -62,9 +62,11 @@ all present and unchanged in 3.15.2. `STORAGES` is 4.2+. Nothing uses `db_defaul
 the backend: PROlog's backend follows PRomop's pins, because it runs in PRomop's process. The
 front end keeps its own stack — it is built, not imported, and shares no runtime with PRomop.
 
-> **Not verified by execution.** The static surface above is exhaustive as far as grep reaches, but
-> the package index available while writing this caps at Django 4.2.30, so the suite has not actually
-> been run against 5.2.6. Doing that is the first task of M0 and the gate on the rest.
+> **Verified 2026-09-02.** The pins were taken, the mail API ported, and the full backend suite run
+> against Django 5.2.6 / DRF 3.15.2 / cors 4.4.0 / whitenoise 6.7.0 — PRomop's exact versions — in
+> both the standalone and the `auth.User` harness profiles. Both green, no other change needed.
+> `make lint` (ruff, format, `makemigrations --check`, the append-only guard) is clean, so the
+> downgrade produced no migration drift.
 
 ---
 
