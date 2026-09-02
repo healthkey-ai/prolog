@@ -313,6 +313,45 @@ class MintedParticipant(models.Model):
         return f"minted participant {getattr(self, 'participant_id', None)}"
 
 
+class ParticipantMergeCandidate(models.Model):
+    """Two participant records a human may need to reconcile (CON-4, decision 7).
+
+    Written when a respondent gives an address that already belongs to a
+    different participant. Nothing is attached: the response stays with the
+    participant it was minted for, because joining two patient records is a
+    clinical-safety decision and a confirmed address is not proof that two
+    records are the same person.
+
+    It holds the two ids and nothing else — never the address, which PROlog does
+    not store (CON-4). The host has the address already; this says which pair to
+    look at.
+    """
+
+    if PARTICIPANT_MODEL:
+        minted = models.ForeignKey(
+            PARTICIPANT_MODEL,
+            on_delete=models.CASCADE,
+            related_name="prolog_merge_candidates",
+            help_text="The participant the response is bound to.",
+        )
+        existing = models.ForeignKey(
+            PARTICIPANT_MODEL,
+            on_delete=models.CASCADE,
+            related_name="prolog_merge_claims",
+            help_text="The participant the address already belongs to.",
+        )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(
+        null=True, blank=True, help_text="When a human settled this pair."
+    )
+
+    class Meta:
+        indexes = [models.Index(fields=["resolved_at"])]
+
+    def __str__(self) -> str:  # pragma: no cover - admin/debug convenience
+        return f"merge candidate {getattr(self, 'minted_id', None)}/{getattr(self, 'existing_id', None)}"
+
+
 class SurveyAnswer(models.Model):
     """Authoritative raw answer for one question (Q-1…Q-12)."""
 

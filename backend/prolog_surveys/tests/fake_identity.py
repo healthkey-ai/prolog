@@ -6,15 +6,22 @@ from prolog_surveys.identity import IdentityRequest, IdentityResult, IdentitySer
 
 CALLS: list[IdentityRequest] = []
 
+#: Addresses this fake treats as already belonging to somebody else. Maps the
+#: address to the participant pk that owns it (open decision 7).
+TAKEN: dict[str, object] = {}
+
 
 class FakeIdentityService:
-    def create_or_link(self, request: IdentityRequest) -> IdentityResult:
+    def attach_account(self, request: IdentityRequest) -> IdentityResult:
         CALLS.append(request)
         if request.email.endswith("@fail.example"):
             raise IdentityServiceError("upstream down")
         if request.email.endswith("@crash.example"):
             raise RuntimeError("unwrapped transport error")
-        user, _ = get_user_model().objects.get_or_create(
-            username=f"p-{request.idempotency_key[:12]}", defaults={"email": ""}
+        if request.email in TAKEN:
+            return IdentityResult(linked=False, conflicting_participant_pk=TAKEN[request.email])
+        # The account is attached to the participant the caller already has.
+        get_user_model().objects.filter(pk=request.participant_pk).update(
+            username=f"identified-{request.idempotency_key[:12]}"
         )
-        return IdentityResult(participant_pk=user.pk)
+        return IdentityResult(linked=True)
