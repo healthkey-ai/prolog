@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, mailers
+from django.core.mail import EmailMultiAlternatives, get_connection
 from django.db.models import Q
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -253,7 +253,7 @@ def send_pending() -> int:
         for v in SurveyVersion.objects.filter(status=LifecycleStatus.ACTIVE).defer("definition")
     }
     skipped_anonymous: set[str] = set()
-    mailer = mailers.default
+    mailer = get_connection()
     with mailer:  # one mail session for the whole batch
         for administration in pending:
             survey = administration.invitation.survey

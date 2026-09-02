@@ -202,13 +202,7 @@ PROLOG_NUM_PROXIES = REST_FRAMEWORK["NUM_PROXIES"]
 if PROLOG_NUM_PROXIES > 0:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-MAILERS = {
-    "default": {
-        "BACKEND": os.environ.get(
-            "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
-        ),
-    }
-}
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 
 if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000

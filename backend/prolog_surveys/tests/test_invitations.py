@@ -301,8 +301,6 @@ def test_one_failed_email_does_not_stop_the_batch(monkeypatch, caplog):
 def test_unsent_message_is_not_marked_sent(monkeypatch, caplog):
     # A backend that reports 0 sent without raising must leave the
     # administration pending so the next run retries it.
-    import types
-
     class _ZeroMailer:
         def __enter__(self):
             return self
@@ -313,7 +311,7 @@ def test_unsent_message_is_not_marked_sent(monkeypatch, caplog):
         def send_messages(self, messages):
             return 0
 
-    monkeypatch.setattr(invitations, "mailers", types.SimpleNamespace(default=_ZeroMailer()))
+    monkeypatch.setattr(invitations, "get_connection", lambda *a, **kw: _ZeroMailer())
     version = load_definition(definition(), activate=True).version
     SurveyInvitation.objects.create(survey=version.survey, email="p@example.org")
     schedule_due(dt.date(2026, 1, 1))
