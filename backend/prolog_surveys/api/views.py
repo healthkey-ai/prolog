@@ -32,11 +32,13 @@ from ..identity import (
     IdentityServiceError,
     get_identity_service,
     idempotency_key,
+    mint_participant,
     resolve_participant,
 )
 from ..invitations import takes_invitations, version_for
 from ..models import (
     LifecycleStatus,
+    MintedParticipant,
     ResponseStatus,
     Survey,
     SurveyAdministration,
@@ -365,7 +367,19 @@ class ResponseCreateView(RunnerView):
                 fields["participant_id"] = invited
         elif participant is not None:
             fields["participant_id"] = participant
+        minted = None
+        if "participant_id" not in fields:
+            # RUN-2: a response belongs to a participant even when nobody is
+            # signed in. The host mints a record carrying nothing that could
+            # name the respondent; unset, this is a no-op and the response is
+            # created unbound as before.
+            minted = mint_participant()
+            if minted is not None:
+                fields["participant_id"] = minted
         response = SurveyResponse.objects.create(**fields)
+        if minted is not None:
+            # So the host can tell a respondent from a patient in its own tables.
+            MintedParticipant.objects.create(participant_id=minted)
         if agreed:
             text = pick(consent_cfg["text"], lang, definition["default_language"])
             SurveyConsent.objects.create(

@@ -53,6 +53,21 @@ def idempotency_key(response_id: Any) -> str:
     return conf.salted_hash("identity", str(response_id))
 
 
+def mint_participant() -> Any | None:
+    """A participant record for a respondent nobody can name yet (RUN-2).
+
+    The host's factory decides what that record is; in PRomop it is a `Person`
+    with no identity and no demographics. Returns its pk, or None when no
+    factory is configured — a deployment that has not opted in keeps creating
+    responses with no participant, as it does today.
+    """
+    path = conf.get("PROLOG_PARTICIPANT_FACTORY")
+    if not path:
+        return None
+    minted = import_string(path)()
+    return getattr(minted, "pk", minted)
+
+
 def resolve_participant(request) -> Any | None:
     """Participant pk for an authenticated request (account surveys)."""
     path = conf.get("PROLOG_PARTICIPANT_RESOLVER")
