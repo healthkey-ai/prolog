@@ -58,6 +58,13 @@ all present and unchanged in 3.15.2. `STORAGES` is 4.2+. Nothing uses `db_defaul
 **Pins become PRomop's:** `Django==5.2.6`, `djangorestframework==3.15.2`,
 `django-cors-headers==4.4.0`, `whitenoise==6.7.0`. `psycopg` already agrees (3.3.x both sides).
 
+**And PRomop's Python.** Its image is `python:3.12-slim`, so `requires-python` is `>=3.12`, not
+`>=3.13` — pip refuses the wheel outright otherwise (`Package 'prolog' requires a different Python:
+3.12.14 not in '>=3.13'`). The suite passes on 3.12 unchanged; the ruff target moves with it.
+
+**The image needs `git`.** PRomop installs the app from the public repository by commit, and
+`python:3.12-slim` ships without git, so the build stage has to add it.
+
 **Policy change to record in `CLAUDE.md`.** "Always the latest stable releases" no longer applies to
 the backend: PROlog's backend follows PRomop's pins, because it runs in PRomop's process. The
 front end keeps its own stack — it is built, not imported, and shares no runtime with PRomop.
