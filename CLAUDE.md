@@ -10,6 +10,7 @@ comes last. This repository is **public**.
 
 - `docs/requirements.md` — numbered requirements (DEP/DEF/RUN/Q/CON/THM/NFR ids)
 - `docs/implementation-plan.md` — phases, stack, layout, testing strategy
+- `docs/promop-migration-plan.md` — how the backend moves into PRomop (M0–M4), and the proposed RUN-2 primitive
 - `schema/survey-definition.schema.json` — the survey definition contract
 - `schema/theme.schema.json` — the runner theme contract; `themes/default/` is the neutral theme
 - `docs/definitions/survey-definition.md`, `docs/definitions/theme-definition.md` — field-by-field manuals for both contracts
@@ -70,9 +71,15 @@ comes last. This repository is **public**.
 
 ## Stack & tooling
 
-Always the latest stable releases — check the registry when scaffolding or
-adding a dependency rather than trusting these numbers (checked 2026-08-29):
-Python 3.13+ / Django 6.1 / DRF 3.18 / psycopg 3.3 / PostgreSQL 18;
+**The backend follows PRomop's pins**, because it runs in PRomop's process:
+Django 5.2.6 / DRF 3.15.2 / django-cors-headers 4.4.0 / whitenoise 6.7.0 /
+psycopg 3.3 / PostgreSQL 18, on Python 3.13+. Bumping any of them is a PRomop
+decision, not this repository's. The port off Django 6.1 is M0 in
+`docs/promop-migration-plan.md`; until it lands the code still builds against
+6.1 and the only incompatible API is the multi-backend mail interface.
+
+The front end keeps its own stack at the latest stable releases — it is built,
+not imported, and shares no runtime with PRomop (checked 2026-08-29):
 Node 24 LTS (≥ 22) / Vite 8 / React 19 / TypeScript 7 / Tailwind CSS 4 /
 shadcn / TanStack React Query 5 / React Router 8 / i18next / Vitest /
 Playwright.

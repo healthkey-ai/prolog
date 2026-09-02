@@ -5,6 +5,12 @@
 **Requirements:** [requirements.md](requirements.md) (IDs referenced below)  
 **Contracts:** [schema/survey-definition.schema.json](../schema/survey-definition.schema.json) · [schema/theme.schema.json](../schema/theme.schema.json) · [themes/default/theme.json](../themes/default/theme.json)
 
+
+> **How the backend gets there:** the phases below describe the runner as it should
+> be. The steps that move it from a standalone service into an app inside PRomop —
+> stack pins, app boundary, migrations, RUN-2, retiring the standalone profile —
+> are planned separately in [`promop-migration-plan.md`](promop-migration-plan.md).
+
 ## 1. Goal and shape of the work
 
 Ship a brand-neutral **survey runner** that executes any survey definition

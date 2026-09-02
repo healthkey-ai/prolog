@@ -396,6 +396,12 @@ See [implementation-plan.md](implementation-plan.md). In summary:
 8. Designer and preview.
 9. Mapping review, concept search, OMOP write-back.
 
+## How the move happens
+
+The steps that take the backend from a standalone service to an app inside PRomop —
+the stack pins, the app boundary, the migrations, RUN-2, and retiring the standalone
+profile — are planned in [`promop-migration-plan.md`](promop-migration-plan.md).
+
 ## Open decisions
 
 | # | Decision | Recommendation |
@@ -406,3 +412,5 @@ See [implementation-plan.md](implementation-plan.md). In summary:
 | 4 | ~~Should there be a *linked* contact option in addition to unlinked contact capture?~~ | **Superseded 2026-08-31.** Linked is the default and it is stronger than the third mode once contemplated: an address creates a real account (CON-4), not a row with a foreign key. What the old recommendation warned about still holds and is now a requirement rather than a caveat — an instrument that does this is not anonymous for those participants, and its intro and consent copy must say so (CON-8). |
 | 5 | Where does the `Person` for an unidentified response come from — created eagerly when the response is created, or lazily at first answer? | Eagerly, at response creation: it keeps the participant FK non-null everywhere (DEP-2) and avoids a second code path. The cost is a `Person` row per abandoned attempt, which the abandoned-response retention job must now clean up as well (NFR-1). |
 | 6 | Should an account created from an email question be usable immediately, or only after the participant confirms the address? | Open. Immediate use is friendlier and matches the flow that motivated this; confirmation is safer against typos and against someone entering another person's address, which would attach a stranger's account to answers they did not give. Leaning to: create the account, but treat the address as unverified until confirmed, and refuse to expose any existing data to it until then. |
+| 7 | When the address a participant supplies already belongs to a **different** `Person`, what happens? | Not the host service's current behaviour, which returns that other person and re-points its `PatientUser` — under CON-4 that would leave the account on one person and the answers on another, and `PatientUser` is one-to-one on both sides so it cannot be on both. Merging two patient records is a clinical-safety operation, not a survey side effect. Leaning to: leave the response bound to the person it was minted with, record a merge candidate for a separate reconciliation path, and attach nothing. See [`promop-migration-plan.md`](promop-migration-plan.md) M3. |
+| 8 | RUN-2 currently has no implementation on either side: PRomop's participant service provisions a person *for an identity* and always creates a `PatientUser`, so it cannot mint the unidentified person RUN-2 describes, and `PROLOG_PARTICIPANT_FACTORY` is named in the plan but implemented nowhere. | A second host primitive beside the existing one, `create_unidentified_person(source=…)`, which creates the `PatientRecord` too (PRomop #883), is marked by a table the survey app owns rather than a column on `Person` (DEP-7), and promotes in place on confirmation. Specified in [`promop-migration-plan.md`](promop-migration-plan.md) M3. |
