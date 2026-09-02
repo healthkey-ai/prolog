@@ -161,6 +161,14 @@ export interface Mounted {
   $: <T extends HTMLElement = HTMLElement>(testId: string) => T | null;
   /** Like `$`, but searches the whole document: Radix portals (dialogs, popovers) render outside the container. */
   $doc: <T extends HTMLElement = HTMLElement>(testId: string) => T | null;
+  /**
+   * Flush until `testId` appears, or fail saying what never arrived.
+   *
+   * A renderer is code-split, so how many flushes it takes to arrive depends on
+   * how fast the machine resolves its chunk — a fixed count passes locally and
+   * fails on a slower CI runner.
+   */
+  until: <T extends HTMLElement = HTMLElement>(testId: string, rounds?: number) => Promise<T>;
   text: () => string;
 }
 
@@ -200,6 +208,14 @@ export function mount(path: string, element: ReactNode = runnerRoutes()): Mounte
     },
     $: (testId) => container.querySelector(`[data-testid="${testId}"]`),
     $doc: (testId) => document.body.querySelector(`[data-testid="${testId}"]`),
+    until: async <T extends HTMLElement = HTMLElement>(testId: string, rounds = 40) => {
+      for (let i = 0; i < rounds; i++) {
+        const found = container.querySelector<T>(`[data-testid="${testId}"]`);
+        if (found) return found;
+        await flush(1);
+      }
+      throw new Error(`"${testId}" never appeared after ${rounds} flushes`);
+    },
     text: () => container.textContent ?? "",
   };
 }

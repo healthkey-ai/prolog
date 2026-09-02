@@ -208,8 +208,7 @@ describe("WizardPage", () => {
     const server = runnerServer(multi, response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { options: ["a"] } }, last_question_key: "q3" }));
     server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value, "q3"));
     m = mount(`/s/${SLUG}/q/q3`);
-    await m.flush(8); // the multi renderer is code-split
-    const a = m.$<HTMLButtonElement>("option-a")!;
+    const a = await m.until<HTMLButtonElement>("option-a"); // the multi renderer is code-split
     expect(a.getAttribute("aria-checked")).toBe("true");
     click(a);
     await m.flush();
