@@ -2,7 +2,9 @@
 name = "prolog"
 version = "0.1.0"
 description = "PROlog — generic survey runner and designer for patient-reported outcomes"
-requires-python = ">=3.13"
+# PRomop's image is python:3.12-slim and the app runs in its process, so the
+# floor is PRomop's, not the newest Python. See docs/promop-migration-plan.md M0.
+requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
     # The backend runs inside PRomop's process, so it takes PRomop's pins
@@ -41,7 +43,7 @@ filterwarnings = ["ignore:No directory at:UserWarning"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "DJ"]
