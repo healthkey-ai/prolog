@@ -148,6 +148,16 @@ def validate() -> None:
         )
     if prof == "integrated" and not participant_model():
         raise ImproperlyConfigured("The integrated profile requires PROLOG_PARTICIPANT_MODEL")
+    if prof == "integrated" and not get("PROLOG_PARTICIPANT_FACTORY"):
+        # Every response is bound to a participant (DEP-2/RUN-2) and the column
+        # is not nullable, so a deployment that cannot produce one for an
+        # unsigned-in respondent cannot serve a survey at all. Better to say so
+        # at startup than to fail on the first response.
+        raise ImproperlyConfigured(
+            "The integrated profile requires PROLOG_PARTICIPANT_FACTORY: every response "
+            "is bound to a participant, and one must be obtainable for a respondent who "
+            "is not signed in"
+        )
     if not schema_dir().is_dir():
         raise ImproperlyConfigured(f"PROLOG_SCHEMA_DIR does not exist: {schema_dir()}")
     if client_key_salt().strip() in PLACEHOLDER_SALTS:

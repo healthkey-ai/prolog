@@ -233,10 +233,9 @@ class SurveyResponse(models.Model):
     if PARTICIPANT_MODEL:
         participant = models.ForeignKey(
             PARTICIPANT_MODEL,
-            null=True,
-            blank=True,
             on_delete=models.PROTECT,
             related_name="prolog_survey_responses",
+            help_text="Never null (DEP-2/RUN-2): where nobody is signed in the host mints one.",
         )
     identity_linked_at = models.DateTimeField(
         null=True, blank=True, help_text="When identity capture linked this response (CON-4)."

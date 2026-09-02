@@ -14,7 +14,7 @@ from django.db.migrations.recorder import MigrationRecorder
 
 from . import conf
 
-PARTICIPANT_MIGRATION = ("prolog_surveys", "0005_participant")
+PARTICIPANT_MIGRATION = ("prolog_surveys", "0001_initial")
 
 
 @register(Tags.compatibility)
@@ -36,7 +36,7 @@ def check_settings(app_configs, **kwargs):
 def check_participant_columns(app_configs, databases=None, **kwargs):
     """The participant columns exist when the integrated profile expects them.
 
-    ``0005_participant`` adds them only while PROLOG_PARTICIPANT_MODEL is set.
+    ``0001_initial`` adds them only while PROLOG_PARTICIPANT_MODEL is set.
     A database migrated in the standalone profile records that migration as
     applied with no columns; switching the profile afterwards leaves
     ``migrate`` with nothing to do while every response and invitation query
@@ -65,10 +65,10 @@ def check_participant_columns(app_configs, databases=None, **kwargs):
                     errors.append(
                         Error(
                             f"{table} has no participant_id column although "
-                            "PROLOG_PARTICIPANT_MODEL is set: migration 0005_participant "
+                            "PROLOG_PARTICIPANT_MODEL is set: migration 0001_initial "
                             "was applied in the standalone profile.",
                             hint="Re-apply it under the integrated settings: "
-                            "`manage.py migrate prolog_surveys 0004 --fake --skip-checks` "
+                            "`manage.py migrate prolog_surveys zero --fake --skip-checks` "
                             "then `manage.py migrate`.",
                             obj=alias,
                             id="prolog_surveys.E002",

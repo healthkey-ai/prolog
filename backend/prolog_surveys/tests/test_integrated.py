@@ -1,7 +1,7 @@
 """Phase 7: integrated profile — participant link, identity capture, account resume.
 
 Runs only with PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User;
-the packaged ``0005_participant`` migration adds the participant columns when
+the packaged ``0001_initial`` migration adds the participant columns when
 that setting is present. CI runs this configuration as a separate job.
 """
 
@@ -44,13 +44,18 @@ def linked_definition():
     return doc
 
 
-@pytest.fixture
-def _minting(settings):
-    """A host that mints a participant for every response, as PRomop does."""
+def _mint():
+    """Stands in for the host's factory; PRomop mints a Person with no identity."""
     from django.contrib.auth.models import User
 
+    return User.objects.create(username=f"respondent-{User.objects.count()}")
+
+
+@pytest.fixture(autouse=True)
+def _minting(settings):
+    """Every integrated deployment has a factory: the profile refuses to start
+    without one, because the participant column is not nullable (DEP-2)."""
     settings.PROLOG_PARTICIPANT_FACTORY = "prolog_surveys.tests.test_integrated._mint"
-    globals()["_mint"] = lambda: User.objects.create(username=f"respondent-{User.objects.count()}")
     return settings
 
 
@@ -60,9 +65,7 @@ def test_participant_field_exists():
 
 
 @pytest.mark.django_db
-def test_identity_capture_links_participant(
-    api_client, identity_service, linked_definition, _minting
-):
+def test_identity_capture_links_participant(api_client, identity_service, linked_definition):
     load_definition(linked_definition, activate=True)
     rid = api_client.post(
         "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
@@ -99,7 +102,10 @@ def test_identity_failure_leaves_response_anonymous(
     )
     assert r.status_code == 503
     response = SurveyResponse.objects.get(pk=rid)
-    assert response.participant is None
+    # The response keeps the participant it was minted with; what a failed
+    # capture leaves behind is an *unidentified* one, not none at all.
+    assert response.participant is not None
+    assert response.identity_linked_at is None
     assert not response.answers.filter(question_key="contact_email").exists()
 
 
@@ -117,7 +123,7 @@ def test_identity_unwrapped_exception_is_503_not_500(
         f"/api/run/responses/{rid}/identity/", {"email": "x@crash.example"}, format="json"
     )
     assert r.status_code == 503
-    assert SurveyResponse.objects.get(pk=rid).participant is None
+    assert SurveyResponse.objects.get(pk=rid).identity_linked_at is None
 
 
 @pytest.mark.django_db
@@ -332,7 +338,7 @@ class LockProbeService:
 
 @pytest.mark.django_db(transaction=True)
 def test_identity_service_is_called_without_the_response_lock(
-    api_client, settings, linked_definition, _minting
+    api_client, settings, linked_definition
 ):
     """The host's service is an out-of-process call of unknown latency: it
     must not pin the response row lock (and the connection) for its duration,
@@ -444,25 +450,8 @@ def test_an_anonymous_survey_mints_even_for_a_signed_in_participant(
 
 
 @pytest.mark.django_db
-def test_without_a_factory_a_response_is_still_created(settings, api_client, linked_definition):
-    """A deployment that has not opted in behaves exactly as it did before."""
-    from prolog_surveys.models import MintedParticipant
-
-    settings.PROLOG_PARTICIPANT_FACTORY = None
-    load_definition(linked_definition, activate=True)
-
-    r = api_client.post(
-        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
-    )
-
-    assert r.status_code == 201
-    assert SurveyResponse.objects.get(pk=r.json()["id"]).participant_id is None
-    assert not MintedParticipant.objects.exists()
-
-
-@pytest.mark.django_db
 def test_identity_capture_promotes_the_participant_in_place(
-    api_client, identity_service, linked_definition, _minting
+    api_client, identity_service, linked_definition
 ):
     """CON-4: the participant the response already had gains an account."""
     from prolog_surveys.models import MintedParticipant
@@ -488,7 +477,7 @@ def test_identity_capture_promotes_the_participant_in_place(
 
 @pytest.mark.django_db
 def test_an_address_belonging_to_someone_else_attaches_nothing(
-    api_client, identity_service, linked_definition, _minting, django_user_model
+    api_client, identity_service, linked_definition, django_user_model
 ):
     """Open decision 7: record the pair, attach nothing, tell the respondent nothing."""
     from prolog_surveys.models import MintedParticipant, ParticipantMergeCandidate
@@ -520,7 +509,7 @@ def test_an_address_belonging_to_someone_else_attaches_nothing(
 
 @pytest.mark.django_db
 def test_identity_capture_is_not_repeated_for_a_linked_response(
-    api_client, identity_service, linked_definition, _minting
+    api_client, identity_service, linked_definition
 ):
     load_definition(linked_definition, activate=True)
     rid = api_client.post(
@@ -537,23 +526,3 @@ def test_identity_capture_is_not_repeated_for_a_linked_response(
 
     assert r.status_code == 204
     assert len(fake_identity.CALLS) == calls, "the host is not asked twice for one response"
-
-
-@pytest.mark.django_db
-def test_identity_capture_without_a_participant_factory_is_unavailable(
-    api_client, identity_service, linked_definition
-):
-    """Nothing to promote: capture needs the participant the response already has."""
-    load_definition(linked_definition, activate=True)
-    rid = api_client.post(
-        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
-    ).json()["id"]
-    calls = len(fake_identity.CALLS)
-
-    r = api_client.post(
-        f"/api/run/responses/{rid}/identity/", {"email": "someone@example.org"}, format="json"
-    )
-
-    assert r.status_code == 503
-    assert len(fake_identity.CALLS) == calls, "the host is not asked to promote nobody"
-    assert SurveyResponse.objects.get(pk=rid).identity_linked_at is None
