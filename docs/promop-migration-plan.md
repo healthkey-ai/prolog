@@ -116,14 +116,15 @@ that part of DEP-3 does not change.
 
 ## M2 — Tables into PRomop's schema
 
-`prolog_surveys` has five migrations. Installed into PRomop as a new app, Django applies them
+`prolog_surveys` has one migration. Installed into PRomop as a new app, Django applies them
 natively: no renumbering, no squash, no merge migration, and no interleaving with `omop_core`'s 155.
 The app's tables are additive and touch no OMOP CDM table (DEP-7).
 
 Three things change in them:
 
-- **`SurveyResponse.participant` targets `omop_core.Person` unconditionally.** `0005_participant`
-  stops being conditional on a setting.
+- **`SurveyResponse.participant` targets `omop_core.Person` unconditionally**, and is **not
+  nullable** — the host mints one for a respondent who is not signed in (M3), so there is always
+  something to point at.
 - **The FK becomes non-null** — but only after M3, because until then there is nothing to bind an
   unidentified respondent to.
 - **`SurveyInvitation.participant`** likewise.

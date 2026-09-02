@@ -81,6 +81,9 @@ jobs:
       DEBUG: "true"
       PROLOG_PROFILE: integrated
       PROLOG_PARTICIPANT_MODEL: auth.User
+      # The integrated profile refuses to start without one: every response is
+      # bound to a participant, so a deployment must be able to mint one (DEP-2).
+      PROLOG_PARTICIPANT_FACTORY: prolog_surveys.tests.test_integrated._mint
     defaults: { run: { working-directory: backend } }
     steps:
       - uses: actions/checkout@v5

@@ -50,5 +50,5 @@ def test_participant_columns_missing_is_reported():
     messages = checks.check_participant_columns(None, databases=["default"])
     assert [type(m) for m in messages] == [Error, Error]
     assert _ids(messages) == ["prolog_surveys.E002", "prolog_surveys.E002"]
-    assert all("migrate prolog_surveys 0004 --fake" in m.hint for m in messages)
+    assert all("migrate prolog_surveys zero --fake" in m.hint for m in messages)
     assert "prolog_surveys.E002" in _ids(run_checks(databases=["default"]))

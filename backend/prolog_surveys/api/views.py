@@ -695,19 +695,6 @@ class IdentityView(ResponseMixin, RunnerView):
         service = get_identity_service()
         if service is None:
             raise NotFound("no identity service is configured")
-        if response.participant_id_or_none is None:
-            # CON-4 promotes the participant the response already has (RUN-2).
-            # With none there is nobody to promote, which means the deployment
-            # configured identity capture without a participant factory.
-            log.error(
-                "identity capture for response %s has no participant to promote; "
-                "PROLOG_PARTICIPANT_FACTORY is not configured",
-                response.id,
-            )
-            return Response(
-                {"detail": "identity capture unavailable; you can still submit anonymously"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
         result = None
         # Already linked: the marker answer makes a repeat harmless, and the
         # service must not be asked twice for the same response.

@@ -11,7 +11,7 @@ test-backend:
 	cd backend && uv run pytest -q
 
 test-backend-integrated:
-	cd backend && POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User uv run pytest -q --create-db
+	cd backend && POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL=auth.User PROLOG_PARTICIPANT_FACTORY=prolog_surveys.tests.test_integrated._mint uv run pytest -q --create-db
 
 test-frontend:
 	cd frontend && npm test -s

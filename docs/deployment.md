@@ -142,12 +142,12 @@ pull request that rewrites a released one. Before the first tag migrations
 may still be reshaped: recreate any pre-release database when they change
 (`dropdb prolog && createdb prolog && manage.py migrate`).
 
-`0005_participant` adds the participant columns only when
+`0001_initial` adds the participant columns only when
 `PROLOG_PARTICIPANT_MODEL` is set (integrated profile). A database migrated
 in the standalone profile and later switched to integrated records that
 migration as applied without the columns; `migrate` (and `manage.py check
 --database default`) then fails with `prolog_surveys.E002` and the remedy:
-`manage.py migrate prolog_surveys 0004 --fake --skip-checks`, then
+`manage.py migrate prolog_surveys zero --fake --skip-checks`, then
 `manage.py migrate`.
 
 ## Local development

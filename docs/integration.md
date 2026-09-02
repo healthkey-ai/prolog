@@ -62,7 +62,7 @@ participants are not session-authenticated and need no token.
 
 The participant foreign keys (`SurveyResponse.participant`,
 `SurveyInvitation.participant`) target a model only the host knows, so the
-packaged migration `0005_participant` builds its operations from
+packaged migration `0001_initial` builds its participant operations from
 `PROLOG_PARTICIPANT_MODEL` at load time: with the setting present it adds
 the two columns (and depends on the participant model's app); without it,
 it is empty. Set the setting **before** the first `migrate` and simply run:
@@ -79,10 +79,10 @@ The dependency is the participant app's *first* migration (the same
 convention as `AUTH_USER_MODEL`), so the participant model must exist from
 that migration on.
 
-Switching the profile *after* `migrate` leaves `0005_participant` recorded
+Switching the profile *after* `migrate` leaves `0001_initial` recorded
 as applied while the participant columns are missing. The database system
 check `prolog_surveys.E002` detects that and fails `migrate` /
-`check --database default` with the remedy: `migrate prolog_surveys 0004
+`check --database default` with the remedy: `migrate prolog_surveys zero
 --fake --skip-checks`, then `migrate` again.
 
 ## Participant resolver (account surveys, RUN-3)
@@ -183,7 +183,7 @@ POSTGRES_DB=prolog_integrated PROLOG_PROFILE=integrated PROLOG_PARTICIPANT_MODEL
   uv run pytest --create-db
 ```
 
-The packaged migrations (including `0005_participant`) build the schema, so
+The packaged migration `0001_initial` builds the schema, so
 the chain is exercised exactly as a host would run it; a separate database
 name keeps it apart from the standalone test database. CI runs both
 configurations.

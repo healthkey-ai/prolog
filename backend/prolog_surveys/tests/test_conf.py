@@ -7,6 +7,14 @@ from prolog_surveys import conf
 from prolog_surveys.identity import IdentityRequest, IdentityResult, get_identity_service
 
 
+@pytest.fixture(autouse=True)
+def _participant_factory(settings):
+    """The integrated profile refuses to start without one (DEP-2), and several
+    tests below switch profile mid-test. Harmless in standalone, which does not
+    look at it."""
+    settings.PROLOG_PARTICIPANT_FACTORY = f"{__name__}.resolve_nobody"
+
+
 def test_standalone_rejects_participant_model(settings):
     settings.PROLOG_PROFILE = "standalone"
     settings.PROLOG_PARTICIPANT_MODEL = "auth.User"
@@ -174,3 +182,14 @@ def test_settings_reject_bad_throttle_env(monkeypatch):
     assert _throttle_rates()["run.create"] == "45/hour"
     monkeypatch.setenv("PROLOG_THROTTLE_CREATE", "")  # unset, like the other PROLOG_* values
     assert _throttle_rates()["run.create"] == conf.THROTTLE_RATES["run.create"]
+
+
+def test_integrated_profile_requires_a_participant_factory(settings):
+    """Every response is bound to a participant and the column is not nullable,
+    so a deployment that cannot produce one cannot serve a survey at all."""
+    settings.PROLOG_PROFILE = "integrated"
+    settings.PROLOG_PARTICIPANT_MODEL = "auth.User"
+    settings.PROLOG_PARTICIPANT_FACTORY = None
+
+    with pytest.raises(ImproperlyConfigured, match="PROLOG_PARTICIPANT_FACTORY"):
+        conf.validate()
