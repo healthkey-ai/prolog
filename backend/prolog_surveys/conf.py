@@ -43,6 +43,21 @@ THROTTLE_RATE_RE = re.compile(r"^\d+/[smhd][a-z]*$")
 # attack, so a process never starts with one of these.
 PLACEHOLDER_SALTS = frozenset({"", "prolog", "change-me"})
 
+
+def _default_schema_dir() -> Path:
+    """Where the definition and theme schemas live.
+
+    They are part of the app's contract, so the wheel ships a copy inside the
+    package. A source checkout has no such copy and falls back to the schemas at
+    the repository root, which is where they are authored and what the tests and
+    the CI schema job read.
+    """
+    packaged = Path(__file__).resolve().parent / "schema"
+    if packaged.is_dir():
+        return packaged
+    return Path(__file__).resolve().parent.parent.parent / "schema"
+
+
 DEFAULTS: dict[str, Any] = {
     # "standalone": own database, no participant model, no identity service.
     # "integrated": installed in a host platform that provides both.
@@ -54,7 +69,7 @@ DEFAULTS: dict[str, Any] = {
     # Directories whose subdirectories contain theme.json + assets.
     "PROLOG_THEME_DIRS": [],
     # Directory holding survey-definition.schema.json and theme.schema.json.
-    "PROLOG_SCHEMA_DIR": str(Path(__file__).resolve().parent.parent.parent / "schema"),
+    "PROLOG_SCHEMA_DIR": str(_default_schema_dir()),
     # Dotted path to an IdentityService class, factory or instance (integrated only).
     "PROLOG_IDENTITY_SERVICE": None,
     # Dotted path to a callable (request) -> participant pk or None. Default: the

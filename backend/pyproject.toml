@@ -37,6 +37,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["prolog_surveys"]
 
+# The definition and theme schemas are the app's contract, so an installed app
+# carries them: without this the wheel validates nothing and a host fails at
+# startup on a PROLOG_SCHEMA_DIR that only exists in a source checkout. They are
+# authored at the repository root and copied in at build time, so there is one
+# source of truth and no second copy to drift.
+[tool.hatch.build.targets.wheel.force-include]
+"../schema" = "prolog_surveys/schema"
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "prolog.settings_dev"
 python_files = ["test_*.py"]
