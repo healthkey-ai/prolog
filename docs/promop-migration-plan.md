@@ -271,5 +271,5 @@ Last, because everything above must work first.
 | **M0** pins | everything | nothing — start here |
 | **M1** app wiring | M2 | M0 |
 | **M2** tables | non-null FK | M1, and M3 for the FK itself |
-| **M3** RUN-2 | the non-null FK, CON-4 | M1 |
+| **M3** RUN-2 | the non-null FK, CON-4 | M1 — *host primitive and binding done; the FK flip remains* |
 | **M4** retire standalone | nothing | M0–M3 in production |

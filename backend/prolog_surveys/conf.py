@@ -75,6 +75,12 @@ DEFAULTS: dict[str, Any] = {
     # Dotted path to a callable (request) -> participant pk or None. Default: the
     # authenticated user's pk when PROLOG_PARTICIPANT_MODEL is AUTH_USER_MODEL.
     "PROLOG_PARTICIPANT_RESOLVER": None,
+    # Dotted path to a callable () -> participant, for a respondent who is not
+    # signed in (RUN-2). The host mints a record carrying nothing that could
+    # name them; PROlog binds the response to it. Unset = responses may be
+    # created with no participant, which is what a deployment without a
+    # participant model does anyway.
+    "PROLOG_PARTICIPANT_FACTORY": None,
     # Salt for hashed client keys used by throttling (never stores raw IPs).
     # Unset = SECRET_KEY (see client_key_salt); rotate it to reset the counters.
     "PROLOG_CLIENT_KEY_SALT": None,

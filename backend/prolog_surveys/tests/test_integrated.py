@@ -340,3 +340,110 @@ def test_identity_service_is_called_without_the_response_lock(
     response = SurveyResponse.objects.get(pk=rid)
     assert response.participant is not None and response.identity_linked_at is not None
     assert response.answers.get(question_key="contact_email").value == {"provided": True}
+
+
+@pytest.mark.django_db
+def test_a_response_is_bound_to_a_minted_participant(settings, api_client, linked_definition):
+    """RUN-2: nobody is signed in, so the host mints a participant for the response."""
+    from django.contrib.auth.models import User
+
+    from prolog_surveys.models import MintedParticipant
+
+    minted_calls = []
+
+    def factory():
+        minted_calls.append(1)
+        return User.objects.create(username=f"respondent-{len(minted_calls)}")
+
+    settings.PROLOG_PARTICIPANT_FACTORY = "prolog_surveys.tests.test_integrated._factory"
+    globals()["_factory"] = factory
+    load_definition(linked_definition, activate=True)
+
+    r = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+    assert r.status_code == 201, r.status_code
+
+    response = SurveyResponse.objects.get(pk=r.json()["id"])
+    assert response.participant_id is not None, "RUN-2: every response belongs to a participant"
+    assert len(minted_calls) == 1
+    marker = MintedParticipant.objects.get(participant_id=response.participant_id)
+    assert marker.identified_at is None, "an unclaimed respondent is not an identified participant"
+
+
+@pytest.mark.django_db
+def test_a_signed_in_participant_is_used_rather_than_minted_over(
+    settings, api_client, linked_definition, django_user_model
+):
+    """The factory is for respondents nobody knows, not a second path for patients."""
+    from prolog_surveys.models import MintedParticipant
+
+    def factory():
+        raise AssertionError("must not mint when the participant is already known")
+
+    settings.PROLOG_PARTICIPANT_FACTORY = "prolog_surveys.tests.test_integrated._never"
+    globals()["_never"] = factory
+    doc = dict(linked_definition)
+    doc["participation"] = {**doc.get("participation", {}), "anonymous": False}
+    load_definition(doc, activate=True)
+    user = django_user_model.objects.create(username="known")
+    api_client.force_authenticate(user=user)
+
+    r = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+
+    assert r.status_code == 201, r.status_code
+    response = SurveyResponse.objects.get(pk=r.json()["id"])
+    assert response.participant_id == user.pk
+    assert not MintedParticipant.objects.exists()
+
+
+@pytest.mark.django_db
+def test_an_anonymous_survey_mints_even_for_a_signed_in_participant(
+    settings, api_client, linked_definition, django_user_model
+):
+    """Anonymity survives being signed in.
+
+    An anonymous instrument must not bind a response to the account of whoever
+    happens to be logged in — that is the whole guarantee. RUN-2 still wants a
+    participant, so it is a minted one, and it is not the user's.
+    """
+    from django.contrib.auth.models import User
+
+    from prolog_surveys.models import MintedParticipant
+
+    settings.PROLOG_PARTICIPANT_FACTORY = "prolog_surveys.tests.test_integrated._anon_factory"
+    globals()["_anon_factory"] = lambda: User.objects.create(username="minted-for-anonymous")
+    doc = dict(linked_definition)
+    doc["participation"] = {**doc.get("participation", {}), "anonymous": True}
+    load_definition(doc, activate=True)
+    user = django_user_model.objects.create(username="signed-in")
+    api_client.force_authenticate(user=user)
+
+    r = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+
+    assert r.status_code == 201, r.status_code
+    response = SurveyResponse.objects.get(pk=r.json()["id"])
+    assert response.participant_id is not None
+    assert response.participant_id != user.pk, "an anonymous response must not name the respondent"
+    assert MintedParticipant.objects.filter(participant_id=response.participant_id).exists()
+
+
+@pytest.mark.django_db
+def test_without_a_factory_a_response_is_still_created(settings, api_client, linked_definition):
+    """A deployment that has not opted in behaves exactly as it did before."""
+    from prolog_surveys.models import MintedParticipant
+
+    settings.PROLOG_PARTICIPANT_FACTORY = None
+    load_definition(linked_definition, activate=True)
+
+    r = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+
+    assert r.status_code == 201
+    assert SurveyResponse.objects.get(pk=r.json()["id"]).participant_id is None
+    assert not MintedParticipant.objects.exists()

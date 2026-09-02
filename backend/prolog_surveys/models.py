@@ -281,6 +281,38 @@ class SurveyResponse(models.Model):
         return {a.question_key: a.value for a in self.answers.all()}
 
 
+class MintedParticipant(models.Model):
+    """A participant record PROlog created for a respondent who was not signed in.
+
+    The host's participant table is its own — in PRomop, `Person` in the OMOP
+    CDM — and a row minted for a survey is indistinguishable there from a
+    patient. This is how the host can tell: a participant listed here with
+    `identified_at` unset is a respondent nobody has claimed, and belongs in no
+    count of patients. `identified_at` is stamped when the same record gains an
+    account (CON-4), after which it is an ordinary participant and the row is
+    only history.
+
+    The app owns this table; it never adds a column to the host's (DEP-7).
+    """
+
+    if PARTICIPANT_MODEL:
+        participant = models.OneToOneField(
+            PARTICIPANT_MODEL,
+            on_delete=models.CASCADE,
+            related_name="prolog_minted",
+        )
+    created_at = models.DateTimeField(auto_now_add=True)
+    identified_at = models.DateTimeField(
+        null=True, blank=True, help_text="When this participant gained an account (CON-4)."
+    )
+
+    class Meta:
+        indexes = [models.Index(fields=["identified_at"])]
+
+    def __str__(self) -> str:  # pragma: no cover - admin/debug convenience
+        return f"minted participant {getattr(self, 'participant_id', None)}"
+
+
 class SurveyAnswer(models.Model):
     """Authoritative raw answer for one question (Q-1…Q-12)."""
 
