@@ -287,7 +287,7 @@ def test_admin_accepts_a_theme_beside_its_survey(admin_login, tmp_path, settings
 
 
 def test_the_survey_list_says_where_it_reads_from(admin_login, tmp_path, settings, example):
-    """"No surveys" and "that directory is not there" look identical until
+    """ "No surveys" and "that directory is not there" look identical until
     something says which one it is."""
     mounted = tmp_path / "surveys"
     (mounted / "alpha").mkdir(parents=True)
@@ -479,9 +479,7 @@ def test_the_versions_inline_offers_no_blank_row(admin_login, db, example):
     assert "Add another version" in body, "the picker link stays"
 
 
-def test_a_refused_version_says_so_in_the_error_slot(
-    admin_login, db, example, tmp_path, settings
-):
+def test_a_refused_version_says_so_in_the_error_slot(admin_login, db, example, tmp_path, settings):
     """Every refusal is said in the same place on the page it happened on:
     there is nothing to navigate to when nothing was written."""
     import copy
@@ -506,9 +504,7 @@ def test_a_refused_version_says_so_in_the_error_slot(
     assert '<ul class="messagelist">' in body and 'class="error"' in body
 
 
-def test_a_mismatched_slug_is_said_in_the_error_slot(
-    admin_login, db, example, tmp_path, settings
-):
+def test_a_mismatched_slug_is_said_in_the_error_slot(admin_login, db, example, tmp_path, settings):
     import copy
 
     survey = loader.load_definition(example).version.survey
