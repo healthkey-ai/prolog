@@ -313,7 +313,16 @@ export function IntroPage() {
             resuming has the same right to read the notice as somebody
             starting, and the resume card is the whole screen for them. */}
         {hasLocalPrivacy && (
-          <Link to={`/s/${slug}/privacy`} className={`text-sm underline ${immersive ? "text-on-primary/80" : "text-primary"}`} data-testid="privacy-link">
+          <Link
+            to={`/s/${slug}/privacy`}
+            // Page furniture, not a third action: it sits under Continue /
+            // Start again, and a button-shaped thing there would compete with
+            // the one the respondent came to press. Muted and set apart, so it
+            // is found by somebody looking for it rather than pressed by
+            // somebody who was not.
+            className={`mt-2 self-start text-sm underline ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}
+            data-testid="privacy-link"
+          >
             {t("legal.privacy")}
           </Link>
         )}
