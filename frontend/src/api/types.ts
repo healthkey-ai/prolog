@@ -4,6 +4,8 @@ import type { AnswerValue, Answers, Definition } from "@/survey/types";
 export interface RunnerDefinition extends Definition {
   language: string;
   theme_code: string;
+  /** Legal pages this deployment mounted (e.g. ["privacy"]); absent or empty means none. */
+  legal_pages?: string[];
 }
 
 export interface ResponseSummary {

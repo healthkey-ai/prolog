@@ -9,6 +9,7 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from prolog_surveys import legal
 from prolog_surveys.definitions.loader import load_definition
 from prolog_surveys.tests.conftest import example_definition
 from prolog_surveys.themes import registry, validate_theme
@@ -230,3 +231,75 @@ def test_malformed_theme_json_is_skipped(tmp_path, settings, caplog):
     registry.reload()  # must not raise
     assert "bad" not in registry.all() and "default" in registry.all()
     assert "rejected" in caplog.text
+
+
+# --- deployment-supplied legal pages -----------------------------------------
+
+
+@pytest.fixture
+def legal_dir(tmp_path, settings):
+    (tmp_path / "privacy.md").write_text("# Privacy\n\nWe keep little.\n", encoding="utf-8")
+    (tmp_path / "privacy.es.md").write_text("# Privacidad\n\nGuardamos poco.\n", encoding="utf-8")
+    settings.PROLOG_LEGAL_DIRS = [str(tmp_path)]
+    return tmp_path
+
+
+def test_legal_page_is_served_in_the_requested_language(api_client, legal_dir):
+    body = api_client.get("/api/run/legal/privacy/?lang=es").json()
+
+    assert body["page"] == "privacy" and body["language"] == "es"
+    assert "Privacidad" in body["markdown"]
+
+
+def test_legal_page_falls_back_to_the_untranslated_file(api_client, legal_dir):
+    """A respondent reading a language nobody translated the notice into gets
+    the notice, not nothing."""
+    body = api_client.get("/api/run/legal/privacy/?lang=fr").json()
+
+    assert body["language"] == "" and "We keep little" in body["markdown"]
+
+
+def test_a_regional_tag_finds_the_base_language(api_client, legal_dir):
+    assert api_client.get("/api/run/legal/privacy/?lang=es-419").json()["language"] == "es"
+
+
+def test_a_page_the_deployment_did_not_mount_is_404(api_client, legal_dir):
+    assert api_client.get("/api/run/legal/terms/").status_code == 404
+
+
+def test_no_legal_dirs_means_no_pages(api_client, settings):
+    settings.PROLOG_LEGAL_DIRS = []
+
+    assert api_client.get("/api/run/legal/privacy/").status_code == 404
+    assert legal.available() == set()
+
+
+def test_a_page_name_cannot_walk_out_of_the_directory(tmp_path, settings):
+    """The name reaches the filesystem, so it is matched against a pattern
+    rather than sanitised."""
+    (tmp_path / "secret.md").write_text("private", encoding="utf-8")
+    settings.PROLOG_LEGAL_DIRS = [str(tmp_path / "public")]
+    (tmp_path / "public").mkdir()
+
+    assert legal.find("../secret") is None
+    assert legal.find("..%2Fsecret") is None
+    assert legal.find("") is None
+
+
+def test_an_oversized_page_is_not_served(tmp_path, settings):
+    """A document, not a download."""
+    (tmp_path / "privacy.md").write_text("x" * (legal.MAX_BYTES + 1), encoding="utf-8")
+    settings.PROLOG_LEGAL_DIRS = [str(tmp_path)]
+
+    assert legal.find("privacy") is None
+
+
+def test_the_definition_says_which_pages_exist(db, api_client, example, legal_dir):
+    """The runner renders a link only for a page that is there: a link to a
+    404 is worst on the screen that asks for an email address."""
+    from prolog_surveys.definitions.loader import load_definition
+
+    version = load_definition(example, activate=True).version
+    body = api_client.get(f"/api/run/surveys/{version.survey.slug}/").json()
+
+    assert body["legal_pages"] == ["privacy"]

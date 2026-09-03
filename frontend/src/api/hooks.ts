@@ -28,6 +28,22 @@ export interface DefinitionOptions {
   enabled?: boolean;
 }
 
+export interface LegalPage {
+  page: string;
+  language: string;
+  markdown: string;
+}
+
+/** A deployment's legal page (privacy, terms) in the respondent's language. */
+export function useLegalPage(page: string | undefined, lang: string | undefined) {
+  return useQuery({
+    queryKey: ["legal", page ?? "", lang ?? ""],
+    queryFn: () => api.get<LegalPage>(`/legal/${page}/${lang ? `?lang=${encodeURIComponent(lang)}` : ""}`),
+    enabled: Boolean(page),
+    staleTime: Infinity,
+  });
+}
+
 export function useSurveyDefinition(slug: string | undefined, { lang, invite, responseId, enabled = true }: DefinitionOptions = {}) {
   const params = new URLSearchParams();
   if (lang) params.set("lang", lang);

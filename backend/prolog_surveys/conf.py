@@ -68,6 +68,10 @@ DEFAULTS: dict[str, Any] = {
     "PROLOG_DEFINITION_DIRS": [],
     # Directories whose subdirectories contain theme.json + assets.
     "PROLOG_THEME_DIRS": [],
+    # Directories holding deployment-supplied legal pages as Markdown
+    # (privacy.md, privacy.es.md, terms.md). Unset = no pages, and the runner
+    # renders no link to one.
+    "PROLOG_LEGAL_DIRS": [],
     # Directory holding survey-definition.schema.json and theme.schema.json.
     "PROLOG_SCHEMA_DIR": str(_default_schema_dir()),
     # Dotted path to an IdentityService class, factory or instance (integrated only).

@@ -22,6 +22,7 @@ repository:
 ```
 /data/surveys/   ← PROLOG_DEFINITION_DIRS   survey definition JSON files
 /data/themes/    ← PROLOG_THEME_DIRS        theme directories (theme.json + assets)
+/data/legal/     ← PROLOG_LEGAL_DIRS        the deployment's own legal pages (Markdown)
 ```
 
 Nothing customer-specific is baked into the image. Upgrading PROlog is a
@@ -73,6 +74,7 @@ Any wording or structure change after activation requires a **new
 | `POSTGRES_*` | database connection (no SQLite fallback). `POSTGRES_PASSWORD` has no default in the compose file: it must be set in `.env` |
 | `PROLOG_PROFILE` | `standalone` (default) or `integrated`. Being retired: the 2026-08-31 revision makes PRomop-hosted the only shape. |
 | `PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS` | path-separated directory lists |
+| `PROLOG_LEGAL_DIRS` | path-separated directory list holding the deployment's legal pages as Markdown: `privacy.md`, and `privacy.es.md` for a language that has its own. Unset means the runner serves none and renders no link to one — PROlog ships no policy text and takes no view on what a notice should say |
 | `PROLOG_THROTTLE_CREATE/CAPTURE/ANSWER/READ/WRITE` | throttle rates per hashed client address (create `30/hour`, contact/identity capture `30/hour`, answer `600/hour` per response, read `1200/hour`, answer/submit writes `3000/hour` per client). Behind NAT (clinic Wi-Fi, mobile carriers) many participants share one address: raise `CREATE`/`CAPTURE` (and `WRITE`, which counts every participant's saves) accordingly |
 | `CACHE_BACKEND`, `CACHE_LOCATION` | where throttle counters live. Default: an in-process cache, so each gunicorn worker counts separately and every rate is effectively multiplied by `WEB_CONCURRENCY`. For exact limits use a cache shared by all workers, e.g. `CACHE_BACKEND=django.core.cache.backends.redis.RedisCache CACHE_LOCATION=redis://cache:6379/1` |
 | `PROLOG_ABANDONED_RESPONSE_DAYS` | retention of in-progress responses in days (default 90, at least 1: `0` would delete every in-progress response and is refused) |

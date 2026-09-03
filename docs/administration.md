@@ -167,6 +167,30 @@ where your respondents are.
 
 ---
 
+## The privacy notice
+
+A survey that asks for anything needs one, and the respondent should not have
+to leave the survey to read it. Put Markdown files where the deployment points
+`PROLOG_LEGAL_DIRS`:
+
+```
+/data/legal/privacy.md        the default language
+/data/legal/privacy.es.md     a language that has its own
+```
+
+The runner serves it at `/s/<slug>/privacy`, in the survey's own theme, and
+links to it from the consent notice. A language with no file of its own falls
+back to `privacy.md` — the same rule survey content follows — so a respondent
+always gets the notice rather than nothing.
+
+Configure nothing and there is no page and no link. PROlog ships no policy
+text, no template and no placeholder wording: what the notice says is yours,
+and so is keeping the translations current.
+
+Only a small Markdown subset is rendered — headings, paragraphs, lists, links,
+bold and italic. Anything else appears as the characters you typed, which for a
+notice is a readable failure rather than a broken one.
+
 ## Getting the answers out
 
 ```sh

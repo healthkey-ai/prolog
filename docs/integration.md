@@ -29,6 +29,7 @@ PROLOG_PARTICIPANT_RESOLVER = "myhost.prolog.resolve_participant"  # (request) -
 PROLOG_IDENTITY_SERVICE = "myhost.prolog.IdentityService"          # class or factory
 PROLOG_DEFINITION_DIRS = ["/srv/surveys"]
 PROLOG_THEME_DIRS = ["/srv/prolog/themes", "/srv/themes"]
+PROLOG_LEGAL_DIRS = ["/srv/legal"]                     # privacy.md, privacy.es.md — optional
 PROLOG_SCHEMA_DIR = "/srv/prolog/schema"
 PROLOG_PUBLIC_URL = "https://surveys.example.org"
 PROLOG_EMAIL_FROM = "surveys@example.org"
