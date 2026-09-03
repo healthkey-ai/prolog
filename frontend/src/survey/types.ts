@@ -94,6 +94,8 @@ export interface Presentation {
   section_interstitials?: boolean;
   skip_policy?: SkipPolicy;
   progress?: "bar" | "steps" | "none";
+  /** Where a multilingual survey asks for a language. Default "inline". */
+  language_step?: "inline" | "first" | "auto";
 }
 
 export interface Participation {

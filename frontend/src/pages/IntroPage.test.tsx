@@ -91,4 +91,76 @@ describe("IntroPage", () => {
     await m.flush();
     expect(m.$("start")).not.toBeNull();
   });
+
+  describe("language step", () => {
+    const multilingual = (language_step?: "inline" | "first" | "auto") =>
+      definition({ languages: ["en", "es", "pt"], presentation: { section_interstitials: false, language_step } });
+
+    it("keeps the picker on the intro by default", async () => {
+      // What every deployment has today; a new key must not move it.
+      runnerServer(multilingual());
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("language-step")).toBeNull();
+      expect(m.$("lang-es")).not.toBeNull();
+    });
+
+    it("asks before the intro when the definition says first", async () => {
+      runnerServer(multilingual("first"));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("language-step")).not.toBeNull();
+      // the intro itself is not on screen yet: that is the point of the step
+      expect(m.$("start")).toBeNull();
+      expect(m.$("lang-first-pt")).not.toBeNull();
+    });
+
+    it("shows the intro once a language is chosen, and does not ask twice", async () => {
+      runnerServer(multilingual("first"));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      click(m.$("lang-first-es"));
+      await m.flush();
+
+      expect(m.$("language-step")).toBeNull();
+      expect(m.$("start")).not.toBeNull();
+      // and the inline picker is gone: the question has been asked
+      expect(m.$("lang-es")).toBeNull();
+    });
+
+    it("does not ask when the link already names a language the survey offers", async () => {
+      runnerServer(multilingual("first"));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}?lang=es`);
+      await m.flush();
+
+      expect(m.$("language-step")).toBeNull();
+    });
+
+    it("auto asks only when the browser wants a language the survey does not offer", async () => {
+      vi.stubGlobal("navigator", { ...navigator, languages: ["fr-FR", "fr"] });
+      runnerServer(multilingual("auto"));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("language-step")).not.toBeNull();
+    });
+
+    it("auto stays out of the way when the browser asks for one that is offered", async () => {
+      vi.stubGlobal("navigator", { ...navigator, languages: ["es-419"] });
+      runnerServer(multilingual("auto"));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("language-step")).toBeNull();
+    });
+  });
+
 });

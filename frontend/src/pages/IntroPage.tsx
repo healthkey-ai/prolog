@@ -22,6 +22,7 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { languageName } from "@/i18n/languageName";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
+import { needsLanguageStep } from "@/survey/languageStep";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { Decor } from "@/components/Decor";
 import { DefinitionError } from "@/components/DefinitionError";
@@ -33,6 +34,8 @@ export function IntroPage() {
   const { slug = "" } = useParams();
   const [search] = useSearchParams();
   const invite = search.get("invite") ?? undefined;
+  // A link may name the language, which answers the question before it is asked.
+  const requestedLanguage = search.get("lang") ?? undefined;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [language, setLanguage] = useState<string | undefined>(undefined);
@@ -59,13 +62,15 @@ export function IntroPage() {
   // common case). A `resume: "none"` survey then unbinds, so the id of an
   // earlier same-tab response never pins the intro to that response's version.
   const [noResume, setNoResume] = useState(false);
+  // The respondent has picked on the language step (or there was none to pick).
+  const [languageSettled, setLanguageSettled] = useState(false);
   // Response-bound, like ThemeProvider and the wizard: the server serves the
   // version this response uses and takes its id as the credential, so a
   // returning invited/account participant without the token is not refused
   // here, the resume point is computed against the right version, and the
   // cache entry is shared. Falls back to the plain query for a fresh start.
   const bound = existingId && !noResume && !existing.isError && !fresh && !otherAdministration ? existingId : undefined;
-  const definition = useSurveyDefinition(slug, { lang: language ?? (bound ? existing.data?.language : undefined), invite, responseId: bound, enabled: !existingId || !existing.isPending });
+  const definition = useSurveyDefinition(slug, { lang: language ?? requestedLanguage ?? (bound ? existing.data?.language : undefined), invite, responseId: bound, enabled: !existingId || !existing.isPending });
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro);
   useDefinitionLanguage(definition.data?.language);
@@ -148,8 +153,50 @@ export function IntroPage() {
   const ground = immersive ? "bg-primary text-on-primary" : "bg-ground text-ink";
   const soft = immersive ? "text-on-primary/80" : "text-ink-soft";
   const hasExisting = resumable && Boolean(bound && existing.data);
+  // Ask for the language before the intro, where the definition says to: the
+  // intro and the consent notice are what has to be understood before agreeing
+  // to anything, so a survey launched in several languages may not want them
+  // read in whichever one the browser guessed. A resumed response already has
+  // a language and is never asked again.
+  const askLanguageFirst =
+    !hasExisting &&
+    !languageSettled &&
+    needsLanguageStep({
+      languages: def.languages,
+      mode: def.presentation?.language_step,
+      preferred: typeof navigator === "undefined" ? [] : [...navigator.languages],
+      requested: requestedLanguage,
+    });
   // Only an absolute http(s) URL becomes a link; anything else in the definition is not rendered.
   const privacyUrl = httpUrl(consent?.privacy_url);
+
+  if (askLanguageFirst) {
+    return (
+      <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
+        <Decor />
+        <div className="relative mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-6 py-16">
+          <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
+          {/* Each language names itself. Translating "Spanish" into the language
+              a respondent cannot read is how a picker fails the people who need it. */}
+          <h1 className="text-[2.1rem] leading-[1.1]">{t("intro.language")}</h1>
+          <RadioGroup
+            value={def.language}
+            onValueChange={(l) => {
+              setLanguage(l);
+              setLanguageSettled(true);
+            }}
+            aria-label={t("intro.language")}
+            className="grid gap-3 sm:grid-cols-2"
+            data-testid="language-step"
+          >
+            {def.languages.map((l) => (
+              <OptionCard key={l} kind="radio" value={l} label={languageName(l)} checked={false} className="text-foreground" data-testid={`lang-first-${l}`} />
+            ))}
+          </RadioGroup>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
@@ -209,7 +256,7 @@ export function IntroPage() {
           </div>
         ) : (
           <>
-            {def.languages.length > 1 && (
+            {def.languages.length > 1 && def.presentation?.language_step !== "first" && (
               <fieldset className="border-0 p-0">
                 <legend className={`mb-3 text-sm ${soft}`}>{t("intro.language")}</legend>
                 <RadioGroup value={def.language} onValueChange={(l) => setLanguage(l)} aria-label={t("intro.language")} className="grid gap-3 sm:grid-cols-3">
