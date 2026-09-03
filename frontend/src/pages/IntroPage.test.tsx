@@ -233,6 +233,17 @@ describe("IntroPage", () => {
       expect(link?.getAttribute("href")).toBe(`/s/${SLUG}/privacy`);
     });
 
+    it("links to the notice from the resume card too", async () => {
+      // A returning respondent sees Continue / Start again and nothing else;
+      // the link lived in the start branch, so for them it did not exist.
+      runnerServer(definition({ legal_pages: ["privacy"] }));
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("resume-card")).not.toBeNull();
+      expect(m.$("privacy-link")?.getAttribute("href")).toBe(`/s/${SLUG}/privacy`);
+    });
+
     it("renders no link when the deployment mounted no notice", async () => {
       runnerServer(definition({ legal_pages: [] }));
       localStorage.clear();
