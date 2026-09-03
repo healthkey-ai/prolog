@@ -8,8 +8,10 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from prolog_surveys.definitions import loader
 from prolog_surveys.definitions.loader import activate_version, discover
 from prolog_surveys.models import LifecycleStatus, Survey, SurveyResponse, SurveyVersion
+from prolog_surveys.themes import registry as theme_registry
 from prolog_surveys.themes import validate_theme
 from prolog_surveys.themes.registry import discover_themes
 
@@ -383,3 +385,76 @@ def test_changing_a_published_version_is_refused_on_the_page(
     assert "immutable" in body or "active" in body
     version.refresh_from_db()
     assert version.definition["title"]["en"] == example["title"]["en"]
+
+
+# --- adding a version to a survey that exists --------------------------------
+
+
+def _load(admin_login, path, **extra):
+    return admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(path), "action": "load", **extra},
+        follow=True,
+    )
+
+
+def test_the_survey_page_offers_another_version(admin_login, db, example):
+    survey = loader.load_definition(example).version.survey
+
+    body = admin_login.get(f"/admin/prolog_surveys/survey/{survey.pk}/change/").content.decode()
+
+    assert "Add another version" in body
+    assert f"verify/?survey={survey.slug}" in body
+
+
+def test_adding_a_version_presets_the_survey_theme(admin_login, db, example, tmp_path, settings):
+    """A new version usually keeps the theme; it stays editable because
+    sometimes changing it is the point."""
+    theme = tmp_path / "flf"
+    theme.mkdir()
+    (theme / "theme.json").write_text(
+        json.dumps({"code": "flf", "name": "flf", "colors": {"light": {}}}), encoding="utf-8"
+    )
+    settings.PROLOG_THEME_DIRS = [str(tmp_path)]
+    theme_registry.reload()
+    example["theme"] = "flf"
+    survey = loader.load_definition(example).version.survey
+
+    body = admin_login.get(
+        f"/admin/prolog_surveys/survey/verify/?survey={survey.slug}"
+    ).content.decode()
+
+    assert f"Add a version of {survey.slug}" in body
+    assert f'value="{theme}"' in body
+
+
+def test_a_definition_for_another_survey_is_refused(admin_login, db, example, tmp_path, settings):
+    """It would create a second survey, which is not what the button said."""
+    import copy
+
+    survey = loader.load_definition(example).version.survey
+    other = copy.deepcopy(example)
+    other["slug"] = "something-else"
+    (tmp_path / "other.json").write_text(json.dumps(other), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    body = _load(admin_login, tmp_path / "other.json", survey=survey.slug).content.decode()
+
+    assert "would create a second survey" in body
+    assert not Survey.objects.filter(slug="something-else").exists()
+
+
+def test_a_bumped_version_lands_on_the_same_survey(admin_login, db, example, tmp_path, settings):
+    import copy
+
+    survey = loader.load_definition(example).version.survey
+    nxt = copy.deepcopy(example)
+    nxt["version"] = "9.9"
+    (tmp_path / "next.json").write_text(json.dumps(nxt), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    _load(admin_login, tmp_path / "next.json", survey=survey.slug)
+
+    assert Survey.objects.count() == 1
+    assert sorted(v.version for v in survey.versions.all()) == [example["version"], "9.9"]
+    assert survey.versions.get(version="9.9").status == LifecycleStatus.DRAFT

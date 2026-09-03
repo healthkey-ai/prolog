@@ -9,8 +9,17 @@
   </p>
   <p class="help">Verified against the schema in <code>{{ schema_dir }}</code>.</p>
 
+  {% if for_survey %}
+    <p class="help">
+      Adding a version of <strong>{{ for_survey.slug }}</strong>. The theme is set to the one it
+      uses and can be changed. The definition must be for this survey — one slugged for another
+      would create a second survey rather than a version of this one.
+    </p>
+  {% endif %}
+
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
+    {% if for_survey %}<input type="hidden" name="survey" value="{{ for_survey.slug }}">{% endif %}
     <fieldset class="module aligned">
       <h2>The definition</h2>
 
@@ -78,7 +87,13 @@
   {% if verified %}
     <div class="module">
       <h2>Result — {{ source }}</h2>
-      {% if blocked %}
+      {% if slug_mismatch %}
+        <p class="errornote">
+          Refused. This definition is for <strong>{{ slug_mismatch }}</strong>, not
+          <strong>{{ for_survey.slug }}</strong>. Loading it here would create a second survey —
+          use <strong>Add survey</strong> if that is what you want.
+        </p>
+      {% elif blocked %}
         <p class="errornote">Refused. Nothing was written.</p>
       {% else %}
         <p>

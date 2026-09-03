@@ -163,6 +163,13 @@ says which one it is.
 definition rather than typed into a form: the fields a form would offer are the
 loader's, and it rewrites them from the definition on every load.
 
+**Add another version**, on a survey's own page, is the same picker with one
+thing already decided — which survey the version belongs to. The theme is
+pre-set to the one that survey uses and can be changed, because sometimes
+changing it is the point of the new version. A definition slugged for a
+different survey is refused there: loading it would create a second survey
+rather than a version of this one, which is not what the button said.
+
 **Surveys → Verify and load a definition** does what steps 1 and 2 above do:
 
 1. Choose a definition **this deployment already mounts** (`PROLOG_DEFINITION_DIRS`),

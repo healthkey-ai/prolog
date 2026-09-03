@@ -37,6 +37,7 @@ from .models import (
     SurveyInvitation,
     SurveyVersion,
 )
+from .themes import registry as theme_registry
 from .themes import validate_theme
 from .themes.registry import _theme_roots, discover_themes, theme_directory
 
@@ -115,6 +116,7 @@ class SurveyAdmin(admin.ModelAdmin):
     # what the command prints.
 
     change_list_template = "admin/prolog_surveys/survey/change_list.html"
+    change_form_template = "admin/prolog_surveys/survey/change_form.html"
 
     def get_urls(self):
         return [
@@ -213,14 +215,28 @@ class SurveyAdmin(admin.ModelAdmin):
 
     def verify_view(self, request):
         definitions, themes = self._sources()
+        # Adding a version to a survey is the same act with one thing already
+        # decided: which survey it belongs to. The theme comes pre-set from
+        # that survey because a new version usually keeps it, and stays
+        # editable because sometimes that is the point of the new version.
+        slug = request.GET.get("survey") or request.POST.get("survey") or ""
+        survey = Survey.objects.filter(slug=slug).first() if slug else None
+        preset_theme = ""
+        if survey is not None:
+            theme = theme_registry.get(survey.theme_code)
+            preset_theme = str(theme.directory) if theme is not None else ""
+
         ctx = {
             **self.admin_site.each_context(request),
-            "title": "Verify and load a definition",
+            "title": (
+                f"Add a version of {survey.slug}" if survey else "Verify and load a definition"
+            ),
             "opts": self.model._meta,
             "definitions": definitions,
             "themes": themes,
             "schema_dir": str(conf.schema_dir()),
-            "selected": {},
+            "for_survey": survey,
+            "selected": {"theme_dir": preset_theme} if survey else {},
         }
 
         if request.method != "POST":
@@ -282,6 +298,14 @@ class SurveyAdmin(admin.ModelAdmin):
                 "version": (doc or {}).get("version"),
             }
         )
+
+        # A definition names its own survey. Adding a version to one survey
+        # from a definition slugged for another would quietly create a second
+        # survey, which is not what the button said.
+        if survey is not None and (doc or {}).get("slug") != survey.slug:
+            ctx["blocked"] = True
+            ctx["slug_mismatch"] = (doc or {}).get("slug") or "—"
+            return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
 
         if request.POST.get("action") == "load" and not blocked:
             try:
