@@ -50,6 +50,13 @@ from .themes import registry as theme_registry
 from .themes import validate_theme
 from .themes.registry import _theme_roots, discover_themes, theme_directory
 
+# A browser does not send an uploaded file twice, so a definition verified from
+# an upload has to be held somewhere for the press that loads it. The session:
+# it is per-administrator, it survives the redirect every other outcome takes,
+# and it is not shared between workers the way a local-memory cache is.
+UPLOAD_STASH = "prolog_surveys.verified_upload"
+UPLOAD_STASH_LIMIT = 512 * 1024
+
 
 class ReadOnlyMixin:
     def has_add_permission(self, request, obj=None):
@@ -315,6 +322,24 @@ class SurveyAdmin(admin.ModelAdmin):
             submitted=version.responses.filter(status=ResponseStatus.SUBMITTED).count(),
         )
 
+    def _hold_upload(self, request, name: str, doc) -> bool:
+        """Keep a verified upload for the next press, if it is small enough."""
+        if len(json.dumps(doc)) > UPLOAD_STASH_LIMIT:
+            return False
+        request.session[UPLOAD_STASH] = {"name": name, "doc": doc}
+        return True
+
+    def _held_upload(self, request, *, release=False):
+        """The upload being worked on, as ``(doc, source)`` or ``(None, "")``."""
+        held = (
+            request.session.pop(UPLOAD_STASH, None)
+            if release
+            else request.session.get(UPLOAD_STASH)
+        )
+        if not held:
+            return None, ""
+        return held["doc"], f"upload:{held['name']}"
+
     def _form_url(self, **params) -> str:
         query = urlencode({k: v for k, v in params.items() if v})
         url = reverse("admin:prolog_surveys_survey_verify")
@@ -417,13 +442,25 @@ class SurveyAdmin(admin.ModelAdmin):
             # would print it twice.
             quiet = request.GET.get("said") == "1"
             path = selected.get("definition_path")
-            if path:
+            doc, source = None, ""
+            if request.GET.get("uploaded") == "1":
+                doc, source = self._held_upload(request)
+                if doc is None:
+                    say(
+                        messages.WARNING,
+                        "That upload is no longer held — choose the file again.",
+                    )
+                    return page()
+                ctx["uploaded"] = source.removeprefix("upload:")
+            elif path:
+                source = path
                 try:
                     doc = read_json(Path(path))
                 except (OSError, ValueError) as exc:
                     say(messages.ERROR, f"{path} could not be read: {exc}")
                     return page()
-                blocked = self._verify_into(ctx, doc, path, selected["theme_dir"])
+            if doc is not None:
+                blocked = self._verify_into(ctx, doc, source, selected["theme_dir"])
                 ctx["discardable"] = None if blocked else self._discardable(doc)
                 if quiet:
                     return page()
@@ -442,21 +479,20 @@ class SurveyAdmin(admin.ModelAdmin):
         upload = request.FILES.get("definition_file")
         ctx["selected"] = {"definition_path": definition_path, "theme_dir": theme_dir}
 
-        def bounce(level, text):
+        def bounce(level, text, *, uploaded=""):
             """Say it, then land the administrator on a GET of this form.
 
-            An uploaded file cannot be sent again by a redirect, so that one
-            case renders in place and keeps the browser's resubmit warning.
+            Every outcome goes through here, so no page an administrator can
+            press Back to was produced by a POST.
             """
             say(level, text)
-            if upload is not None:
-                return page()
             return redirect(
                 self._form_url(
                     survey=slug,
                     version=label,
-                    definition_path=definition_path,
+                    definition_path="" if uploaded else definition_path,
                     theme_dir=theme_dir,
+                    uploaded=uploaded,
                     said="1",
                 )
             )
@@ -470,17 +506,17 @@ class SurveyAdmin(admin.ModelAdmin):
                     f"The {field} path is outside every directory this deployment mounts. "
                     "Add it to PROLOG_DEFINITION_DIRS or PROLOG_THEME_DIRS, or upload the file.",
                 )
-                if upload is not None:
-                    ctx["selected"] = {}
-                    return page()
                 return redirect(self._form_url(survey=slug, version=label, said="1"))
 
-        doc, source = None, ""
+        # A fresh file wins; then a mounted one; then the upload verified on
+        # the press before this one, which the browser did not send again.
+        doc, source, held = None, "", False
         if upload is not None:
             source = f"upload:{upload.name}"
             try:
                 doc = json.loads(upload.read().decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as exc:
+                request.session.pop(UPLOAD_STASH, None)
                 return bounce(messages.ERROR, f"{upload.name} is not readable JSON: {exc}")
         elif definition_path:
             source = definition_path
@@ -488,13 +524,38 @@ class SurveyAdmin(admin.ModelAdmin):
                 doc = read_json(Path(definition_path))
             except (OSError, ValueError) as exc:
                 return bounce(messages.ERROR, f"{definition_path} could not be read: {exc}")
+        elif request.POST.get("uploaded") == "1":
+            doc, source = self._held_upload(request)
+            held = doc is not None
+            if doc is None:
+                return bounce(
+                    messages.ERROR,
+                    "That upload is no longer held. Choose the file again — a browser "
+                    "does not send it twice.",
+                )
         else:
             return bounce(messages.ERROR, "Choose a mounted definition or upload one.")
+
+        uploaded_name = ""
+        if upload is not None:
+            uploaded_name = upload.name if self._hold_upload(request, upload.name, doc) else ""
+        elif held:
+            uploaded_name = source.removeprefix("upload:")
+        if upload is not None and not uploaded_name:
+            say(
+                messages.WARNING,
+                f"{upload.name} is too large to hold between presses, so Verify cannot be "
+                "followed by Load. Press Load as draft with the file chosen: it verifies "
+                "first and writes nothing if there are errors.",
+            )
+        ctx["uploaded"] = uploaded_name
 
         blocked = self._verify_into(ctx, doc, source, theme_dir)
         if blocked:
             return bounce(
-                messages.ERROR, "Refused: this definition has errors. Nothing was written."
+                messages.ERROR,
+                "Refused: this definition has errors. Nothing was written.",
+                uploaded="1" if uploaded_name else "",
             )
 
         # A definition names its own survey. Adding a version to one survey
@@ -506,6 +567,7 @@ class SurveyAdmin(admin.ModelAdmin):
                 messages.ERROR,
                 f"That definition is for '{doc.get('slug') or '—'}', not '{survey.slug}'. "
                 "Loading it here would create a second survey; use Add survey for that.",
+                uploaded="1" if uploaded_name else "",
             )
 
         action = request.POST.get("action")
@@ -514,14 +576,16 @@ class SurveyAdmin(admin.ModelAdmin):
                 messages.ERROR,
                 "You do not have permission to load definitions for this survey. "
                 "Nothing was written.",
+                uploaded="1" if uploaded_name else "",
             )
         if action not in ("load", "load_discarding"):
-            ctx["discardable"] = self._discardable(doc)
-            if upload is not None:
-                return page()
             return redirect(
                 self._form_url(
-                    survey=slug, version=label, definition_path=definition_path, theme_dir=theme_dir
+                    survey=slug,
+                    version=label,
+                    definition_path="" if uploaded_name else definition_path,
+                    theme_dir=theme_dir,
+                    uploaded="1" if uploaded_name else "",
                 )
             )
 
@@ -540,10 +604,11 @@ class SurveyAdmin(admin.ModelAdmin):
                 f"{exc.submitted} of them submitted. It is not published, so they are "
                 "test data — press \u201cDiscard responses and load\u201d to replace the "
                 "definition and delete them, or bump the version in the file to keep them.",
+                uploaded="1" if uploaded_name else "",
             )
         except DefinitionError as exc:
             ctx["blocked"] = True
-            return bounce(messages.ERROR, str(exc))
+            return bounce(messages.ERROR, str(exc), uploaded="1" if uploaded_name else "")
 
         if not result.created and not result.changed:
             # Not an error and not a success: nothing happened, and saying
@@ -561,6 +626,7 @@ class SurveyAdmin(admin.ModelAdmin):
                     else "already stands, so nothing was written. Edit the file and re-load, "
                     "or bump the version in it to add a second version."
                 ),
+                uploaded="1" if uploaded_name else "",
             )
 
         note = (
@@ -569,6 +635,7 @@ class SurveyAdmin(admin.ModelAdmin):
             else f"Re-loaded {result.version} from this definition. Publish it when the "
             "wording is settled; until then it can be re-loaded again."
         )
+        request.session.pop(UPLOAD_STASH, None)
         self.message_user(request, note, messages.SUCCESS)
         # Only a load that wrote something navigates, and it lands on what it
         # wrote rather than on a list of everything.

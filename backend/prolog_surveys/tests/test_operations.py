@@ -986,3 +986,97 @@ def test_startup_says_a_version_has_responses_rather_than_calling_it_invalid(
     err = capsys.readouterr().err
     assert "response(s)" in err and "--discard-responses" in err
     assert "invalid definition" not in err
+
+
+# --- an uploaded file, which the browser sends once --------------------------
+
+
+def _upload(example, name="uploaded.json"):
+    import io as _io
+
+    f = _io.BytesIO(json.dumps(example).encode())
+    f.name = name
+    return f
+
+
+def test_verifying_an_upload_then_loading_it_works(admin_login, db, example):
+    """A browser does not send an uploaded file twice, so Verify used to eat
+    it and Load answered "choose a mounted definition or upload one"."""
+    verified = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_file": _upload(example), "action": "verify"},
+        follow=True,
+    ).content.decode()
+
+    assert "No errors and no warnings" in verified
+    assert "uploaded.json" in verified, "the page says which file it is holding"
+
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {"uploaded": "1", "action": "load"}, follow=True
+    )
+
+    version = SurveyVersion.objects.get()
+    assert version.survey.slug == example["slug"]
+    assert version.source == "upload:uploaded.json"
+
+
+def test_a_loaded_upload_is_not_held_afterwards(admin_login, db, example):
+    """Otherwise a later press with an empty form loads a file nobody chose."""
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_file": _upload(example), "action": "verify"},
+    )
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {"uploaded": "1", "action": "load"}, follow=True
+    )
+
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {"uploaded": "1", "action": "load"}, follow=True
+    ).content.decode()
+
+    assert "no longer held" in body
+    assert SurveyVersion.objects.count() == 1
+
+
+def test_an_upload_is_only_used_when_the_form_says_so(admin_login, db, example):
+    """The hidden field is what says "the file I just verified"; without it an
+    empty form is an empty form."""
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_file": _upload(example), "action": "verify"},
+    )
+
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {"action": "load"}, follow=True
+    ).content.decode()
+
+    assert "Choose a mounted definition or upload one" in body
+    assert not SurveyVersion.objects.exists()
+
+
+def test_a_chosen_file_replaces_the_one_being_held(admin_login, db, example, tmp_path, settings):
+    import copy
+
+    other = copy.deepcopy(example)
+    other["slug"] = "second-instrument"
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_file": _upload(example), "action": "verify"},
+    )
+
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"uploaded": "1", "definition_file": _upload(other, "other.json"), "action": "load"},
+        follow=True,
+    )
+
+    assert Survey.objects.get().slug == "second-instrument"
+
+
+def test_an_upload_outcome_is_a_get_like_every_other(admin_login, db, example):
+    response = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_file": _upload(example), "action": "verify"},
+    )
+
+    assert response.status_code == 302, "no page a POST produced, uploads included"

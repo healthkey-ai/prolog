@@ -46,7 +46,9 @@ The form posts to a view that **verifies before it writes anything**, and shows:
 
 Loading always produces a **draft**. Activation is a separate act, as `--activate` is a separate flag.
 
-Every outcome is reached by a redirect to a GET of the same form — verified, refused, loaded, nothing chosen. The verdict is in the admin's own message slot either way, so Back is a page rather than "confirm form resubmission", and reloading the browser repeats nothing. An uploaded file is the one exception, because a redirect cannot carry it.
+Every outcome is reached by a redirect to a GET of the same form — verified, refused, loaded, nothing chosen. The verdict is in the admin's own message slot either way, so Back is a page rather than "confirm form resubmission", and reloading the browser repeats nothing.
+
+A browser sends an uploaded file once, so verifying an upload and then loading it would otherwise arrive with nothing in hand. A verified upload is held in the administrator's own session until the press that loads it (or another file replaces it), and the page names the file it is holding. Definitions above 512 KB are not held: those are verified and loaded in the one press, which is what Load does anyway — it verifies first and writes nothing if there are errors.
 
 ### 2.2 Publish — an action on the version's row  ✅ built
 

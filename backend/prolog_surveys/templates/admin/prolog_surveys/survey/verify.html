@@ -36,6 +36,8 @@
     {% csrf_token %}
     {% if for_survey %}<input type="hidden" name="survey" value="{{ for_survey.slug }}">{% endif %}
     {% if reload_of %}<input type="hidden" name="version" value="{{ reload_of.version }}">{% endif %}
+    {# A browser sends an uploaded file once; this says "the one already verified". #}
+    {% if uploaded %}<input type="hidden" name="uploaded" value="1">{% endif %}
     <fieldset class="module aligned" style="margin-bottom:1.5rem">
       <h2>The definition</h2>
 
@@ -55,7 +57,14 @@
       <div class="form-row">
         <label for="definition_file">…or upload one:</label>
         <input type="file" name="definition_file" id="definition_file" accept=".json,application/json">
-        <p class="help">An upload is used in preference to the file chosen above.</p>
+        {% if uploaded %}
+          <p class="help">
+            Holding <strong>{{ uploaded }}</strong>, which you just verified — press Load
+            without choosing it again. Choosing another file replaces it.
+          </p>
+        {% else %}
+          <p class="help">An upload is used in preference to the file chosen above.</p>
+        {% endif %}
       </div>
     </fieldset>
 
