@@ -2,110 +2,90 @@
 
 > **Status:** proposed, 2026-09-03. For review before any of it is built.
 >
-> **Artifacts this describes:** [`administration.md`](administration.md) — the same tasks, done from a terminal · [`definitions/survey-definition.md`](definitions/survey-definition.md) — what a definition contains · [`../schema/survey-definition.schema.json`](../schema/survey-definition.schema.json) — what it is verified against · [`deployment.md`](deployment.md) — where definitions are mounted
+> **Artifacts this describes:** [`administration.md`](administration.md) — the same tasks, done from a terminal · [`../backend/prolog_surveys/admin.py`](../backend/prolog_surveys/admin.py) — what already exists · [`definitions/survey-definition.md`](definitions/survey-definition.md) — what a definition contains · [`../schema/survey-definition.schema.json`](../schema/survey-definition.schema.json) — what it is verified against
 
-Everything an administrator does today needs a shell: `validate_definition`, `load_definition`, `--activate`, `export_responses`. That is workable for one instrument, run by whoever deployed it. It does not work for a deployment running several, administered by people who do not have — and should not need — a terminal on a production host.
+Everything an administrator does today needs a shell: `validate_definition`, `load_definition`, `--activate`, `export_responses`. That is workable for one instrument run by whoever deployed it, and not for a deployment running several, administered by people who should not need a terminal on a production host.
 
-This is a console for exactly that, and no more.
-
-## What it is for
-
-| | |
-| --- | --- |
-| **Create** | upload a definition, or pick one the deployment has mounted, and load it |
-| **Verify** | validate a definition against the schema, writing nothing |
-| **Publish** | activate a draft; archive what it replaces |
-| **Delete** | remove a survey that has nothing to lose |
-| **Point at the source** | show which definition file and which schema this instrument came from and is checked against |
-
-**Not** a survey builder. Definitions are authored as files and reviewed like code — diffable, revertible, and testable before anyone answers them. A browser question editor is a different product, and it would spend its life fighting the rules that make a version trustworthy.
-
-**Not** audience management. Who a survey is for is the host's question, not the runner's, and it is out of scope here.
+**Build it in Django admin.** The app already registers one, it already appears inside a host that installs the app, and it already gets the parts that are tedious and easy to get wrong — authentication, permissions, lists, filters, search, delete confirmation — for nothing.
 
 ---
 
-## 1. A version is immutable; the console has to be honest about that
+## 1. Most of it already exists
 
-A response records *which version it answered*. A published version therefore cannot change, and the loader refuses to re-load one whose content differs. The console must not offer an Edit button that turns out to mean "create a new version" — it should say what it does:
-
-```
-upload → verify → draft → active → archived
-```
-
-Editing wording or structure is uploading a new version. Changing a theme or an effective date is not, and can be offered directly.
-
-## 2. Delete, and why it is safe here
-
-`SurveyVersion.survey` and `SurveyResponse.survey_version` are both `PROTECT`. A survey with versions, or a version with responses, **cannot** be deleted — the database refuses before any code does. That is the right default and the console keeps it:
-
-| State | Delete |
-| --- | --- |
-| Draft, never activated, no responses | allowed |
-| Has responses | **refused**, with the count and where to export them |
-| Archived with responses | refused; archived already means "kept, not offered" |
-
-The console surfaces the refusal as a **reason**, not a stack trace: *"3,412 responses are bound to this survey. Export them first; deleting it would destroy what people told you."* No force flag in the UI. A deployment that genuinely wants the data gone has `purge_abandoned_responses`, an export, and a database — all deliberate, none of them a button next to a list.
-
-## 3. Where a definition comes from
-
-Two sources, because deployments differ:
-
-- **Upload** a JSON file from the browser. The common case, and the one that needs no shell.
-- **Pick a mounted file** from `PROLOG_DEFINITION_DIRS`. A deployment that ships definitions in its image already has them on disk; re-uploading a copy invites the two drifting apart.
-
-Either way the console shows **what it is verifying against**: the schema at `PROLOG_SCHEMA_DIR`, its `schema_version`, and a link to read it. "Valid" means nothing to an administrator who cannot see what it was checked against — and a deployment may be running an older runner than the definition was written for, which is exactly when that matters.
-
-## 4. Verify writes nothing
-
-The verify step calls the same `validate_definition` the command does, and persists nothing at all. It reports what the validator distinguishes:
-
-- **Errors** refuse the file. Every error, not the first: fixing them is a loop, and a loop of one-at-a-time is a bad afternoon.
-- **Warnings** do not refuse it — an option nothing can select, a language still machine-translated. They are the things that are legal and probably not meant.
-
-Before anything is written, the console says what *would* happen: whether this is a new instrument or a new version of one that exists, its slug and version, and — if that version already exists with different content — that loading it will be refused, because a published version is immutable.
-
-Loading always produces a **draft**. Activation is a separate press, as `--activate` is a separate flag.
-
-## 5. Activation says what it costs
-
-A confirmation that names consequences rather than asking whether you are sure: which version becomes active, which one is archived by it, whether the non-default languages are reviewed, and whether the instrument is inside its effective window.
-
-Activating with unreviewed machine translations stays refused unless the deployment has opted in (`PROLOG_MACHINE_LANGUAGES`), and then the confirmation says respondents will see the disclosure.
-
-## 6. Who is an administrator
-
-The runner does not know. In the standalone profile it is a Django staff user; in the integrated profile the host has its own idea — roles, organisations, trust — and the runner must not reimplement it.
-
-So the same shape as the participant resolver: **`PROLOG_ADMIN_PERMISSION`**, a dotted path to a DRF permission class, defaulting to `rest_framework.permissions.IsAdminUser`. A host sets it to its own; PROlog asks it and takes the answer. No permission model in this repository beyond "the deployment says who".
-
-## 7. Where it lives
-
-The console is part of the runner's own front end — same build, same theme, no second application to deploy — under **`/s/manage`**:
-
-- it works in both profiles unchanged, because the integrated host already routes `/s/…` to the runner and needs no new mount;
-- React Router ranks a static segment above a dynamic one, so `/s/manage` wins over `/s/:slug` — worth a test rather than a comment, since a survey slugged `manage` would otherwise be unreachable.
-
-The API is a new tree beside the runner's, guarded by `PROLOG_ADMIN_PERMISSION`:
+`prolog_surveys/admin.py` registers Survey, SurveyQuestion, SurveyResponse, SurveyContact, SurveyConsent and SurveyInvitation, and it is already written defensively:
 
 | | |
 | --- | --- |
-| `GET /api/admin/surveys/` | instruments, their active version, response counts |
-| `GET /api/admin/surveys/<slug>/` | versions, sources, response summary |
-| `GET /api/admin/definitions/` | files mounted in `PROLOG_DEFINITION_DIRS` |
-| `GET /api/admin/schema/` | the schema being validated against |
-| `POST /api/admin/surveys/verify/` | issues out, **nothing written** |
-| `POST /api/admin/surveys/` | load as a draft |
-| `POST /api/admin/surveys/<slug>/versions/<version>/activate/` | |
-| `POST /api/admin/surveys/<slug>/versions/<version>/archive/` | |
-| `DELETE /api/admin/surveys/<slug>/` | refused while anything depends on it |
-| `GET /api/admin/surveys/<slug>/responses.csv` | the existing export over HTTP |
-| `GET /api/admin/surveys/<slug>/translations.csv?language=es` | the review sheet |
+| Questions, responses, contacts, consents | read-only — `ReadOnlyMixin` refuses add and change |
+| `SurveyVersion` | **not registered on its own**; visible only as a read-only inline, so the `definition` JSON cannot be edited into a shape the validator never saw |
+| Survey's loader-owned fields | `slug`, `title`, `theme_code`, `allow_anonymous_participation` become read-only once the row exists: the loader rewrites them on every load, so an edit here would drift until the next load silently reverted it |
+| Contact addresses | deliberately absent from list views |
 
-The participant-facing `/api/run/…` tree is untouched. It is `AllowAny` by design and must not grow an endpoint that assumes otherwise.
+A host that installs the app gets all of this at `/admin/prolog_surveys/…` with no work — which is exactly how PRomop got it.
 
-## 8. Decisions to settle before building
+So this design is not "build a console". It is **four additions to one that is already there**, and a rule about what must never become editable.
 
-1. **Does the console need the response *data*, or only counts?** Counts and a CSV download are cheap and answer most questions. Rendering individual responses in a browser puts patient-entered free text on a screen with a different audience from the export, and deserves its own thought.
-2. **Should deleting a *draft* be allowed to cascade its questions and options?** They are `CASCADE` already, so it works; the question is whether the UI should say so.
-3. **One console for many deployments?** This assumes one deployment, one console, at its own origin. A multi-tenant console is the host's product, not the runner's.
-4. **Invitations and repeat administrations** exist in the engine and are not in this design. Worth deciding whether the console ever covers "invite these people on this date", or stays a library of instruments.
+## 2. What to add
+
+### 2.1 Load a definition — a custom admin view
+
+A button on the Survey changelist, `Load a definition`, opening a form with two ways in:
+
+- **upload** a JSON file, or
+- **pick one the deployment already mounts** in `PROLOG_DEFINITION_DIRS` — a deployment that ships definitions in its image should not have to upload a second copy that then drifts from the first.
+
+The form posts to a view that **verifies before it writes anything**, and shows:
+
+- **errors**, which refuse the file — all of them, not the first, because fixing them is a loop;
+- **warnings**, which do not — an option nothing can select, a language still machine-translated;
+- **what would happen**: new instrument or new version of an existing one, its slug and version, and — where that version already exists with different content — that loading is refused, because a published version is immutable;
+- **which schema it was checked against**, with its `schema_version` and a link. "Valid" means little to an administrator who cannot see what it was checked against, and a deployment can be running an older runner than the definition was written for.
+
+Loading always produces a **draft**. Activation is a separate act, as `--activate` is a separate flag.
+
+### 2.2 Activate and archive — admin actions
+
+Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no change — carrying two actions:
+
+- **Activate** — with a confirmation naming what it costs: which version this archives, whether the non-default languages are reviewed, whether the instrument is inside its effective window. Unreviewed machine translations stay refused unless the deployment opted in (`PROLOG_MACHINE_LANGUAGES`), and then the confirmation says respondents will see the disclosure.
+- **Archive** — kept and readable, no longer offered.
+
+Actions rather than an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
+
+### 2.3 Delete — already safe, and it should say why
+
+`SurveyVersion.survey` and `SurveyResponse.survey_version` are both `PROTECT`: a survey with versions, or a version with responses, cannot be deleted. The database refuses before any code does, which is the right default.
+
+What Django gives by default is a protected-objects error page listing rows. Better: `has_delete_permission` returns False once responses exist, so the button is absent rather than present-and-failing, and the change page says why — *"3,412 responses are bound to this survey. Export them first; deleting it would destroy what people told you."*
+
+No force flag. A deployment that genuinely wants the data gone has an export, `purge_abandoned_responses` and a database; none of those is a button beside a list.
+
+### 2.4 Exports — actions that download
+
+`Export responses`, `Export contacts` and `Export translations` as actions returning the CSV the management commands already produce. The two response exports stay separate, as they are on the command line: the response export never contains an address, and the contact export never contains an answer.
+
+## 3. The rule that matters more than the screens
+
+**Nothing that a respondent's answers are interpreted against may become editable here.** A version's `definition`, a question's text or type, an option's key: all reachable through a badly-configured ModelAdmin, and all of them would let somebody produce an instrument the validator never saw and the engines disagree about.
+
+The current admin gets this right, and the additions must not undo it. It is worth a test — a check that `SurveyVersion` has no add or change permission and that `SurveyAdmin.get_readonly_fields` covers the loader-owned set — because it is the kind of thing a later convenience change breaks without anyone noticing.
+
+## 4. Who is an administrator
+
+Django's own: `is_staff`, plus the per-model permissions. Nothing new in this repository.
+
+That is the same answer in both profiles, and it is the reason the admin route is a better fit than a bespoke console: the standalone deployment has a staff user already, and an integrated host — where roles, organisations and trust are the host's business — is the one deciding who reaches `/admin/` at all. PROlog does not have to model any of it.
+
+**A host that wants finer control than "staff"** — say, an org admin who may administer only their own instruments — filters in its own `AdminSite`, or does not use this and drives the same commands from its own UI. That is a host decision and stays out of here.
+
+## 5. What this is not
+
+- **Not a survey builder.** Definitions are authored as files and reviewed like code: diffable, revertible, testable before anyone answers them. Every screen above treats a definition as a document to verify and load, never as a form to fill in.
+- **Not audience management.** Who a survey is for is the host's question.
+- **Not branded.** This looks like Django admin, because it is. If a customer's own staff ever administer their own instruments, that is when a themed console earns its cost — and this design is what it would replace, not something it would have to undo.
+
+## 6. Decisions to settle before building
+
+1. **Does the console show response *data*, or only counts and a CSV?** The response admin currently shows answers inline, which puts patient-entered free text on a screen whose audience differs from the export's. Worth confirming that is wanted.
+2. **Should a draft be deletable?** Its questions and options are `CASCADE`, so it works. The question is whether the UI should say so before doing it.
+3. **Invitations and repeat administrations** exist in the engine and are only listed today. Whether the console ever drives them — "invite these people on this date" — is open.
