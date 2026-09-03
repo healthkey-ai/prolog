@@ -137,5 +137,6 @@
   "legal.back": "Volver a la encuesta",
   "legal.missing": "Esta página no está disponible.",
   "legal.privacy": "Aviso de privacidad",
-  "legal.terms": "Términos"
+  "legal.terms": "Términos",
+  "intro.machineTranslation": "Esta encuesta se redactó en {{source}}. El texto en {{language}} que está leyendo fue traducido por una máquina y no ha sido revisado por una persona."
 }

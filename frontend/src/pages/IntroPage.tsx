@@ -173,6 +173,11 @@ export function IntroPage() {
   // theme: preferred over an off-site link, because the respondent is deciding
   // whether to trust the survey and should not have to leave it to find out.
   const hasLocalPrivacy = def.legal_pages?.includes("privacy") ?? false;
+  // The language being read is machine-translated and the deployment knows it
+  // (PROLOG_MACHINE_LANGUAGES). Saying so is the condition on serving it: a
+  // respondent judging a clinical question deserves to know a machine wrote
+  // the words, and which language a person did write.
+  const machineTranslated = def.translation_status?.[def.language] === "machine";
 
   if (askLanguageFirst) {
     return (
@@ -260,6 +265,14 @@ export function IntroPage() {
           </div>
         ) : (
           <>
+            {machineTranslated && (
+              <p className="rounded-[var(--p-radius-card)] bg-surface p-4 text-[0.95rem] text-ink" role="note" data-testid="machine-translation">
+                {t("intro.machineTranslation", {
+                  source: languageName(def.default_language),
+                  language: languageName(def.language),
+                })}
+              </p>
+            )}
             {def.languages.length > 1 && def.presentation?.language_step !== "first" && (
               <fieldset className="border-0 p-0">
                 <legend className={`mb-3 text-sm ${soft}`}>{t("intro.language")}</legend>

@@ -143,12 +143,25 @@ marked `machine` or `reviewed`.
 is deliberate: machine-translated clinical wording is where translation goes
 most wrong, and "watch and wait" is not a phrase to guess at.
 
-Two ways past it, and they are not the same:
+Three ways past it, and they are not the same:
 
-- `--allow-unreviewed` on activation — **for review only**. It logs loudly. Use
-  it to look at a staging deployment, never for a live one.
+- `--allow-unreviewed` on activation — **for review only**. It logs loudly and
+  the respondent is told nothing. Use it to look at a staging deployment, never
+  for a live one.
+- **`PROLOG_MACHINE_LANGUAGES`** — the deployment states that respondents will
+  read a machine translation of those languages and that this is intended. The
+  runner then **discloses it on the intro**: the language was translated by a
+  machine, nobody has checked it, and here is the language it was written in.
+  For a short, plain-language instrument that is usually better for a
+  respondent than no translation at all — but only because they are told.
 - Getting the translations reviewed, and changing `translation_status` to
-  `reviewed`. This is the one that ships.
+  `reviewed`. This is the one that ships, and it removes the disclosure with
+  nothing else to change.
+
+The middle one is a deliberate position, not a shortcut: naming a language
+there is a decision about what respondents read, so it belongs in the
+deployment's settings next to its other decisions, not in the command somebody
+happens to type.
 
 ### Giving a reviewer something they can read
 
