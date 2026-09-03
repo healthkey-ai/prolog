@@ -1,6 +1,8 @@
 # The survey administration console — a design
 
-> **Status:** proposed, 2026-09-03. For review before any of it is built.
+> **Status:** partly built, 2026-09-03. §2.1 (verify and load) is done, and so
+> is the removal of the data admins. Activate/archive actions, the delete guard
+> and the export actions are not.
 >
 > **Artifacts this describes:** [`administration.md`](administration.md) — the same tasks, done from a terminal · [`../backend/prolog_surveys/admin.py`](../backend/prolog_surveys/admin.py) — what already exists · [`definitions/survey-definition.md`](definitions/survey-definition.md) — what a definition contains · [`../schema/survey-definition.schema.json`](../schema/survey-definition.schema.json) — what it is verified against
 
@@ -16,7 +18,8 @@ Everything an administrator does today needs a shell: `validate_definition`, `lo
 
 | | |
 | --- | --- |
-| Questions, responses, contacts, consents | read-only — `ReadOnlyMixin` refuses add and change |
+| Contacts and consents | read-only — `ReadOnlyMixin` refuses add and change |
+| Questions and responses | **not registered at all.** Questions are the definition's, and a second view of them is one nobody validated; responses belong to the API and the exports, whose audience is not an administrator's |
 | `SurveyVersion` | **not registered on its own**; visible only as a read-only inline, so the `definition` JSON cannot be edited into a shape the validator never saw |
 | Survey's loader-owned fields | `slug`, `title`, `theme_code`, `allow_anonymous_participation` become read-only once the row exists: the loader rewrites them on every load, so an edit here would drift until the next load silently reverted it |
 | Contact addresses | deliberately absent from list views |
@@ -27,9 +30,9 @@ So this design is not "build a console". It is **four additions to one that is a
 
 ## 2. What to add
 
-### 2.1 Load a definition — a custom admin view
+### 2.1 Load a definition — a custom admin view  ✅ built
 
-A button on the Survey changelist, `Load a definition`, opening a form with two ways in:
+A button on the Survey changelist, **Verify and load a definition**, opening a form with two ways in:
 
 - **upload** a JSON file, or
 - **pick one the deployment already mounts** in `PROLOG_DEFINITION_DIRS` — a deployment that ships definitions in its image should not have to upload a second copy that then drifts from the first.
@@ -43,7 +46,7 @@ The form posts to a view that **verifies before it writes anything**, and shows:
 
 Loading always produces a **draft**. Activation is a separate act, as `--activate` is a separate flag.
 
-### 2.2 Activate and archive — admin actions
+### 2.2 Activate and archive — admin actions  *(not built)*
 
 Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no change — carrying two actions:
 
@@ -52,7 +55,7 @@ Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no
 
 Actions rather than an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
 
-### 2.3 Delete — already safe, and it should say why
+### 2.3 Delete — already safe, and it should say why  *(not built)*
 
 `SurveyVersion.survey` and `SurveyResponse.survey_version` are both `PROTECT`: a survey with versions, or a version with responses, cannot be deleted. The database refuses before any code does, which is the right default.
 
@@ -60,7 +63,7 @@ What Django gives by default is a protected-objects error page listing rows. Bet
 
 No force flag. A deployment that genuinely wants the data gone has an export, `purge_abandoned_responses` and a database; none of those is a button beside a list.
 
-### 2.4 Exports — actions that download
+### 2.4 Exports — actions that download  *(not built)*
 
 `Export responses`, `Export contacts` and `Export translations` as actions returning the CSV the management commands already produce. The two response exports stay separate, as they are on the command line: the response export never contains an address, and the contact export never contains an answer.
 
@@ -86,6 +89,6 @@ That is the same answer in both profiles, and it is the reason the admin route i
 
 ## 6. Decisions to settle before building
 
-1. **Does the console show response *data*, or only counts and a CSV?** The response admin currently shows answers inline, which puts patient-entered free text on a screen whose audience differs from the export's. Worth confirming that is wanted.
+1. ~~**Does the console show response *data*?**~~ **Settled: no.** The question and response admins are gone. Questions come from the definition; answers come from the API and the exports, and an admin page showing patient-entered free text has a different audience from an export somebody deliberately ran.
 2. **Should a draft be deletable?** Its questions and options are `CASCADE`, so it works. The question is whether the UI should say so before doing it.
 3. **Invitations and repeat administrations** exist in the engine and are only listed today. Whether the console ever drives them — "invite these people on this date" — is open.

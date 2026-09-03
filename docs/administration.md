@@ -1,8 +1,8 @@
 # Running surveys: an administrator's manual
 
-> **Coming:** everything below is done from a terminal. A console for the same
-> tasks — upload, verify, publish, delete — is proposed in
-> [`administration-console.md`](administration-console.md).
+> **Two ways to do all of this:** the commands below, or Django admin. What the
+> admin covers, and deliberately does not, is [From the admin](#from-the-admin);
+> the rest of the plan is [`administration-console.md`](administration-console.md).
 >
 > **Artifacts this describes:** [`definitions/survey-definition.md`](definitions/survey-definition.md) — every field of a definition · [`definitions/theme-definition.md`](definitions/theme-definition.md) — every field of a theme · [`deployment.md`](deployment.md) — the deployment itself · [`integration.md`](integration.md) — installing PROlog in a host platform
 
@@ -59,6 +59,10 @@ attached to the version they were answered against — that is the whole reason
 versions exist.
 
 ### Publishing a survey
+
+Two ways, doing the same thing: the commands below, or **Django admin** — see
+[From the admin](#from-the-admin). The admin is the same validator and the same
+loader, for someone without a shell on the host.
 
 ```sh
 # 1. Does it hold together? Nothing is written.
@@ -137,6 +141,38 @@ Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
 
 ---
+
+## From the admin
+
+`/admin/prolog_surveys/` in any deployment that has Django admin. It manages an
+instrument's **inputs** — which definition and which theme a survey is built
+from, whether they are valid, and loading them.
+
+**Surveys → Verify and load a definition** does what steps 1 and 2 above do:
+
+1. Choose a definition **this deployment already mounts** (`PROLOG_DEFINITION_DIRS`),
+   or upload one. A deployment that ships definitions in its image should choose
+   rather than upload — two copies drift.
+2. Optionally choose a **theme** directory; it is verified beside the definition,
+   because both are what an instrument is made of.
+3. **Verify.** Nothing is written. The page shows the validator's own output —
+   level, code, path, message — for every issue, not the first, and names the
+   schema it was checked against. A definition that is refused says so and stops
+   there.
+4. **Load as draft** appears only when there are no errors. It never activates:
+   publishing stays the deliberate step it is on the command line.
+
+### What the admin deliberately does not do
+
+- **Questions are not listed.** They are the definition's, and a second view of
+  them would be one nobody validated.
+- **Responses are not browsable.** They belong to the API and the exports, whose
+  audience is not an administrator's.
+- **Nothing a respondent's answers are interpreted against is editable** — a
+  version's definition, a question's text, an option's key. A survey's effective
+  window is; the loader owns the rest and rewrites it on every load.
+- **A survey with responses cannot be deleted.** The database refuses before any
+  code does, and that is the right answer: export them first.
 
 ## Languages
 
