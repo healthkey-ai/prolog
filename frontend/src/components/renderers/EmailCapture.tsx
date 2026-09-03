@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link, useParams } from "react-router";
+import { useSurveyDefinition } from "@/api/hooks";
 import { ApiError } from "@/api/client";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -14,6 +16,12 @@ interface Props extends RendererProps<EmailValue> {
 /** Contact/identity capture (Q-11, CON-3/4): the address goes to its own endpoint, never into the answer. */
 export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props) {
   const { t } = useTranslation();
+  // The notice belongs on this screen more than anywhere else: this is where
+  // somebody decides whether to hand over an address, and it opens on this
+  // origin, so their place in the survey survives reading it.
+  const { slug = "" } = useParams();
+  const definition = useSurveyDefinition(slug);
+  const hasPrivacy = definition.data?.legal_pages?.includes("privacy") ?? false;
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,6 +83,11 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
               {t("email.skip")}
             </Button>
           </div>
+          {hasPrivacy && (
+            <Link to={`/s/${slug}/privacy`} className="text-sm text-primary underline" data-testid="email-privacy-link">
+              {t("legal.privacy")}
+            </Link>
+          )}
         </>
       )}
     </div>

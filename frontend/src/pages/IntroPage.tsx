@@ -286,16 +286,10 @@ export function IntroPage() {
             {consent && (
               <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink">
                 <p className="text-[0.95rem]">{consent.text as string}</p>
-                {hasLocalPrivacy ? (
-                  <Link to={`/s/${slug}/privacy`} className="mt-2 inline-block text-sm text-primary underline" data-testid="privacy-link">
-                    {t("legal.privacy")}
-                  </Link>
-                ) : (
-                  privacyUrl && (
-                    <a href={privacyUrl} className="mt-2 inline-block text-sm text-primary underline" target="_blank" rel="noreferrer">
-                      {privacyUrl}
-                    </a>
-                  )
+                {!hasLocalPrivacy && privacyUrl && (
+                  <a href={privacyUrl} className="mt-2 inline-block text-sm text-primary underline" target="_blank" rel="noreferrer">
+                    {privacyUrl}
+                  </a>
                 )}
                 <div className="mt-2 flex min-h-[44px] items-center gap-3">
                   <Checkbox id="consent" className="size-5" checked={agreed} onCheckedChange={(c) => { setAgreed(c === true); setConsentError(false); }} data-testid="consent" />
@@ -313,6 +307,14 @@ export function IntroPage() {
                 {t("intro.start")}
               </Button>
             </div>
+            {/* Not inside the consent block: an anonymous survey with no consent
+                gate still has a notice, and its respondents still deserve to
+                read it before they start. */}
+            {hasLocalPrivacy && (
+              <Link to={`/s/${slug}/privacy`} className={`text-sm underline ${immersive ? "text-on-primary/80" : "text-primary"}`} data-testid="privacy-link">
+                {t("legal.privacy")}
+              </Link>
+            )}
           </>
         )}
         {/* Outside both branches: "Start again" / "Start a new response" call start() from the resume card too. */}
