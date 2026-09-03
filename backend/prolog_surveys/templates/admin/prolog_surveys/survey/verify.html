@@ -92,6 +92,13 @@
       {% if verified and not blocked %}
         <button type="submit" name="action" value="load" class="button">Load as draft</button>
       {% endif %}
+      {% if discardable %}
+        {# Same form, different verb: the responses are test data until the
+           version is published, and deleting them is said out loud. #}
+        <button type="submit" name="action" value="load_discarding" class="button">
+          Discard {{ discardable.total }} response{{ discardable.total|pluralize }} and load
+        </button>
+      {% endif %}
     </div>
   </form>
 

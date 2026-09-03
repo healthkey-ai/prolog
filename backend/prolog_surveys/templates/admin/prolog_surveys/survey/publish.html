@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main" style="max-width:800px">
+  <p>
+    Publishing <strong>{{ version }}</strong> freezes its content. From then on the wording,
+    the questions and the options cannot change: a response records which version it answered,
+    so “what did question 7 say?” has to have one answer forever.
+  </p>
+
+  <ul>
+    <li>Re-loading this version from a changed file will be refused. A change is a new version.</li>
+    {% if responses %}
+      <li>
+        Its {{ responses }} response{{ responses|pluralize }}
+        ({{ submitted }} submitted) stop being test data and can no longer be discarded by a re-load.
+      </li>
+    {% else %}
+      <li>It has no responses yet.</li>
+    {% endif %}
+    <li>This cannot be undone.</li>
+  </ul>
+
+  <p class="help">
+    Publishing does not activate or deactivate anything: which version respondents are given is
+    decided separately.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="submit-row">
+      <button type="submit" class="button default" style="padding:10px 15px;font-size:.8125rem;line-height:15px;border:none;border-radius:4px;cursor:pointer;margin:0 8px 0 0">
+        Publish and freeze
+      </button>
+      <a href="{% url 'admin:prolog_surveys_survey_change' version.survey_id %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

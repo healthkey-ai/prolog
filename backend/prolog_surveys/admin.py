@@ -15,16 +15,20 @@ import json
 from pathlib import Path
 
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, OuterRef, Q, Subquery
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
+from django.utils.html import format_html
 
 from . import conf
 from .definitions.loader import (
     DefinitionError,
+    ResponsesExist,
     discover,
     load_definition,
+    publish_version,
     read_json,
     validate_definition,
 )
@@ -62,8 +66,28 @@ class VersionInline(ReadOnlyMixin, admin.TabularInline):
     """
 
     model = SurveyVersion
-    fields = ("version", "status", "schema_version", "published_at", "archived_at", "source")
+    fields = ("version", "status", "schema_version", "activated_at", "content", "source")
     readonly_fields = fields
+
+    @admin.display(description="Content")
+    def content(self, obj):
+        """Whether this version's wording can still change, and how to end that.
+
+        Activation is a separate column because it answers a separate
+        question: which version respondents are being given, not whether what
+        it says is final.
+        """
+        if obj.pk is None:  # pragma: no cover - Django renders no empty row
+            return "—"
+        if obj.is_published:
+            return f"Published {obj.published_at:%Y-%m-%d %H:%M} — frozen"
+        if obj.status == LifecycleStatus.ARCHIVED:
+            return "Archived — frozen"
+        return format_html(
+            '<a class="button" href="{}">Publish…</a> <span class="help">re-loadable until then</span>',
+            reverse("admin:prolog_surveys_surveyversion_publish", args=[obj.pk]),
+        )
+
     extra = 0
     max_num = 0
     can_delete = False
@@ -135,6 +159,11 @@ class SurveyAdmin(admin.ModelAdmin):
                 "verify/",
                 self.admin_site.admin_view(self.verify_view),
                 name="prolog_surveys_survey_verify",
+            ),
+            path(
+                "publish/<int:version_id>/",
+                self.admin_site.admin_view(self.publish_view),
+                name="prolog_surveys_surveyversion_publish",
             ),
             *super().get_urls(),
         ]
@@ -335,11 +364,26 @@ class SurveyAdmin(admin.ModelAdmin):
                 "Loading it here would create a second survey; use Add survey for that.",
             )
 
-        if request.POST.get("action") != "load":
+        action = request.POST.get("action")
+        if action not in ("load", "load_discarding"):
             return page()
 
         try:
-            result = load_definition(doc, source=source)
+            result = load_definition(
+                doc, source=source, discard_responses=action == "load_discarding"
+            )
+        except ResponsesExist as exc:
+            # Not a refusal: the version is unpublished, so those responses are
+            # the test data from trying the instrument out. Only the person
+            # loading knows that, so the page asks rather than deciding.
+            ctx["discardable"] = exc
+            return say(
+                messages.WARNING,
+                f"{exc.version} has {exc.total} response(s), {exc.submitted} of them "
+                "submitted. It is not published, so they are test data — press "
+                "\u201cDiscard responses and load\u201d to replace the definition and "
+                "delete them, or bump the version in the file to keep them.",
+            )
         except DefinitionError as exc:
             ctx["blocked"] = True
             return say(messages.ERROR, str(exc))
@@ -357,7 +401,8 @@ class SurveyAdmin(admin.ModelAdmin):
         note = (
             f"Created {result.version} as a draft. Activate it deliberately when it is ready."
             if result.created
-            else f"Updated the existing draft {result.version} from this definition."
+            else f"Updated {result.version} from this definition. Publish it when the wording "
+            "is settled; until then it can be re-loaded again."
         )
         self.message_user(request, note, messages.SUCCESS)
         # Only a load that wrote something navigates, and it lands on what it
@@ -365,6 +410,62 @@ class SurveyAdmin(admin.ModelAdmin):
         return redirect(
             reverse("admin:prolog_surveys_survey_change", args=[result.version.survey_id])
         )
+
+    def publish_view(self, request, version_id):
+        """Freeze a version's content, deliberately and on the record.
+
+        A GET says what publishing costs — it cannot be undone, and the
+        responses stop being test data — because the only way back from a
+        mistake here is a new version.
+        """
+        version = get_object_or_404(SurveyVersion.objects.select_related("survey"), pk=version_id)
+        if not self.has_change_permission(request, version.survey):
+            raise PermissionDenied
+        back = redirect(reverse("admin:prolog_surveys_survey_change", args=[version.survey_id]))
+
+        if version.is_published:
+            self.message_user(
+                request,
+                f"{version} was already published on {version.published_at:%Y-%m-%d %H:%M}.",
+                messages.WARNING,
+            )
+            return back
+        if version.status == LifecycleStatus.ARCHIVED:
+            self.message_user(
+                request,
+                f"{version} is archived: its content is frozen already, and publishing it "
+                "now would say it was current when it is not.",
+                messages.WARNING,
+            )
+            return back
+
+        total = version.responses.count()
+        if request.method != "POST":
+            return TemplateResponse(
+                request,
+                "admin/prolog_surveys/survey/publish.html",
+                {
+                    **self.admin_site.each_context(request),
+                    "title": f"Publish {version}",
+                    "opts": self.model._meta,
+                    "version": version,
+                    "responses": total,
+                    "submitted": version.responses.filter(status="submitted").count(),
+                },
+            )
+
+        publish_version(version)
+        self.message_user(
+            request,
+            f"Published {version}. Its content is frozen"
+            + (
+                f", and its {total} response(s) are answers now, not test data."
+                if total
+                else "; a change from here is a new version."
+            ),
+            messages.SUCCESS,
+        )
+        return back
 
 
 @admin.register(SurveyContact)

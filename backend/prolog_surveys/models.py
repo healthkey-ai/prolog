@@ -84,7 +84,17 @@ class SurveyVersion(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    published_at = models.DateTimeField(null=True, blank=True)
+    activated_at = models.DateTimeField(
+        null=True, blank=True, help_text="When this version was last made the active one."
+    )
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When this version's content was frozen. Until then it can be re-loaded, and "
+            "the responses against it are test data."
+        ),
+    )
     archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -105,24 +115,22 @@ class SurveyVersion(models.Model):
     def is_mutable(self) -> bool:
         """May this version's content still be replaced by a re-load?
 
-        A draft always may. An **active version whose survey has not opened
-        yet** may too: nobody can have answered it, so there is nothing to
-        reinterpret. That is the whole reason published versions are frozen —
-        a response records which version it answered — and until a respondent
-        can reach it, re-loading a corrected file beats bumping the version
-        for a typo nobody has read.
+        Until it is **published** — an explicit, deliberate act — yes. A
+        version is loaded, activated, answered a few times to see how it
+        reads, corrected, loaded again; those responses are test data and
+        that loop is the normal way to get an instrument right.
 
-        The window is the reason; the absence of responses is the invariant, so
-        both are checked. `effective_from` can be moved forward after
-        collection has started, and a version somebody has answered must not
-        become editable because a date was edited.
+        Publishing draws the line. From then on the content is frozen for
+        good, because a response records which version it answered and
+        "what did question 7 say?" must have one answer forever. An
+        archived version is frozen too: it was offered once, whether or
+        not anyone published it.
         """
-        if self.status == LifecycleStatus.DRAFT:
-            return True
-        if self.status != LifecycleStatus.ACTIVE:
-            return False
-        not_open_yet = self.survey.closed_reason() == "survey is not yet open"
-        return not_open_yet and not self.responses.exists()
+        return self.published_at is None and self.status != LifecycleStatus.ARCHIVED
+
+    @property
+    def is_published(self) -> bool:
+        return self.published_at is not None
 
     @property
     def default_language(self) -> str:

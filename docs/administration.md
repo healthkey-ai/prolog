@@ -12,7 +12,7 @@ cannot be undone. It assumes a PROlog deployment already exists — building one
 is [`deployment.md`](deployment.md).
 
 If you read nothing else, read [Publishing a survey](#publishing-a-survey) and
-[Versions are immutable](#versions-are-immutable). Everything else is detail
+[Publishing freezes a version](#publishing-freezes-a-version). Everything else is detail
 around those two.
 
 ---
@@ -91,47 +91,85 @@ ever select.
 
 ---
 
-## Versions are immutable
+## Publishing freezes a version
 
-Once a version is active, **its content cannot change**. Editing the file and
-re-loading it is refused:
+A version's content can change until you **publish** it. After that it cannot,
+ever:
 
 ```
-ERROR immutable at $.version: version 1.0 is active; bump the version to change it
+ERROR immutable at $.version: version 1.0 is published, so its content is final; bump the version to change it
 ```
 
 This is not bureaucracy. A response records *which version it answered*, and
-"what did question 7 say?" must have one answer forever. If you edit an active
-version in place, every response already given quietly comes to mean something
-else.
+"what did question 7 say?" must have one answer forever. If a published version
+could be edited in place, every response already given would quietly come to
+mean something else.
 
-So: **any change a respondent's answers must be interpreted against is a new
-version.** Change `version` in the file, load it, activate it. The old version
-is archived, its responses keep pointing at it, and new respondents get the new
-one.
+So: **once published, any change a respondent's answers must be interpreted
+against is a new version.** Change `version` in the file, load it, activate it.
+The old version is archived, its responses keep pointing at it, and new
+respondents get the new one.
 
-Reloading an *unchanged* file is always safe and reports `unchanged`.
+Re-loading an *unchanged* file is always safe and reports `unchanged`, published
+or not — that is what happens at every container start.
 
-### Until it opens, a version can still be corrected
+### Getting the instrument right first
 
-The rule exists because a response records which version it answered. Until
-somebody can answer, there is nothing to reinterpret — so a version may be
-re-loaded with corrected content while **its survey has not opened yet**:
-`effective_from` is a future date, and the runner refuses to start a response
-before then.
+Activating and publishing are separate acts, and they answer different
+questions:
 
-That covers the ordinary case of activating a survey a week early, spotting a
-typo, and fixing it — bumping the version for wording nobody has read only
-makes the version history harder to read.
+| | Decides | Reversible? |
+| --- | --- | --- |
+| **Activate** | which version respondents are given | yes — activate another |
+| **Publish** | that this version's wording is final | **no** |
 
-Two things end it, and either is enough:
+That separation is deliberate. Getting an instrument right means activating it,
+answering it a few times to see how it reads, fixing the wording, and loading it
+again. Bumping the version for a typo nobody outside the test has read only
+makes the version history harder to read. So until you publish:
 
-- the survey **opens** — `effective_from` arrives, or there was never one;
-- the version **has a response**, whatever the dates say. `effective_from` can
-  be moved forward after collection has started, and a version somebody has
-  answered must not become editable because a date was edited.
+- the definition can be re-loaded over the existing version, as often as needed;
+- the responses against it are **test data**.
 
-After that, changing wording or structure is a new version, as it always was.
+Because they are test data, a re-load that changes the content has to remove
+them — a response answering questions that no longer exist is worse than no
+response. That is never silent:
+
+```
+$ manage.py load_definition surveys/example.json
+ERROR responses_exist at $.version: example@1.0 (active) has 3 response(s), 1 of
+them submitted. Loading a changed definition over it would leave them answering
+questions that no longer exist; discard them to continue, or bump the version to
+keep them.
+
+$ manage.py load_definition surveys/example.json --discard-responses
+updated: example@1.0 (active) <- surveys/example.json
+```
+
+In the admin console the same thing happens as a question: the page says how
+many responses there are, how many were submitted, and offers **Discard N
+responses and load** beside the ordinary Load button.
+
+### Publishing
+
+When the wording is settled, publish:
+
+```
+manage.py publish_version example                  # the active version
+manage.py publish_version example --survey-version 1.0
+```
+
+or press **Publish…** in the version's row on the survey's page in the admin,
+which says what it costs before it does it.
+
+From then on: a changed file is refused, `--discard-responses` is refused too,
+and the responses are somebody's answers rather than a test of the wording.
+**Publish before you invite anyone.** A version that has collected real
+responses and was never published is not protected by anything except nobody
+having re-loaded it.
+
+Archiving freezes a version's content as well — it was offered once, published
+or not.
 
 ### What is not a version change
 
@@ -369,7 +407,8 @@ an activation you expected to work.
 
 | What you see | What it usually is |
 | --- | --- |
-| `version 1.0 is active; bump the version to change it` | You edited a published version. Change `version` in the file. |
+| `version 1.0 is published, so its content is final; bump the version to change it` | You edited a published version. Change `version` in the file. |
+| `example@1.0 has 3 response(s)…` | A re-load would drop the test responses. `--discard-responses`, or bump the version. |
 | `active_surveys: 0` after activating | The activation did not happen, or it was refused for unreviewed translations. Read the load output. |
 | The survey 404s for respondents | No active version, or today is outside `effective_from`/`effective_to`. |
 | The theme is missing and everything is grey | The theme directory did not load. `register_theme <dir>` reports why; check the deployment's theme path. |

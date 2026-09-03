@@ -324,7 +324,7 @@ decline and moves on; on the last question it submits.
 | --- | --- |
 | First release | `version: "1.0"`, `translation_status` all `reviewed`, `load_definition file --activate`. |
 | Fix a typo in a **draft** | Edit the file and load again — drafts are upserted in place (idempotent; same checksum = "unchanged"). The checksum is taken over the file as written, so a newer runner filling in more defaults never makes an untouched file look edited. |
-| Change wording/options/branching of a **published** version | New file (or new `version` value): `1.0` → `1.1`. The loader refuses to modify an active or archived version ("bump the version to change it"). |
+| Change wording/options/branching of a **published** version | New file (or new `version` value): `1.0` → `1.1`. The loader refuses to modify a published or archived version ("bump the version to change it"). Before a version is published its content can be re-loaded — see [administration.md](../administration.md#publishing-freezes-a-version). |
 | Activate the new version | `load_definition file --activate` archives the previous active version; in-progress responses keep the version they started on (the runner asks for the definition bound to the response). |
 | Correct a version before it opens | A version whose survey has not opened yet (`effective_from` is in the future) and has no responses may be re-loaded with changed content: nobody can have answered it, so nothing is reinterpreted. Once it opens, or once it has a response, changing wording is a new version. |
 | Review machine-translated content locally | `--activate --allow-unreviewed` (logs loudly; never for launch). |

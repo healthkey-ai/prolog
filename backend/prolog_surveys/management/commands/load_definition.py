@@ -14,6 +14,15 @@ class Command(BaseCommand):
         parser.add_argument("paths", nargs="+", help="Definition files or directories")
         parser.add_argument("--activate", action="store_true")
         parser.add_argument(
+            "--discard-responses",
+            action="store_true",
+            help=(
+                "Re-load over a version that has responses, deleting them. They are the "
+                "test data from trying the instrument out; a published version refuses "
+                "this outright."
+            ),
+        )
+        parser.add_argument(
             "--allow-unreviewed",
             action="store_true",
             help="Activate even if some translations are 'machine' (local/staging review only).",
@@ -29,6 +38,7 @@ class Command(BaseCommand):
                     path,
                     activate=options["activate"],
                     allow_unreviewed=options["allow_unreviewed"],
+                    discard_responses=options["discard_responses"],
                 )
             except DefinitionError as exc:
                 report(self, exc.issues)

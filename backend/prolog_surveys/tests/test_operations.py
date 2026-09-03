@@ -10,7 +10,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from prolog_surveys.definitions import loader
-from prolog_surveys.definitions.loader import activate_version, discover
+from prolog_surveys.definitions.loader import activate_version, discover, publish_version
 from prolog_surveys.models import LifecycleStatus, Survey, SurveyResponse, SurveyVersion
 from prolog_surveys.themes import registry as theme_registry
 from prolog_surveys.themes import validate_theme
@@ -376,6 +376,7 @@ def test_changing_a_published_version_is_refused_on_the_page(
     )
     version = SurveyVersion.objects.get()
     activate_version(version)
+    publish_version(version)
 
     edited = copy.deepcopy(example)
     edited["title"]["en"] = "Something else"
@@ -484,7 +485,9 @@ def test_a_refused_version_says_so_in_the_error_slot(admin_login, db, example, t
     there is nothing to navigate to when nothing was written."""
     import copy
 
-    survey = loader.load_definition(example, activate=True).version.survey
+    version = loader.load_definition(example, activate=True).version
+    survey = version.survey
+    loader.publish_version(version)
     edited = copy.deepcopy(example)
     edited["title"]["en"] = "Something else"
     (tmp_path / "edited.json").write_text(json.dumps(edited), encoding="utf-8")
@@ -592,3 +595,87 @@ def test_every_outcome_uses_the_same_slot(admin_login, tmp_path, settings, examp
         assert body.count('<ul class="messagelist">') == 1
     assert "Choose a mounted definition" in nothing_chosen
     assert "already exists" in already_there
+
+
+# --- test responses, and the act that ends them ------------------------------
+
+
+def test_the_page_asks_before_discarding_test_responses(admin_login, tmp_path, settings, example):
+    """A version being tried out has responses against it. They are test data
+    until it is published — but the page says what it is about to delete and
+    waits, because only the administrator knows that is what they are."""
+    import copy
+
+    from prolog_surveys.models import ResponseStatus, SurveyResponse
+
+    version = loader.load_definition(example, activate=True).version
+    SurveyResponse.objects.create(survey_version=version, language="en")
+    SurveyResponse.objects.create(
+        survey_version=version, language="en", status=ResponseStatus.SUBMITTED
+    )
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    (tmp_path / "s.json").write_text(json.dumps(edited), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    post = {"definition_path": str(tmp_path / "s.json")}
+
+    asked = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {**post, "action": "load"}
+    ).content.decode()
+
+    assert "2 response" in asked and "Discard 2 responses and load" in asked
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == example["title"]["en"], "nothing written yet"
+
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {**post, "action": "load_discarding"}, follow=True
+    )
+
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == "Corrected title"
+    assert not SurveyResponse.objects.filter(survey_version=version).exists()
+
+
+def test_publishing_freezes_the_version_from_the_page(admin_login, tmp_path, settings, example):
+    import copy
+
+    version = loader.load_definition(example, activate=True).version
+    url = f"/admin/prolog_surveys/survey/publish/{version.pk}/"
+
+    shown = admin_login.get(url).content.decode()
+    assert "cannot be undone" in shown
+    version.refresh_from_db()
+    assert not version.is_published, "a GET says what it costs and writes nothing"
+
+    admin_login.post(url, follow=True)
+
+    version.refresh_from_db()
+    assert version.is_published and not version.is_mutable
+
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    (tmp_path / "s.json").write_text(json.dumps(edited), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    refused = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+    ).content.decode()
+
+    assert "bump the version" in refused
+    assert "Discard" not in refused, "a published version offers no way to discard its responses"
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == example["title"]["en"]
+
+
+def test_the_survey_page_offers_publishing_only_while_it_is_open(admin_login, db, example):
+    version = loader.load_definition(example, activate=True).version
+    page = f"/admin/prolog_surveys/survey/{version.survey_id}/change/"
+
+    body = admin_login.get(page).content.decode()
+    assert f"/admin/prolog_surveys/survey/publish/{version.pk}/" in body
+
+    loader.publish_version(version)
+
+    body = admin_login.get(page).content.decode()
+    assert f"/admin/prolog_surveys/survey/publish/{version.pk}/" not in body
+    assert "frozen" in body

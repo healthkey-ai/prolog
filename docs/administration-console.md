@@ -1,8 +1,8 @@
 # The survey administration console — a design
 
-> **Status:** partly built, 2026-09-03. §2.1 (verify and load) is done, and so
-> is the removal of the data admins. Activate/archive actions, the delete guard
-> and the export actions are not.
+> **Status:** partly built, 2026-09-03. §2.1 (verify and load) and §2.2's
+> Publish action are done, and so is the removal of the data admins.
+> Activate/archive actions, the delete guard and the export actions are not.
 >
 > **Artifacts this describes:** [`administration.md`](administration.md) — the same tasks, done from a terminal · [`../backend/prolog_surveys/admin.py`](../backend/prolog_surveys/admin.py) — what already exists · [`definitions/survey-definition.md`](definitions/survey-definition.md) — what a definition contains · [`../schema/survey-definition.schema.json`](../schema/survey-definition.schema.json) — what it is verified against
 
@@ -41,12 +41,35 @@ The form posts to a view that **verifies before it writes anything**, and shows:
 
 - **errors**, which refuse the file — all of them, not the first, because fixing them is a loop;
 - **warnings**, which do not — an option nothing can select, a language still machine-translated;
-- **what would happen**: new instrument or new version of an existing one, its slug and version, and — where that version already exists with different content — that loading is refused, because a published version is immutable;
+- **what would happen**: new instrument or new version of an existing one, its slug and version; where that version already exists with different content, either the confirmation described in §2.2 (it is unpublished, so its responses are test data) or a refusal (it is published, so its content is final);
 - **which schema it was checked against**, with its `schema_version` and a link. "Valid" means little to an administrator who cannot see what it was checked against, and a deployment can be running an older runner than the definition was written for.
 
 Loading always produces a **draft**. Activation is a separate act, as `--activate` is a separate flag.
 
-### 2.2 Activate and archive — admin actions  *(not built)*
+### 2.2 Publish — an action on the version's row  ✅ built
+
+A version's content stays re-loadable until it is **published**, and publishing
+is its own act because it is the irreversible one. The **Content** column on
+the survey's page says which state a version is in and carries the action:
+
+- *re-loadable until then*, with a **Publish…** link — the definition can be
+  loaded over it again, and the responses against it are test data;
+- *Published 2026-09-03 14:02 — frozen*, or *Archived — frozen*.
+
+Two screens follow from that:
+
+- **Publish…** confirms first, and says what it costs: a changed file will be
+  refused from now on, the responses stop being test data, and it cannot be
+  undone. It neither activates nor deactivates anything.
+- **Loading over a version that has responses** is a question, not a refusal:
+  the page says how many there are and how many were submitted, and offers
+  *Discard N responses and load* beside the ordinary Load. A published version
+  is not offered it at all.
+
+The command line does the same two things: `--discard-responses` on
+`load_definition`, and `publish_version <slug>`.
+
+### 2.3 Activate and archive — admin actions  *(not built)*
 
 Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no change — carrying two actions:
 
@@ -55,7 +78,7 @@ Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no
 
 Actions rather than an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
 
-### 2.3 Delete — already safe, and it should say why  *(not built)*
+### 2.4 Delete — already safe, and it should say why  *(not built)*
 
 `SurveyVersion.survey` and `SurveyResponse.survey_version` are both `PROTECT`: a survey with versions, or a version with responses, cannot be deleted. The database refuses before any code does, which is the right default.
 
@@ -63,7 +86,7 @@ What Django gives by default is a protected-objects error page listing rows. Bet
 
 No force flag. A deployment that genuinely wants the data gone has an export, `purge_abandoned_responses` and a database; none of those is a button beside a list.
 
-### 2.4 Exports — actions that download  *(not built)*
+### 2.5 Exports — actions that download  *(not built)*
 
 `Export responses`, `Export contacts` and `Export translations` as actions returning the CSV the management commands already produce. The two response exports stay separate, as they are on the command line: the response export never contains an address, and the contact export never contains an answer.
 
