@@ -289,11 +289,29 @@ class SurveyAdmin(admin.ModelAdmin):
             except DefinitionError as exc:
                 ctx["load_error"] = str(exc)
                 return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
-            self.message_user(
-                request,
-                f"Loaded {result.version} as a draft. Activate it deliberately when it is ready.",
-                messages.SUCCESS,
-            )
+            # Say which of the three things happened. "Loaded" over a version
+            # that already existed unchanged reads as success and leaves an
+            # administrator wondering why nothing moved.
+            if result.created:
+                note, level = (
+                    f"Created {result.version} as a draft. "
+                    "Activate it deliberately when it is ready.",
+                    messages.SUCCESS,
+                )
+            elif result.changed:
+                note, level = (
+                    f"Updated the existing draft {result.version} from this definition.",
+                    messages.SUCCESS,
+                )
+            else:
+                note, level = (
+                    f"{result.version} already exists with this exact content. "
+                    "Nothing was written. To change a published version, bump the "
+                    "version in the definition — a response records which version "
+                    "it answered.",
+                    messages.WARNING,
+                )
+            self.message_user(request, note, level)
             return redirect(reverse("admin:prolog_surveys_survey_changelist"))
 
         return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)

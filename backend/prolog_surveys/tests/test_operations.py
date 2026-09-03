@@ -8,7 +8,7 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from prolog_surveys.definitions.loader import discover
+from prolog_surveys.definitions.loader import activate_version, discover
 from prolog_surveys.models import LifecycleStatus, Survey, SurveyResponse, SurveyVersion
 from prolog_surveys.themes import validate_theme
 from prolog_surveys.themes.registry import discover_themes
@@ -318,3 +318,68 @@ def test_the_picker_lists_what_is_mounted(admin_login, tmp_path, settings, examp
 
     assert str(folder / "survey.json") in body
     assert str(folder / "theme") in body
+
+
+def test_load_actually_creates_the_survey(admin_login, tmp_path, settings, example):
+    """The button submitted two fields named `action`, so the hidden empty one
+    won and Load quietly re-verified instead of loading."""
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    response = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
+    )
+
+    assert Survey.objects.filter(slug=example["slug"]).exists()
+    assert "Created" in response.content.decode()
+
+
+def test_loading_the_same_definition_twice_says_it_already_exists(
+    admin_login, tmp_path, settings, example
+):
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    post = lambda: admin_login.post(  # noqa: E731
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
+    )
+    post()
+
+    body = post().content.decode()
+
+    assert "already exists with this exact content" in body
+    assert "bump the version" in body
+    assert SurveyVersion.objects.count() == 1, "a second row would be a second truth"
+
+
+def test_changing_a_published_version_is_refused_on_the_page(
+    admin_login, tmp_path, settings, example
+):
+    """A response records which version it answered, so the content of one
+    cannot change under it."""
+    import copy
+
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
+    )
+    version = SurveyVersion.objects.get()
+    activate_version(version)
+
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Something else"
+    (tmp_path / "s.json").write_text(json.dumps(edited), encoding="utf-8")
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+    ).content.decode()
+
+    assert "immutable" in body or "active" in body
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == example["title"]["en"]

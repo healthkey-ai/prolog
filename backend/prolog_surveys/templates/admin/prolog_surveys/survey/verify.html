@@ -57,10 +57,13 @@
     </fieldset>
 
     <div class="submit-row">
-      <input type="submit" value="Verify" class="default">
+      {# A button, not an input: the label is its text and "load" is its value,
+         so the two are independent. Two fields named `action` — a submit input
+         and a hidden one — meant the hidden empty value won and Load silently
+         re-verified. #}
+      <button type="submit" name="action" value="verify" class="default">Verify</button>
       {% if verified and not blocked %}
-        <input type="submit" name="action" value="load" formnovalidate>
-        <input type="hidden" name="action" value="">
+        <button type="submit" name="action" value="load">Load as draft</button>
       {% endif %}
     </div>
   </form>
