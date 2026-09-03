@@ -309,6 +309,13 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
+        "options_source_priority": {
+          "description": "dropdown: order these options_source keys first, in this order, with the rest of the source following in its own order. Ordering only — it does not restrict what may be answered, so a key left out is still offered and still accepted. Keys must exist in the source, and in options_source_include where that is also set.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
         "scale": {
           "type": "object",
           "required": ["min", "max"],

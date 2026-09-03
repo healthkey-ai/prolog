@@ -40,6 +40,8 @@ export interface QuestionConfig {
   options_source?: string;
   /** Restrict `options_source` to these keys; the runner offers and accepts no others. */
   options_source_include?: string[];
+  /** Order these `options_source` keys first. Ordering only: everything else stays offered. */
+  options_source_priority?: string[];
   scale?: ScaleConfig;
   rows_from?: string;
   rows?: { key: string; label: Text }[];

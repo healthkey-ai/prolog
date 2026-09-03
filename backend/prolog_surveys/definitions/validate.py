@@ -32,7 +32,7 @@ MAX_SCALE_POINTS = 101
 CONFIG_BY_TYPE: dict[str, set[str]] = {
     "info": set(),
     "single": set(),
-    "dropdown": {"options_source", "options_source_include"},
+    "dropdown": {"options_source", "options_source_include", "options_source_priority"},
     "multi": {"max_selections", "min_selections"},
     "scale": {"scale"},
     "ranking": {"optional_items"},
@@ -263,6 +263,35 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                         "options_source_include",
                         f"{qp}.config.options_source_include",
                         f"not in '{source}': {', '.join(sorted(unknown)[:5])}",
+                    )
+        priority = cfg.get("options_source_priority")
+        if priority is not None:
+            source = cfg.get("options_source")
+            if not source:
+                err(
+                    "options_source_priority",
+                    f"{qp}.config.options_source_priority",
+                    "only applies with options_source",
+                )
+            else:
+                # Ordering only, so a bad key costs nothing at answer time — but
+                # it silently fails to pin what the author meant to pin, which
+                # is exactly the kind of thing nobody notices in review.
+                known = source_option_keys(source)
+                if known is not None and (unknown := [k for k in priority if k not in known]):
+                    err(
+                        "options_source_priority",
+                        f"{qp}.config.options_source_priority",
+                        f"not in '{source}': {', '.join(sorted(unknown)[:5])}",
+                    )
+                if include is not None and (
+                    excluded := [k for k in priority if k not in set(include)]
+                ):
+                    err(
+                        "options_source_priority",
+                        f"{qp}.config.options_source_priority",
+                        "cannot pin an option the include list leaves out: "
+                        + ", ".join(sorted(excluded)[:5]),
                     )
         if t == "info" and q.get("options"):
             warn("info_options", f"{qp}.options", "info questions do not use options")

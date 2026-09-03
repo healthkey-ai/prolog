@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AnswerError, MAX_OTHER_TEXT, defaultOrder, implicitAnswer, validateAnswer } from "./answers";
+import { type AnswerError, MAX_OTHER_TEXT, defaultOrder, implicitAnswer, validateAnswer, orderedSourceOptions, priorityCount, sourceKeys } from "./answers";
 import type { Question } from "./types";
 
 const ranking: Question = {
@@ -195,5 +195,50 @@ describe("options_source_include", () => {
     expect(validateAnswer(dropdown, { option: "prefer_not" }, {}, { sourceOptions: source })).toEqual({ option: "prefer_not" });
     const open = { ...dropdown, config: { options_source: "iso3166_countries" } } as unknown as Question;
     expect(validateAnswer(open, { option: "US" }, {}, { sourceOptions: source })).toEqual({ option: "US" });
+  });
+});
+
+describe("options_source_priority", () => {
+  const opts = [
+    { key: "AR", label: "Argentina" },
+    { key: "DE", label: "Germany" },
+    { key: "GB", label: "United Kingdom" },
+    { key: "US", label: "United States" },
+    { key: "ZW", label: "Zimbabwe" },
+  ];
+
+  it("puts the pinned keys first, in the order given", () => {
+    const cfg = { options_source: "iso3166_countries", options_source_priority: ["GB", "US", "DE"] };
+    expect(orderedSourceOptions(cfg, opts).map((o) => o.key)).toEqual(["GB", "US", "DE", "AR", "ZW"]);
+  });
+
+  it("leaves the rest in the source's own order", () => {
+    const cfg = { options_source: "iso3166_countries", options_source_priority: ["US"] };
+    expect(orderedSourceOptions(cfg, opts).map((o) => o.key)).toEqual(["US", "AR", "DE", "GB", "ZW"]);
+  });
+
+  it("changes nothing without the key", () => {
+    const cfg = { options_source: "iso3166_countries" };
+    expect(orderedSourceOptions(cfg, opts)).toBe(opts);
+    expect(priorityCount(cfg, opts)).toBe(0);
+  });
+
+  it("ignores a pinned key the source does not have", () => {
+    // The definition validator refuses these at load; the renderer must not
+    // leave a gap in the list because one slipped through.
+    const cfg = { options_source: "iso3166_countries", options_source_priority: ["XX", "GB"] };
+    expect(orderedSourceOptions(cfg, opts).map((o) => o.key)).toEqual(["GB", "AR", "DE", "US", "ZW"]);
+    expect(priorityCount(cfg, opts)).toBe(1);
+  });
+
+  it("counts the pinned group so a renderer can separate it", () => {
+    const cfg = { options_source: "iso3166_countries", options_source_priority: ["GB", "US"] };
+    expect(priorityCount(cfg, opts)).toBe(2);
+  });
+
+  it("orders but does not restrict: every key stays answerable", () => {
+    const cfg = { options_source: "iso3166_countries", options_source_priority: ["GB"] };
+    const source = new Set(opts.map((o) => o.key));
+    expect(sourceKeys(cfg, source)).toEqual(source);
   });
 });
