@@ -1,8 +1,8 @@
 # The survey administration console — a design
 
-> **Status:** partly built, 2026-09-03. §2.1 (verify and load) and §2.2's
-> Publish action are done, and so is the removal of the data admins.
-> Activate/archive actions, the delete guard and the export actions are not.
+> **Status:** partly built, 2026-09-03. §2.1 (verify and load), §2.2 (publish)
+> and §2.3 (activate and archive) are done, and so is the removal of the data
+> admins. The delete guard and the export actions are not.
 >
 > **Artifacts this describes:** [`administration.md`](administration.md) — the same tasks, done from a terminal · [`../backend/prolog_surveys/admin.py`](../backend/prolog_surveys/admin.py) — what already exists · [`definitions/survey-definition.md`](definitions/survey-definition.md) — what a definition contains · [`../schema/survey-definition.schema.json`](../schema/survey-definition.schema.json) — what it is verified against
 
@@ -81,14 +81,14 @@ Two more screens follow from that:
 The command line does the same two things: `--discard-responses` on
 `load_definition`, and `publish_version <slug>`.
 
-### 2.3 Activate and archive — admin actions  *(not built)*
+### 2.3 Activate and archive — on the version's row  ✅ built
 
-Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no change — carrying two actions:
+Loading never activates, so without this the console could load an instrument and had no way to open it: the runner answered "not available" and nothing on the page said why. The **Status** column carries the act that changes it — *Draft* with **Activate…**, *Active* with **Archive…**, *Archived* with neither.
 
-- **Activate** — with a confirmation naming what it costs: which version this archives, whether the non-default languages are reviewed, whether the instrument is inside its effective window. Unreviewed machine translations stay refused unless the deployment opted in (`PROLOG_MACHINE_LANGUAGES`), and then the confirmation says respondents will see the disclosure.
-- **Archive** — kept and readable, no longer offered.
+- **Activate** confirms first, naming what it costs: which version this archives (and that its responses keep pointing at it), which languages are still machine-translated, and — the confusing one — whether the survey's own effective dates keep it shut anyway, so a successful activation is not followed by an unexplained "not available". Unreviewed translations stay refused; the message says the override exists as `load_definition --allow-unreviewed`, which logs loudly, rather than offering it as a button.
+- **Archive** confirms too: nothing is activated in its place, so the survey has no active version afterwards and says "not available" until one is chosen. It names the responses that stay bound to the version and any drafts that could be activated instead.
 
-Actions rather than an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
+Links to a confirmation, not actions on a list, and never an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
 
 ### 2.4 Delete — already safe, and it should say why  *(not built)*
 

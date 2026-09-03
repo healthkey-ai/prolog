@@ -26,8 +26,11 @@ from django.utils.http import urlencode
 
 from . import conf
 from .definitions.loader import (
+    ActivationError,
     DefinitionError,
     ResponsesExist,
+    activate_version,
+    archive_version,
     discover,
     load_definition,
     matches_source,
@@ -77,8 +80,31 @@ class VersionInline(ReadOnlyMixin, admin.TabularInline):
     """
 
     model = SurveyVersion
-    fields = ("version", "status", "schema_version", "activated_at", "content", "source")
+    fields = ("version", "lifecycle", "schema_version", "activated_at", "content", "source")
     readonly_fields = fields
+
+    @admin.display(description="Status")
+    def lifecycle(self, obj):
+        """Which version respondents are given, and how to change that.
+
+        A definition loads as a draft and nothing serves it until somebody
+        activates it deliberately — so the act that makes it live belongs on
+        the row, next to the state it changes. Without it the console could
+        load an instrument and then had no way to open it.
+        """
+        if obj.pk is None:  # pragma: no cover - Django renders no empty row
+            return "—"
+        if obj.status == LifecycleStatus.DRAFT:
+            return format_html(
+                'Draft <a class="button" href="{}">Activate…</a>',
+                reverse("admin:prolog_surveys_surveyversion_activate", args=[obj.pk]),
+            )
+        if obj.status == LifecycleStatus.ACTIVE:
+            return format_html(
+                'Active <a class="button" href="{}">Archive…</a>',
+                reverse("admin:prolog_surveys_surveyversion_archive", args=[obj.pk]),
+            )
+        return "Archived"
 
     @admin.display(description="Content")
     def content(self, obj):
@@ -181,6 +207,16 @@ class SurveyAdmin(admin.ModelAdmin):
                 "publish/<int:version_id>/",
                 self.admin_site.admin_view(self.publish_view),
                 name="prolog_surveys_surveyversion_publish",
+            ),
+            path(
+                "activate/<int:version_id>/",
+                self.admin_site.admin_view(self.activate_view),
+                name="prolog_surveys_surveyversion_activate",
+            ),
+            path(
+                "archive/<int:version_id>/",
+                self.admin_site.admin_view(self.archive_view),
+                name="prolog_surveys_surveyversion_archive",
             ),
             *super().get_urls(),
         ]
@@ -642,6 +678,113 @@ class SurveyAdmin(admin.ModelAdmin):
         return redirect(
             reverse("admin:prolog_surveys_survey_change", args=[result.version.survey_id])
         )
+
+    def _version_action(self, request, version_id):
+        """The version, where to go back to, and that this user may act on it."""
+        version = get_object_or_404(SurveyVersion.objects.select_related("survey"), pk=version_id)
+        if not self.has_change_permission(request, version.survey):
+            raise PermissionDenied
+        return version, redirect(
+            reverse("admin:prolog_surveys_survey_change", args=[version.survey_id])
+        )
+
+    def activate_view(self, request, version_id):
+        """Make this version the one respondents are given.
+
+        Loading never activates — a draft is in the database, validated, and
+        invisible — so this is the act that opens an instrument, and the only
+        one an administrator cannot do from anywhere else in the console.
+        """
+        version, back = self._version_action(request, version_id)
+        if version.status == LifecycleStatus.ACTIVE:
+            self.message_user(request, f"{version} is already the active version.", messages.INFO)
+            return back
+        if version.status == LifecycleStatus.ARCHIVED:
+            self.message_user(
+                request,
+                f"{version} is archived. Load its definition again to bring it back, or "
+                "activate a later version.",
+                messages.WARNING,
+            )
+            return back
+
+        current = version.survey.active_version
+        if request.method != "POST":
+            return TemplateResponse(
+                request,
+                "admin/prolog_surveys/survey/activate.html",
+                {
+                    **self.admin_site.each_context(request),
+                    "title": f"Activate {version}",
+                    "opts": self.model._meta,
+                    "version": version,
+                    "current": current,
+                    # Activating does not open a survey that its own dates keep
+                    # shut, and a runner that answers "not available" after a
+                    # successful activation is the confusing part.
+                    "closed_reason": version.survey.closed_reason(),
+                    "unreviewed": sorted(
+                        lang
+                        for lang, state in (
+                            version.definition.get("translation_status") or {}
+                        ).items()
+                        if state == "machine"
+                    ),
+                },
+            )
+
+        try:
+            activate_version(version)
+        except ActivationError as exc:
+            self.message_user(
+                request,
+                f"Refused: {exc}. Nothing changed. A deployment reviewing translations can "
+                "override this from a shell with load_definition --allow-unreviewed, which "
+                "says so in the log.",
+                messages.ERROR,
+            )
+            return back
+
+        note = f"Activated {version}."
+        closed = version.survey.closed_reason()
+        if closed:
+            note += f" Respondents still cannot start it: {closed} (see the effective dates)."
+        elif current is not None:
+            note += (
+                f" {current} is archived; the responses already given to it keep pointing at it."
+            )
+        self.message_user(request, note, messages.SUCCESS)
+        return back
+
+    def archive_view(self, request, version_id):
+        """Stop offering this version. Its responses stay where they are."""
+        version, back = self._version_action(request, version_id)
+        if version.status != LifecycleStatus.ACTIVE:
+            self.message_user(request, f"{version} is not the active version.", messages.WARNING)
+            return back
+
+        if request.method != "POST":
+            return TemplateResponse(
+                request,
+                "admin/prolog_surveys/survey/archive.html",
+                {
+                    **self.admin_site.each_context(request),
+                    "title": f"Archive {version}",
+                    "opts": self.model._meta,
+                    "version": version,
+                    "responses": version.responses.count(),
+                    "drafts": version.survey.versions.filter(status=LifecycleStatus.DRAFT).count(),
+                },
+            )
+
+        archive_version(version)
+        self.message_user(
+            request,
+            f"Archived {version}. Nothing is active for {version.survey.slug} now, so it "
+            "answers respondents with \u201cnot available\u201d until a version is activated.",
+            messages.SUCCESS,
+        )
+        return back
 
     def publish_view(self, request, version_id):
         """Freeze a version's content, deliberately and on the record.

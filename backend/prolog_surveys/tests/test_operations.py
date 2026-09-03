@@ -1080,3 +1080,113 @@ def test_an_upload_outcome_is_a_get_like_every_other(admin_login, db, example):
     )
 
     assert response.status_code == 302, "no page a POST produced, uploads included"
+
+
+# --- opening a survey, which loading deliberately does not do ----------------
+
+
+def test_a_loaded_draft_can_be_activated_from_its_row(admin_login, db, example):
+    """Loading never activates, so without this the console could load an
+    instrument and had no way to open it: the runner answered "not available"
+    and nothing on the page said why."""
+    version = loader.load_definition(example).version
+    page = admin_login.get(
+        f"/admin/prolog_surveys/survey/{version.survey_id}/change/"
+    ).content.decode()
+    url = f"/admin/prolog_surveys/survey/activate/{version.pk}/"
+    assert url in page
+
+    confirmation = admin_login.get(url).content.decode()
+    assert "opens the survey for the first time" in confirmation
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.DRAFT, "a GET writes nothing"
+
+    admin_login.post(url, follow=True)
+
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.ACTIVE
+    assert version.survey.active_version == version
+
+
+def test_activating_a_second_version_archives_the_first(admin_login, db, example):
+    import copy
+
+    first = loader.load_definition(example, activate=True).version
+    second_doc = copy.deepcopy(example)
+    second_doc["version"] = "2.0"
+    second = loader.load_definition(second_doc).version
+
+    warned = admin_login.get(f"/admin/prolog_surveys/survey/activate/{second.pk}/").content.decode()
+    assert str(first) in warned, "the page names what it would archive"
+
+    body = admin_login.post(
+        f"/admin/prolog_surveys/survey/activate/{second.pk}/", follow=True
+    ).content.decode()
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert (first.status, second.status) == (LifecycleStatus.ARCHIVED, LifecycleStatus.ACTIVE)
+    assert "is archived" in body
+
+
+def test_activating_says_when_the_survey_is_still_shut_by_its_dates(admin_login, db, example):
+    """A successful activation followed by a runner that says "not available"
+    is the confusing part; the message says which of the two it is."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    version = loader.load_definition(example).version
+    survey = version.survey
+    survey.effective_from = timezone.localdate() + timedelta(days=7)
+    survey.save(update_fields=["effective_from"])
+
+    body = admin_login.post(
+        f"/admin/prolog_surveys/survey/activate/{version.pk}/", follow=True
+    ).content.decode()
+
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.ACTIVE
+    assert "still cannot start it" in body and "not yet open" in body
+
+
+def test_activation_is_refused_while_a_translation_is_machine_made(admin_login, db, example):
+    example["translation_status"]["fr"] = "machine"
+    version = loader.load_definition(example).version
+
+    body = admin_login.post(
+        f"/admin/prolog_surveys/survey/activate/{version.pk}/", follow=True
+    ).content.decode()
+
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.DRAFT
+    assert "Refused" in body and "allow-unreviewed" in body
+
+
+def test_archiving_leaves_the_survey_with_nothing_active(admin_login, db, example):
+    version = loader.load_definition(example, activate=True).version
+    make_response(version, language="en")
+    url = f"/admin/prolog_surveys/survey/archive/{version.pk}/"
+
+    confirmation = admin_login.get(url).content.decode()
+    assert "no active version" in confirmation and "1 response" in confirmation
+
+    body = admin_login.post(url, follow=True).content.decode()
+
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.ARCHIVED
+    assert version.survey.active_version is None
+    assert "not available" in body
+
+
+def test_a_staff_session_alone_cannot_activate_or_archive(staff_without_permissions, db, example):
+    version = loader.load_definition(example).version
+
+    for action in ("activate", "archive"):
+        response = staff_without_permissions.post(
+            f"/admin/prolog_surveys/survey/{action}/{version.pk}/"
+        )
+        assert response.status_code == 403
+
+    version.refresh_from_db()
+    assert version.status == LifecycleStatus.DRAFT

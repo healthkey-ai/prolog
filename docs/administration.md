@@ -146,6 +146,8 @@ $ manage.py load_definition surveys/example.json --discard-responses
 updated: example@1.0 (active) <- surveys/example.json
 ```
 
+**Loading is not activating.** A definition loads as a draft, and nothing serves a draft: until a version is activated the runner answers *"This survey is not available."* In the console, the version's row has **Activate…** beside its status; from a shell it is `load_definition --activate` or `activate_version`.
+
 Either way the console can also take a definition that is not mounted at all: **upload one**. Verify it, then press Load — the file you verified is held for that press, because a browser only sends it once.
 
 In the admin console the same thing happens as a question. Each unpublished
