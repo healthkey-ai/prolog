@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from django.core.management import call_command
@@ -458,3 +459,80 @@ def test_a_bumped_version_lands_on_the_same_survey(admin_login, db, example, tmp
     assert Survey.objects.count() == 1
     assert sorted(v.version for v in survey.versions.all()) == [example["version"], "9.9"]
     assert survey.versions.get(version="9.9").status == LifecycleStatus.DRAFT
+
+
+def test_the_versions_inline_offers_no_blank_row(admin_login, db, example):
+    """Django's inline add link offered a version to type by hand — a row with
+    no definition and nothing validated, which is the whole thing this admin
+    is meant to prevent. The object-tools link is the way in."""
+    survey = loader.load_definition(example).version.survey
+
+    body = admin_login.get(f"/admin/prolog_surveys/survey/{survey.pk}/change/").content.decode()
+
+    # The add link is drawn by Django's inline JS, not by the server, so the
+    # thing to assert is what the JS reads: max_num 0 means it offers no row.
+    assert 'name="versions-MAX_NUM_FORMS"' in body
+    max_num = re.search(r'name="versions-MAX_NUM_FORMS"[^>]*value="(\d+)"', body).group(1)
+    assert max_num == "0", "a blank version row could be typed by hand"
+    assert "Add another version" in body, "the picker link stays"
+
+
+def test_a_refused_version_returns_to_the_survey_it_was_for(
+    admin_login, db, example, tmp_path, settings
+):
+    """Not to the list of every survey: the question a refusal raises — which
+    versions does this one have? — is answered on the survey's own page."""
+    import copy
+
+    survey = loader.load_definition(example, activate=True).version.survey
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Something else"
+    (tmp_path / "edited.json").write_text(json.dumps(edited), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    response = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {
+            "definition_path": str(tmp_path / "edited.json"),
+            "action": "load",
+            "survey": survey.slug,
+        },
+    )
+
+    assert response.status_code == 302
+    assert response["Location"] == f"/admin/prolog_surveys/survey/{survey.pk}/change/"
+
+
+def test_a_mismatched_slug_returns_to_the_survey_too(
+    admin_login, db, example, tmp_path, settings
+):
+    import copy
+
+    survey = loader.load_definition(example).version.survey
+    other = copy.deepcopy(example)
+    other["slug"] = "something-else"
+    (tmp_path / "other.json").write_text(json.dumps(other), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    response = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "other.json"), "action": "load", "survey": survey.slug},
+    )
+
+    assert response["Location"] == f"/admin/prolog_surveys/survey/{survey.pk}/change/"
+    assert not Survey.objects.filter(slug="something-else").exists()
+
+
+def test_a_successful_load_lands_on_the_survey_not_the_list(
+    admin_login, db, example, tmp_path, settings
+):
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    response = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+    )
+
+    survey = Survey.objects.get()
+    assert response["Location"] == f"/admin/prolog_surveys/survey/{survey.pk}/change/"

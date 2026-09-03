@@ -50,11 +50,21 @@ class ReadOnlyMixin:
         return False
 
 
-class VersionInline(admin.TabularInline):
+class VersionInline(ReadOnlyMixin, admin.TabularInline):
+    """The survey's versions, listed and nothing more.
+
+    ReadOnlyMixin is what removes Django's own "Add another Survey version"
+    row. That link offered a blank version to type by hand: a row with no
+    definition, no questions and nothing validated — the second, unvalidated
+    engine this admin exists to avoid. A version comes from a definition, and
+    the link that adds one is in the page's object tools.
+    """
+
     model = SurveyVersion
     fields = ("version", "status", "schema_version", "published_at", "archived_at", "source")
     readonly_fields = fields
     extra = 0
+    max_num = 0
     can_delete = False
 
 
@@ -305,12 +315,29 @@ class SurveyAdmin(admin.ModelAdmin):
         if survey is not None and (doc or {}).get("slug") != survey.slug:
             ctx["blocked"] = True
             ctx["slug_mismatch"] = (doc or {}).get("slug") or "—"
+            # Verifying stays here so the choice can be corrected; only pressing
+            # Load returns to the survey it was refused for.
+            if request.POST.get("action") == "load":
+                self.message_user(
+                    request,
+                    f"That definition is for '{ctx['slug_mismatch']}', not '{survey.slug}'. "
+                    "Loading it here would create a second survey; use Add survey for that.",
+                    messages.ERROR,
+                )
+                return redirect(reverse("admin:prolog_surveys_survey_change", args=[survey.pk]))
             return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
 
         if request.POST.get("action") == "load" and not blocked:
             try:
                 result = load_definition(doc, source=source)
             except DefinitionError as exc:
+                # Adding a version started from a survey's page, so a refusal
+                # goes back there rather than to a list of every survey: the
+                # question it raises — which versions does this one have? — is
+                # answered on that page.
+                if survey is not None:
+                    self.message_user(request, str(exc), messages.ERROR)
+                    return redirect(reverse("admin:prolog_surveys_survey_change", args=[survey.pk]))
                 ctx["load_error"] = str(exc)
                 return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
             # Say which of the three things happened. "Loaded" over a version
@@ -336,7 +363,12 @@ class SurveyAdmin(admin.ModelAdmin):
                     messages.WARNING,
                 )
             self.message_user(request, note, level)
-            return redirect(reverse("admin:prolog_surveys_survey_changelist"))
+            # Land on the survey that was just touched rather than a list of all
+            # of them: the version just loaded, or the one already there, is
+            # what somebody wants to look at next.
+            return redirect(
+                reverse("admin:prolog_surveys_survey_change", args=[result.version.survey_id])
+            )
 
         return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
 

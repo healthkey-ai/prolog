@@ -170,6 +170,10 @@ changing it is the point of the new version. A definition slugged for a
 different survey is refused there: loading it would create a second survey
 rather than a version of this one, which is not what the button said.
 
+Loading — whether it works, does nothing, or is refused — leaves you on the
+survey's own page, where its versions are, rather than on a list of every
+survey.
+
 **Surveys → Verify and load a definition** does what steps 1 and 2 above do:
 
 1. Choose a definition **this deployment already mounts** (`PROLOG_DEFINITION_DIRS`),
