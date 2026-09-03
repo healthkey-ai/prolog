@@ -1,5 +1,9 @@
 # Running surveys: an administrator's manual
 
+> **Two ways to do all of this:** the commands below, or Django admin. What the
+> admin covers, and deliberately does not, is [From the admin](#from-the-admin);
+> the rest of the plan is [`administration-console.md`](administration-console.md).
+>
 > **Artifacts this describes:** [`definitions/survey-definition.md`](definitions/survey-definition.md) — every field of a definition · [`definitions/theme-definition.md`](definitions/theme-definition.md) — every field of a theme · [`deployment.md`](deployment.md) — the deployment itself · [`integration.md`](integration.md) — installing PROlog in a host platform
 
 This is for the person who puts a survey in front of respondents: what the

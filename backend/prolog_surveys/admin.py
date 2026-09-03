@@ -205,9 +205,7 @@ class SurveyAdmin(admin.ModelAdmin):
                 result = load_definition(doc, source=source)
             except DefinitionError as exc:
                 ctx["load_error"] = str(exc)
-                return TemplateResponse(
-                    request, "admin/prolog_surveys/survey/verify.html", ctx
-                )
+                return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
             self.message_user(
                 request,
                 f"Loaded {result.version} as a draft. Activate it deliberately when it is ready.",
