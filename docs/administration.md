@@ -153,6 +153,16 @@ An account is never a condition of answering.
 instrument's **inputs** — which definition and which theme a survey is built
 from, whether they are valid, and loading them.
 
+The survey list opens with **where this deployment reads from**: each configured
+`PROLOG_DEFINITION_DIRS` and `PROLOG_THEME_DIRS` root, how many definitions or
+themes were found under it, and — the useful part — whether the directory is
+there at all. An empty list and a mistyped mount look identical until something
+says which one it is.
+
+**Add survey** goes to the same picker, because a survey is loaded from a
+definition rather than typed into a form: the fields a form would offer are the
+loader's, and it rewrites them from the definition on every load.
+
 **Surveys → Verify and load a definition** does what steps 1 and 2 above do:
 
 1. Choose a definition **this deployment already mounts** (`PROLOG_DEFINITION_DIRS`),

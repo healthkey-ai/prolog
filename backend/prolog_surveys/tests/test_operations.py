@@ -281,3 +281,40 @@ def test_admin_accepts_a_theme_beside_its_survey(admin_login, tmp_path, settings
 
     assert "outside every directory" not in body
     assert "Valid" in body or "Refused" in body
+
+
+def test_the_survey_list_says_where_it_reads_from(admin_login, tmp_path, settings, example):
+    """"No surveys" and "that directory is not there" look identical until
+    something says which one it is."""
+    mounted = tmp_path / "surveys"
+    (mounted / "alpha").mkdir(parents=True)
+    (mounted / "alpha" / "survey.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(mounted), str(tmp_path / "missing")]
+    settings.PROLOG_THEME_DIRS = []
+
+    body = admin_login.get("/admin/prolog_surveys/survey/").content.decode()
+
+    assert "PROLOG_DEFINITION_DIRS" in body
+    assert str(mounted) in body
+    assert "directory does not exist" in body, "a misconfigured root must say so"
+    assert "PROLOG_THEME_DIRS" in body and "nothing configured" in body
+
+
+def test_adding_a_survey_takes_you_to_the_picker(admin_login):
+    """A survey is loaded from a definition, not typed into a form: the fields
+    a form would offer are the loader's and it rewrites them on every load."""
+    response = admin_login.get("/admin/prolog_surveys/survey/add/")
+
+    assert response.status_code == 302
+    assert response["Location"].endswith("/admin/prolog_surveys/survey/verify/")
+
+
+def test_the_picker_lists_what_is_mounted(admin_login, tmp_path, settings, example):
+    folder = _bundle(tmp_path, "alpha", example)
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    settings.PROLOG_THEME_DIRS = [str(tmp_path)]
+
+    body = admin_login.get("/admin/prolog_surveys/survey/verify/").content.decode()
+
+    assert str(folder / "survey.json") in body
+    assert str(folder / "theme") in body

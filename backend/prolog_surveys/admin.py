@@ -137,6 +137,54 @@ class SurveyAdmin(admin.ModelAdmin):
             Path(p) for p in (*conf.get("PROLOG_DEFINITION_DIRS"), *conf.get("PROLOG_THEME_DIRS"))
         ] + [r for r in _theme_roots()]
 
+    def _mounted(self):
+        """Each configured root, what was found under it, and whether it exists.
+
+        Shown on the survey list because "there are no surveys" and "the
+        directory this deployment points at is not there" look identical until
+        somebody says which one it is.
+        """
+        definitions = discover()
+        themes = discover_themes(self._roots())
+
+        def under(root, paths):
+            resolved = root.resolve() if root.exists() else root
+            return [p for p in paths if str(p).startswith(str(resolved))]
+
+        rows = []
+        for setting, configured, found in (
+            ("PROLOG_DEFINITION_DIRS", conf.get("PROLOG_DEFINITION_DIRS"), definitions),
+            ("PROLOG_THEME_DIRS", conf.get("PROLOG_THEME_DIRS"), themes),
+        ):
+            if not configured:
+                rows.append({"setting": setting, "path": "— not set —", "exists": None, "count": 0})
+                continue
+            for raw in configured:
+                root = Path(raw)
+                rows.append(
+                    {
+                        "setting": setting,
+                        "path": str(root),
+                        "exists": root.is_dir(),
+                        "count": len(under(root, found)),
+                    }
+                )
+        return rows
+
+    def changelist_view(self, request, extra_context=None):
+        return super().changelist_view(
+            request, {**(extra_context or {}), "mounted": self._mounted()}
+        )
+
+    def add_view(self, request, form_url="", extra_context=None):
+        """Adding a survey is loading a definition, not filling in a form.
+
+        The fields a form would offer — slug, title, theme code — are the
+        loader's, rewritten from the definition on every load, so a row typed
+        here would be a survey with no version and no questions.
+        """
+        return redirect(reverse("admin:prolog_surveys_survey_verify"))
+
     def _sources(self):
         """What this deployment has mounted, for the two pickers."""
         definitions = [str(p) for p in discover()]
