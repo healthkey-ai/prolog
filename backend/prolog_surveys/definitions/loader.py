@@ -17,7 +17,16 @@ from .normalize import checksum, normalize, source_checksum
 from .schema import Issue, read_json, validate_schema
 from .validate import has_errors, validate_semantics
 
-DEFINITION_GLOB = "*.json"
+#: Definitions are found anywhere under a configured root, not only at its top
+#: level: a deployment running several surveys keeps each one's definition,
+#: theme and assets in a folder of its own rather than pooling every definition
+#: in one directory and every theme in another.
+DEFINITION_GLOB = "**/*.json"
+
+#: A theme's manifest sits beside the definition it belongs to in that layout,
+#: and is not a definition. Nothing else is excluded: any other *.json under a
+#: definition root is meant to be an instrument, as it always was.
+NOT_A_DEFINITION = frozenset({"theme.json"})
 log = logging.getLogger(__name__)
 
 
@@ -267,7 +276,9 @@ def discover(paths: list[str | Path] | None = None) -> list[Path]:
     files: list[Path] = []
     for root in roots:
         if root.is_dir():
-            files.extend(sorted(root.glob(DEFINITION_GLOB)))
+            files.extend(
+                sorted(p for p in root.glob(DEFINITION_GLOB) if p.name not in NOT_A_DEFINITION)
+            )
         elif root.is_file():
             files.append(root)
     return files

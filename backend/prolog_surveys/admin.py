@@ -38,7 +38,7 @@ from .models import (
     SurveyVersion,
 )
 from .themes import validate_theme
-from .themes.registry import _theme_roots
+from .themes.registry import _theme_roots, discover_themes, theme_directory
 
 
 class ReadOnlyMixin:
@@ -126,17 +126,42 @@ class SurveyAdmin(admin.ModelAdmin):
             *super().get_urls(),
         ]
 
+    def _roots(self):
+        """Every tree this deployment mounts, definitions and themes alike.
+
+        Both are searched for both kinds of file: a survey's theme travels with
+        the survey, so a theme under a definition root is the normal layout for
+        a deployment running more than one.
+        """
+        return [
+            Path(p) for p in (*conf.get("PROLOG_DEFINITION_DIRS"), *conf.get("PROLOG_THEME_DIRS"))
+        ] + [r for r in _theme_roots()]
+
     def _sources(self):
         """What this deployment has mounted, for the two pickers."""
         definitions = [str(p) for p in discover()]
-        themes = sorted(
-            str(d)
-            for root in _theme_roots()
-            if root.is_dir()
-            for d in root.iterdir()
-            if (d / "theme.json").is_file()
-        )
+        themes = sorted({str(d) for d in discover_themes(self._roots())})
         return definitions, themes
+
+    def _within_a_root(self, path: Path) -> bool:
+        """Is this path inside something the deployment mounted?
+
+        An administrator may type a path rather than pick one — a bundle can
+        sit anywhere the deployment put it — and a form that reads any path on
+        the filesystem is a file-disclosure hole with a staff session in front
+        of it. Resolved on both sides, so `..` cannot walk out of a root.
+        """
+        try:
+            resolved = path.resolve()
+        except OSError:
+            return False
+        for root in self._roots():
+            try:
+                resolved.relative_to(root.resolve())
+                return True
+            except (ValueError, OSError):
+                continue
+        return False
 
     def verify_view(self, request):
         definitions, themes = self._sources()
@@ -159,6 +184,14 @@ class SurveyAdmin(admin.ModelAdmin):
         ctx["selected"] = {"definition_path": definition_path, "theme_dir": theme_dir}
 
         doc, source, read_error = None, "", ""
+        for field, value in (("definition", definition_path), ("theme", theme_dir)):
+            if value and not self._within_a_root(Path(value)):
+                ctx["read_error"] = (
+                    f"The {field} path is outside every directory this deployment mounts. "
+                    "Add it to PROLOG_DEFINITION_DIRS or PROLOG_THEME_DIRS, or upload the file."
+                )
+                return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
+
         if upload is not None:
             source = f"upload:{upload.name}"
             try:
@@ -185,7 +218,9 @@ class SurveyAdmin(admin.ModelAdmin):
         # the definition rather than in a separate trip.
         theme_issues = []
         if theme_dir:
-            _, theme_issues = validate_theme(Path(theme_dir))
+            # Either the folder or its theme.json: an administrator points at
+            # whichever they have in front of them.
+            _, theme_issues = validate_theme(theme_directory(Path(theme_dir)))
 
         blocked = has_errors(issues) or has_errors(theme_issues)
         ctx.update(

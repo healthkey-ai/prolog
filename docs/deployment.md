@@ -20,10 +20,31 @@ PostgreSQL 18, with two directories mounted from the customer's private
 repository:
 
 ```
-/data/surveys/   ← PROLOG_DEFINITION_DIRS   survey definition JSON files
-/data/themes/    ← PROLOG_THEME_DIRS        theme directories (theme.json + assets)
+/data/surveys/   ← PROLOG_DEFINITION_DIRS   survey definitions, at any depth
+/data/themes/    ← PROLOG_THEME_DIRS        themes (theme.json + assets), at any depth
 /data/legal/     ← PROLOG_LEGAL_DIRS        the deployment's own legal pages (Markdown)
 ```
+
+**Each of those is a tree, not a flat folder.** One survey per directory is the
+layout that scales — its definition, its theme and the theme's assets together,
+so adding a survey is adding a folder rather than dropping a file into a pool
+of definitions and another into a pool of themes:
+
+```
+/data/surveys/
+  wellbeing-2026/
+    survey.json
+    theme/
+      theme.json
+      assets/logo.svg
+  symptom-check/
+    survey.json
+```
+
+A theme found under a definition root is a theme; `theme.json` is the one file
+under a definition root that is not read as an instrument. Keeping every theme
+together under `PROLOG_THEME_DIRS` still works — it is the same tree, one level
+deep.
 
 Nothing customer-specific is baked into the image. Upgrading PROlog is a
 tag bump; changing content is a file change plus a reload/activation.

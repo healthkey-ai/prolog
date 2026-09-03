@@ -8,7 +8,10 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from prolog_surveys.definitions.loader import discover
 from prolog_surveys.models import LifecycleStatus, Survey, SurveyResponse, SurveyVersion
+from prolog_surveys.themes import validate_theme
+from prolog_surveys.themes.registry import discover_themes
 
 
 @pytest.mark.django_db
@@ -170,3 +173,111 @@ def test_questions_and_responses_are_not_administered(admin_login):
     view of either is what this admin is not for."""
     assert admin_login.get("/admin/prolog_surveys/surveyquestion/").status_code == 404
     assert admin_login.get("/admin/prolog_surveys/surveyresponse/").status_code == 404
+
+
+# --- one folder per survey ---------------------------------------------------
+
+
+def _bundle(root, name, example, version="1.0"):
+    """A survey the way a deployment with several of them keeps one: its
+    definition, its theme and the theme's assets in a folder of its own."""
+    import copy
+
+    folder = root / name
+    (folder / "theme").mkdir(parents=True)
+    doc = copy.deepcopy(example)
+    doc["slug"] = name
+    doc["version"] = version
+    (folder / "survey.json").write_text(json.dumps(doc), encoding="utf-8")
+    (folder / "theme" / "theme.json").write_text(
+        json.dumps({"code": name, "name": name, "colors": {"light": {}}}), encoding="utf-8"
+    )
+    return folder
+
+
+def test_definitions_are_found_in_a_folder_per_survey(tmp_path, settings, example):
+    """Two surveys, two folders — not two files pooled in one directory."""
+    _bundle(tmp_path, "alpha", example)
+    _bundle(tmp_path, "beta", example)
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    found = [p.name for p in discover()]
+
+    assert sorted(found) == ["survey.json", "survey.json"]
+    assert len({p.parent.name for p in discover()}) == 2
+
+
+def test_a_theme_beside_its_survey_is_not_taken_for_a_definition(tmp_path, settings, example):
+    """theme.json is the one thing under a definition root that is not one."""
+    _bundle(tmp_path, "alpha", example)
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    assert all(p.name != "theme.json" for p in discover())
+
+
+def test_themes_are_found_at_any_depth(tmp_path, settings, example):
+    _bundle(tmp_path, "alpha", example)
+    settings.PROLOG_THEME_DIRS = [str(tmp_path)]
+
+    found = discover_themes()
+
+    assert [p.name for p in found] == ["theme"]
+
+
+def test_a_theme_is_validated_from_its_file_or_its_folder(tmp_path, settings, example):
+    folder = _bundle(tmp_path, "alpha", example) / "theme"
+
+    from_folder, _ = validate_theme(folder)
+    from_file, _ = validate_theme(folder / "theme.json")
+
+    assert from_folder == from_file == {"code": "alpha", "name": "alpha", "colors": {"light": {}}}
+
+
+def test_admin_refuses_a_path_outside_what_the_deployment_mounts(
+    admin_login, tmp_path, settings, example
+):
+    """A staff form that reads any path is a file-disclosure hole."""
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path / "mounted")]
+    settings.PROLOG_THEME_DIRS = []
+    (tmp_path / "mounted").mkdir()
+    outside = tmp_path / "elsewhere.json"
+    outside.write_text(json.dumps(example), encoding="utf-8")
+
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {"definition_path": str(outside)}
+    ).content.decode()
+
+    assert "outside every directory this deployment mounts" in body
+    assert Survey.objects.count() == 0
+
+
+def test_admin_refuses_a_path_that_walks_out_of_a_root(admin_login, tmp_path, settings, example):
+    mounted = tmp_path / "mounted"
+    mounted.mkdir()
+    settings.PROLOG_DEFINITION_DIRS = [str(mounted)]
+    settings.PROLOG_THEME_DIRS = []
+    (tmp_path / "secret.json").write_text(json.dumps(example), encoding="utf-8")
+
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(mounted / ".." / "secret.json")},
+    ).content.decode()
+
+    assert "outside every directory this deployment mounts" in body
+
+
+def test_admin_accepts_a_theme_beside_its_survey(admin_login, tmp_path, settings, example):
+    folder = _bundle(tmp_path, "alpha", example)
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    settings.PROLOG_THEME_DIRS = []
+
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {
+            "definition_path": str(folder / "survey.json"),
+            "theme_dir": str(folder / "theme" / "theme.json"),
+        },
+    ).content.decode()
+
+    assert "outside every directory" not in body
+    assert "Valid" in body or "Refused" in body

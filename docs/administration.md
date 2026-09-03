@@ -21,6 +21,11 @@ around those two.
 
 Three separate things, deliberately:
 
+A deployment running several surveys keeps **one folder per survey** — its
+definition, its theme and the theme's assets together — and points
+`PROLOG_DEFINITION_DIRS` at the tree above them. See
+[`deployment.md`](deployment.md).
+
 | | What it is | Who owns it |
 | --- | --- | --- |
 | **Definition** | A JSON file: the questions, their order, their branching rules. One file is one *version*. | You |
@@ -153,8 +158,15 @@ from, whether they are valid, and loading them.
 1. Choose a definition **this deployment already mounts** (`PROLOG_DEFINITION_DIRS`),
    or upload one. A deployment that ships definitions in its image should choose
    rather than upload — two copies drift.
-2. Optionally choose a **theme** directory; it is verified beside the definition,
-   because both are what an instrument is made of.
+2. Optionally point at a **theme** — pick one the deployment mounts, or type the
+   path to its folder or its `theme.json`; the assets are read from that folder
+   either way. It is verified beside the definition, because both are what an
+   instrument is made of. A path outside every mounted directory is refused, and
+   says so.
+
+   This is what makes one folder per survey work: a survey's theme travels with
+   the survey, rather than every theme in the deployment sharing one directory
+   and one namespace of codes.
 3. **Verify.** Nothing is written. The page shows the validator's own output —
    level, code, path, message — for every issue, not the first, and names the
    schema it was checked against. A definition that is refused says so and stops

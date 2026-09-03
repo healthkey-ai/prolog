@@ -37,13 +37,22 @@
     <fieldset class="module aligned">
       <h2>The theme <span class="help">(optional — verified beside the definition)</span></h2>
       <div class="form-row">
-        <label for="theme_dir">Theme directory:</label>
-        <select name="theme_dir" id="theme_dir">
+        <label for="theme_pick">A theme this deployment mounts:</label>
+        <select id="theme_pick" onchange="document.getElementById('theme_dir').value = this.value;">
           <option value="">—</option>
           {% for path in themes %}
             <option value="{{ path }}" {% if selected.theme_dir == path %}selected{% endif %}>{{ path }}</option>
           {% endfor %}
         </select>
+      </div>
+      <div class="form-row">
+        <label for="theme_dir">…or a path:</label>
+        <input type="text" name="theme_dir" id="theme_dir" size="70" value="{{ selected.theme_dir }}"
+               placeholder="/data/surveys/my-survey/theme/theme.json">
+        <p class="help">
+          The theme's folder or its <code>theme.json</code> — assets are read from that folder either way.
+          It has to sit inside a directory this deployment mounts.
+        </p>
       </div>
     </fieldset>
 
