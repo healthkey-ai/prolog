@@ -307,15 +307,15 @@ export function IntroPage() {
                 {t("intro.start")}
               </Button>
             </div>
-            {/* Not inside the consent block: an anonymous survey with no consent
-                gate still has a notice, and its respondents still deserve to
-                read it before they start. */}
-            {hasLocalPrivacy && (
-              <Link to={`/s/${slug}/privacy`} className={`text-sm underline ${immersive ? "text-on-primary/80" : "text-primary"}`} data-testid="privacy-link">
-                {t("legal.privacy")}
-              </Link>
-            )}
           </>
+        )}
+        {/* Outside both branches, like the create error below it: somebody
+            resuming has the same right to read the notice as somebody
+            starting, and the resume card is the whole screen for them. */}
+        {hasLocalPrivacy && (
+          <Link to={`/s/${slug}/privacy`} className={`text-sm underline ${immersive ? "text-on-primary/80" : "text-primary"}`} data-testid="privacy-link">
+            {t("legal.privacy")}
+          </Link>
         )}
         {/* Outside both branches: "Start again" / "Start a new response" call start() from the resume card too. */}
         {create.isError && (
