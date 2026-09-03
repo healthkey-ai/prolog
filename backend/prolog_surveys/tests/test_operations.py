@@ -132,7 +132,7 @@ def test_admin_verify_reports_every_error_in_the_page(admin_login, tmp_path, set
         {"definition_path": str(tmp_path / "bad.json")},
     ).content.decode()
 
-    assert "Refused" in body
+    assert "Refused" in body and '<ul class="messagelist">' in body
     assert "options_source_include" in body
     assert Survey.objects.count() == 0
 
@@ -351,10 +351,12 @@ def test_loading_the_same_definition_twice_says_it_already_exists(
     )
     post()
 
-    body = post().content.decode()
+    response = post()
+    body = response.content.decode()
 
+    assert response.status_code == 200, "nothing was written, so there is nowhere to go"
     assert "already exists with this exact content" in body
-    assert "bump the version" in body
+    assert 'class="warning"' in body, "not an error and not a success"
     assert SurveyVersion.objects.count() == 1, "a second row would be a second truth"
 
 
@@ -477,11 +479,11 @@ def test_the_versions_inline_offers_no_blank_row(admin_login, db, example):
     assert "Add another version" in body, "the picker link stays"
 
 
-def test_a_refused_version_returns_to_the_survey_it_was_for(
+def test_a_refused_version_says_so_in_the_error_slot(
     admin_login, db, example, tmp_path, settings
 ):
-    """Not to the list of every survey: the question a refusal raises — which
-    versions does this one have? — is answered on the survey's own page."""
+    """Every refusal is said in the same place on the page it happened on:
+    there is nothing to navigate to when nothing was written."""
     import copy
 
     survey = loader.load_definition(example, activate=True).version.survey
@@ -499,11 +501,12 @@ def test_a_refused_version_returns_to_the_survey_it_was_for(
         },
     )
 
-    assert response.status_code == 302
-    assert response["Location"] == f"/admin/prolog_surveys/survey/{survey.pk}/change/"
+    assert response.status_code == 200, "an error stays where it can be corrected"
+    body = response.content.decode()
+    assert '<ul class="messagelist">' in body and 'class="error"' in body
 
 
-def test_a_mismatched_slug_returns_to_the_survey_too(
+def test_a_mismatched_slug_is_said_in_the_error_slot(
     admin_login, db, example, tmp_path, settings
 ):
     import copy
@@ -514,12 +517,13 @@ def test_a_mismatched_slug_returns_to_the_survey_too(
     (tmp_path / "other.json").write_text(json.dumps(other), encoding="utf-8")
     settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
 
-    response = admin_login.post(
+    body = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "other.json"), "action": "load", "survey": survey.slug},
-    )
+    ).content.decode()
 
-    assert response["Location"] == f"/admin/prolog_surveys/survey/{survey.pk}/change/"
+    assert "would create a second survey" in body
+    assert '<ul class="messagelist">' in body
     assert not Survey.objects.filter(slug="something-else").exists()
 
 
@@ -569,3 +573,26 @@ def test_the_buttons_are_sized_like_the_admin_save_row(admin_login):
 
     assert ".submit-row button" in body
     assert "padding: 10px 15px" in body
+
+
+def test_every_outcome_uses_the_same_slot(admin_login, tmp_path, settings, example):
+    """One place to look, whatever went wrong: a missing choice and a version
+    that already exists were previously said in two different ways, one of
+    them on a different page."""
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    nothing_chosen = admin_login.post("/admin/prolog_surveys/survey/verify/", {}).content.decode()
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+    )
+    already_there = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+    ).content.decode()
+
+    for body in (nothing_chosen, already_there):
+        assert body.count('<ul class="messagelist">') == 1
+    assert "Choose a mounted definition" in nothing_chosen
+    assert "already exists" in already_there

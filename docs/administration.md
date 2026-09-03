@@ -170,9 +170,13 @@ changing it is the point of the new version. A definition slugged for a
 different survey is refused there: loading it would create a second survey
 rather than a version of this one, which is not what the button said.
 
-Loading — whether it works, does nothing, or is refused — leaves you on the
-survey's own page, where its versions are, rather than on a list of every
-survey.
+Everything that goes wrong is said in one place, at the top of the page it
+happened on: a missing choice, a path outside the mounted directories, a
+definition with errors, one slugged for a different survey, a version that is
+already there. Nothing to navigate to when nothing was written.
+
+Only a load that **wrote** something moves you, and it moves you to what it
+wrote — the survey's own page, where its versions are.
 
 **Surveys → Verify and load a definition** does what steps 1 and 2 above do:
 

@@ -11,6 +11,7 @@ version's definition, a question's text, an option's key: all of them would let
 somebody produce an instrument the validator never saw.
 """
 
+import json
 from pathlib import Path
 
 from django.contrib import admin, messages
@@ -224,6 +225,13 @@ class SurveyAdmin(admin.ModelAdmin):
         return False
 
     def verify_view(self, request):
+        """Verify a definition, and load it.
+
+        Everything that goes wrong is said in one place on this page — a
+        refusal, an unreadable file, a path outside the mounted roots, a
+        version that is already there. Only a load that actually wrote
+        something navigates, and it navigates to what it wrote.
+        """
         definitions, themes = self._sources()
         # Adding a version to a survey is the same act with one thing already
         # decided: which survey it belongs to. The theme comes pre-set from
@@ -249,43 +257,48 @@ class SurveyAdmin(admin.ModelAdmin):
             "selected": {"theme_dir": preset_theme} if survey else {},
         }
 
-        if request.method != "POST":
+        def page():
             return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
+
+        def say(level, text):
+            # Django's own message list, which the admin already renders above
+            # the content: one slot, one style, whether the outcome is reached
+            # on this page or after a redirect. A second list of our own looked
+            # different and stacked underneath the first.
+            self.message_user(request, text, level)
+            return page()
+
+        if request.method != "POST":
+            return page()
 
         definition_path = request.POST.get("definition_path", "")
         theme_dir = request.POST.get("theme_dir", "")
         upload = request.FILES.get("definition_file")
         ctx["selected"] = {"definition_path": definition_path, "theme_dir": theme_dir}
 
-        doc, source, read_error = None, "", ""
         for field, value in (("definition", definition_path), ("theme", theme_dir)):
             if value and not self._within_a_root(Path(value)):
-                ctx["read_error"] = (
+                return say(
+                    messages.ERROR,
                     f"The {field} path is outside every directory this deployment mounts. "
-                    "Add it to PROLOG_DEFINITION_DIRS or PROLOG_THEME_DIRS, or upload the file."
+                    "Add it to PROLOG_DEFINITION_DIRS or PROLOG_THEME_DIRS, or upload the file.",
                 )
-                return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
 
+        doc, source = None, ""
         if upload is not None:
             source = f"upload:{upload.name}"
             try:
-                import json
-
                 doc = json.loads(upload.read().decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as exc:
-                read_error = f"{upload.name} is not readable JSON: {exc}"
+                return say(messages.ERROR, f"{upload.name} is not readable JSON: {exc}")
         elif definition_path:
             source = definition_path
             try:
                 doc = read_json(Path(definition_path))
             except (OSError, ValueError) as exc:
-                read_error = f"{definition_path} could not be read: {exc}"
+                return say(messages.ERROR, f"{definition_path} could not be read: {exc}")
         else:
-            read_error = "Choose a mounted definition or upload one."
-
-        if read_error:
-            ctx["read_error"] = read_error
-            return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
+            return say(messages.ERROR, "Choose a mounted definition or upload one.")
 
         issues = validate_definition(doc)
         # A theme is part of what makes an instrument, so it is verified beside
@@ -308,69 +321,50 @@ class SurveyAdmin(admin.ModelAdmin):
                 "version": (doc or {}).get("version"),
             }
         )
+        if blocked:
+            return say(messages.ERROR, "Refused: this definition has errors. Nothing was written.")
 
         # A definition names its own survey. Adding a version to one survey
         # from a definition slugged for another would quietly create a second
         # survey, which is not what the button said.
-        if survey is not None and (doc or {}).get("slug") != survey.slug:
+        if survey is not None and doc.get("slug") != survey.slug:
             ctx["blocked"] = True
-            ctx["slug_mismatch"] = (doc or {}).get("slug") or "—"
-            # Verifying stays here so the choice can be corrected; only pressing
-            # Load returns to the survey it was refused for.
-            if request.POST.get("action") == "load":
-                self.message_user(
-                    request,
-                    f"That definition is for '{ctx['slug_mismatch']}', not '{survey.slug}'. "
-                    "Loading it here would create a second survey; use Add survey for that.",
-                    messages.ERROR,
-                )
-                return redirect(reverse("admin:prolog_surveys_survey_change", args=[survey.pk]))
-            return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
-
-        if request.POST.get("action") == "load" and not blocked:
-            try:
-                result = load_definition(doc, source=source)
-            except DefinitionError as exc:
-                # Adding a version started from a survey's page, so a refusal
-                # goes back there rather than to a list of every survey: the
-                # question it raises — which versions does this one have? — is
-                # answered on that page.
-                if survey is not None:
-                    self.message_user(request, str(exc), messages.ERROR)
-                    return redirect(reverse("admin:prolog_surveys_survey_change", args=[survey.pk]))
-                ctx["load_error"] = str(exc)
-                return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
-            # Say which of the three things happened. "Loaded" over a version
-            # that already existed unchanged reads as success and leaves an
-            # administrator wondering why nothing moved.
-            if result.created:
-                note, level = (
-                    f"Created {result.version} as a draft. "
-                    "Activate it deliberately when it is ready.",
-                    messages.SUCCESS,
-                )
-            elif result.changed:
-                note, level = (
-                    f"Updated the existing draft {result.version} from this definition.",
-                    messages.SUCCESS,
-                )
-            else:
-                note, level = (
-                    f"{result.version} already exists with this exact content. "
-                    "Nothing was written. To change a published version, bump the "
-                    "version in the definition — a response records which version "
-                    "it answered.",
-                    messages.WARNING,
-                )
-            self.message_user(request, note, level)
-            # Land on the survey that was just touched rather than a list of all
-            # of them: the version just loaded, or the one already there, is
-            # what somebody wants to look at next.
-            return redirect(
-                reverse("admin:prolog_surveys_survey_change", args=[result.version.survey_id])
+            return say(
+                messages.ERROR,
+                f"That definition is for '{doc.get('slug') or '—'}', not '{survey.slug}'. "
+                "Loading it here would create a second survey; use Add survey for that.",
             )
 
-        return TemplateResponse(request, "admin/prolog_surveys/survey/verify.html", ctx)
+        if request.POST.get("action") != "load":
+            return page()
+
+        try:
+            result = load_definition(doc, source=source)
+        except DefinitionError as exc:
+            ctx["blocked"] = True
+            return say(messages.ERROR, str(exc))
+
+        if not result.created and not result.changed:
+            # Not an error and not a success: nothing happened, and saying
+            # "loaded" would leave an administrator wondering why nothing moved.
+            return say(
+                messages.WARNING,
+                f"{result.version} already exists with this exact content. Nothing was "
+                "written. To change a published version, bump the version in the "
+                "definition — a response records which version it answered.",
+            )
+
+        note = (
+            f"Created {result.version} as a draft. Activate it deliberately when it is ready."
+            if result.created
+            else f"Updated the existing draft {result.version} from this definition."
+        )
+        self.message_user(request, note, messages.SUCCESS)
+        # Only a load that wrote something navigates, and it lands on what it
+        # wrote rather than on a list of everything.
+        return redirect(
+            reverse("admin:prolog_surveys_survey_change", args=[result.version.survey_id])
+        )
 
 
 @admin.register(SurveyContact)

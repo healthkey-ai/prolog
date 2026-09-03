@@ -22,6 +22,7 @@
 {% block content %}
 <div id="content-main" style="max-width:1000px">
 
+
   <p class="help" style="margin:1rem 0">
     Validates a definition the way <code>manage.py validate_definition</code> does, and
     writes nothing until you press <strong>Load as draft</strong>. Loading never activates:
@@ -94,25 +95,10 @@
     </div>
   </form>
 
-  {% if read_error %}
-    <ul class="messagelist"><li class="error">{{ read_error }}</li></ul>
-  {% endif %}
-  {% if load_error %}
-    <ul class="messagelist"><li class="error">{{ load_error }}</li></ul>
-  {% endif %}
-
   {% if verified %}
     <div class="module" style="margin-top:1.5rem">
       <h2>Result — {{ source }}</h2>
-      {% if slug_mismatch %}
-        <p class="errornote">
-          Refused. This definition is for <strong>{{ slug_mismatch }}</strong>, not
-          <strong>{{ for_survey.slug }}</strong>. Loading it here would create a second survey —
-          use <strong>Add survey</strong> if that is what you want.
-        </p>
-      {% elif blocked %}
-        <p class="errornote">Refused. Nothing was written.</p>
-      {% else %}
+      {% if not blocked %}
         <p>
           Valid. This would load <strong>{{ slug }}</strong> version <strong>{{ version }}</strong> as a draft.
           {% if issues or theme_issues %}Warnings below are legal, and probably not what was meant.{% endif %}
