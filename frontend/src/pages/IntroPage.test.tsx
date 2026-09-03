@@ -218,4 +218,29 @@ describe("IntroPage", () => {
     });
   });
 
+
+  describe("privacy notice link", () => {
+    it("links to a mounted notice on a survey with no consent gate", async () => {
+      // An anonymous survey has no consent block; its respondents still have a
+      // notice to read, and it was previously nested inside that block.
+      runnerServer(definition({ legal_pages: ["privacy"], consent: undefined }));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      const link = m.$("privacy-link");
+      expect(link).not.toBeNull();
+      expect(link?.getAttribute("href")).toBe(`/s/${SLUG}/privacy`);
+    });
+
+    it("renders no link when the deployment mounted no notice", async () => {
+      runnerServer(definition({ legal_pages: [] }));
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("privacy-link")).toBeNull();
+    });
+  });
+
 });

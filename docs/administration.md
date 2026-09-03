@@ -210,17 +210,23 @@ to leave the survey to read it. Put Markdown files where the deployment points
 ```
 
 The runner serves it at `/s/<slug>/privacy`, in the survey's own theme, and
-links to it from the consent notice. A language with no file of its own falls
-back to `privacy.md` — the same rule survey content follows — so a respondent
-always gets the notice rather than nothing.
+links to it **from the intro and from any question that asks for an email
+address** — the two places somebody decides whether to trust the survey. The
+link does not depend on the instrument having a consent gate: an anonymous
+survey has no consent block and its respondents still have a notice to read. A
+language with no file of its own falls back to `privacy.md` — the same rule
+survey content follows — so a respondent always gets the notice rather than
+nothing.
 
 Configure nothing and there is no page and no link. PROlog ships no policy
 text, no template and no placeholder wording: what the notice says is yours,
 and so is keeping the translations current.
 
-Only a small Markdown subset is rendered — headings, paragraphs, lists, links,
-bold and italic. Anything else appears as the characters you typed, which for a
-notice is a readable failure rather than a broken one.
+Only a Markdown subset is rendered — headings, paragraphs, lists, tables,
+links, bold and italic. Anything else appears as the characters you typed,
+which for a notice is a readable failure rather than a broken one. Hard-wrapped
+source is fine: wrapped lines are joined before anything is read, so a bold span
+or a link broken across two lines still works.
 
 ## Getting the answers out
 
