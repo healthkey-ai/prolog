@@ -1,6 +1,6 @@
 [project]
 name = "prolog"
-version = "0.2.2"
+version = "0.2.3"
 description = "PROlog — generic survey runner and designer for patient-reported outcomes"
 # PRomop's image is python:3.12-slim and the app runs in its process, so the
 # floor is PRomop's, not the newest Python. See docs/promop-migration-plan.md M0.
