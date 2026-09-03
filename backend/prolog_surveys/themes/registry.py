@@ -100,8 +100,23 @@ class Theme:
         return doc
 
 
+def theme_directory(path: Path) -> Path:
+    """The theme's own folder, given either it or its ``theme.json``.
+
+    A survey's theme travels with the survey — ``theme.json`` and the assets it
+    references in one folder — so an administrator points at whichever of the
+    two they have in front of them.
+    """
+    return path.parent if path.name == "theme.json" else path
+
+
 def validate_theme(directory: Path) -> tuple[dict[str, Any], list[Issue]]:
-    """Schema + asset + contrast validation of ``directory/theme.json``."""
+    """Schema + asset + contrast validation of a theme.
+
+    Takes the theme's directory or its ``theme.json``; assets are resolved
+    relative to the directory either way.
+    """
+    directory = theme_directory(directory)
     path = directory / "theme.json"
     if not path.is_file():
         return {}, [Issue("missing", "$", f"{path} not found")]
@@ -154,6 +169,22 @@ def builtin_theme_dir() -> Path | None:
     return packaged if packaged.is_dir() else None
 
 
+def discover_themes(roots: list[Path] | None = None) -> list[Path]:
+    """Every theme directory under the roots, at any depth.
+
+    A root is a tree, not a flat list of themes: a deployment running several
+    surveys keeps each one's theme beside its definition, and one that keeps
+    all its themes together still works — the shallow layout is the tree with
+    one level.
+    """
+    found: list[Path] = []
+    for root in roots if roots is not None else _theme_roots():
+        if not root.is_dir():
+            continue
+        found.extend(sorted(p.parent for p in root.glob("**/theme.json") if p.is_file()))
+    return found
+
+
 def _theme_roots() -> list[Path]:
     """Packaged themes first, then the deployment's — a deployment may override."""
     roots = []
@@ -178,9 +209,7 @@ class ThemeRegistry:
             if not root.is_dir():
                 log.warning("theme directory does not exist: %s", root)
                 continue
-            for directory in sorted(p for p in root.iterdir() if p.is_dir()):
-                if not (directory / "theme.json").is_file():
-                    continue
+            for directory in discover_themes([root]):
                 data, issues = validate_theme(directory)
                 if has_errors(issues):
                     errors = [i for i in issues if i.level == "error"]

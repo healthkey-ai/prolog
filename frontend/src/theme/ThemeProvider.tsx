@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { ApiError } from "@/api/client";
 import { useResponse, useSurveyDefinition, useTheme } from "@/api/hooks";
@@ -48,7 +48,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (theme.data) applyTheme(theme.data);
   }, [theme.data]);
 
-  const ready = !code ? definition.isError || definition.isSuccess : theme.isSuccess || theme.isError;
+  // Sticky: once the definition (and its theme, if it has one) has settled,
+  // the pages stay mounted. A plain "has it settled?" flickers false whenever
+  // a query refetches, which unmounts the pages — and remounting them refetches
+  // the definition, which flickers it again. On a survey with no active version
+  // that loop doubled every round: hundreds of requests a second, and a page
+  // that never rendered the "not available" message it had ready.
+  const settled = !code ? definition.isError || definition.isSuccess : theme.isSuccess || theme.isError;
+  const readyRef = useRef(false);
+  if (settled) readyRef.current = true;
+  const ready = readyRef.current;
   const value = useMemo(() => ({ theme: theme.data ?? null }), [theme.data]);
   return <ThemeContext.Provider value={value}>{ready ? children : null}</ThemeContext.Provider>;
 }

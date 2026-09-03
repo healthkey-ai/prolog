@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}
+{% include "admin/prolog_surveys/survey/_buttons.css.html" %}
+{% endblock %}
+
+{% block content %}
+<div id="content-main" style="max-width:800px">
+  <p>
+    Activating <strong>{{ version }}</strong> makes it the version respondents are given.
+    A survey has one active version at a time.
+  </p>
+
+  <ul>
+    {% if current %}
+      <li>
+        <strong>{{ current }}</strong> is archived by this. The responses already given to it
+        keep pointing at it, and stay readable in the exports.
+      </li>
+    {% else %}
+      <li>Nothing is active yet, so this opens the survey for the first time.</li>
+    {% endif %}
+    {% if unreviewed %}
+      <li class="errornote" style="display:block">
+        These languages are still machine-translated: <strong>{{ unreviewed|join:", " }}</strong>.
+        Activation is refused until they are reviewed — change <code>translation_status</code>
+        in the definition and load it again.
+      </li>
+    {% endif %}
+    {% if closed_reason %}
+      <li>
+        <strong>The survey's own dates keep it shut</strong> ({{ closed_reason }}), so respondents
+        still cannot start it. Change the effective dates on the survey to open it.
+      </li>
+    {% endif %}
+    <li>This is reversible: activate another version, or archive this one.</li>
+  </ul>
+
+  <p class="help">
+    Activating does not publish: the content of an unpublished version can still be corrected
+    by re-loading its definition.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="submit-row">
+      <button type="submit" class="button default">Activate this version</button>
+      <a href="{% url 'admin:prolog_surveys_survey_change' version.survey_id %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

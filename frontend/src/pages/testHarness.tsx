@@ -12,6 +12,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-rou
 import { vi } from "vitest";
 import i18n from "@/i18n";
 import type { ResponseSummary, RunnerDefinition } from "@/api/types";
+import { ThemeProvider } from "@/theme/ThemeProvider";
 import { CompletePage } from "./CompletePage";
 import { IntroPage } from "./IntroPage";
 import { WizardPage } from "./WizardPage";
@@ -147,6 +148,30 @@ export function runnerRoutes(): ReactElement {
     createElement(Route, { path: "/s/:slug", element: createElement(IntroPage) }),
     createElement(Route, { path: "/s/:slug/q/:key", element: createElement(WizardPage) }),
     createElement(Route, { path: "/s/:slug/complete", element: createElement(CompletePage) }),
+  );
+}
+
+/**
+ * The routes as the app mounts them: inside ``ThemeProvider``, which decides
+ * when the pages appear at all.
+ *
+ * Worth the second harness. A page tested on its own passed while the tree a
+ * participant actually gets rendered nothing and refetched the definition
+ * hundreds of times a second — a bug that lived entirely in the wrapper the
+ * other harness left out.
+ */
+export function themedRoutes(): ReactElement {
+  return createElement(
+    Routes,
+    null,
+    createElement(Route, {
+      path: "/s/:slug",
+      element: createElement(ThemeProvider, null, createElement(IntroPage)),
+    }),
+    createElement(Route, {
+      path: "/s/:slug/q/:key",
+      element: createElement(ThemeProvider, null, createElement(WizardPage)),
+    }),
   );
 }
 

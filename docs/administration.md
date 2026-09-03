@@ -12,7 +12,7 @@ cannot be undone. It assumes a PROlog deployment already exists — building one
 is [`deployment.md`](deployment.md).
 
 If you read nothing else, read [Publishing a survey](#publishing-a-survey) and
-[Versions are immutable](#versions-are-immutable). Everything else is detail
+[Publishing freezes a version](#publishing-freezes-a-version). Everything else is detail
 around those two.
 
 ---
@@ -20,6 +20,11 @@ around those two.
 ## What a survey is here
 
 Three separate things, deliberately:
+
+A deployment running several surveys keeps **one folder per survey** — its
+definition, its theme and the theme's assets together — and points
+`PROLOG_DEFINITION_DIRS` at the tree above them. See
+[`deployment.md`](deployment.md).
 
 | | What it is | Who owns it |
 | --- | --- | --- |
@@ -86,26 +91,92 @@ ever select.
 
 ---
 
-## Versions are immutable
+## Publishing freezes a version
 
-Once a version is active, **its content cannot change**. Editing the file and
-re-loading it is refused:
+A version's content can change until you **publish** it. After that it cannot,
+ever:
 
 ```
-ERROR immutable at $.version: version 1.0 is active; bump the version to change it
+ERROR immutable at $.version: version 1.0 is published, so its content is final; bump the version to change it
 ```
 
 This is not bureaucracy. A response records *which version it answered*, and
-"what did question 7 say?" must have one answer forever. If you edit an active
-version in place, every response already given quietly comes to mean something
-else.
+"what did question 7 say?" must have one answer forever. If a published version
+could be edited in place, every response already given would quietly come to
+mean something else.
 
-So: **any change a respondent's answers must be interpreted against is a new
-version.** Change `version` in the file, load it, activate it. The old version
-is archived, its responses keep pointing at it, and new respondents get the new
-one.
+So: **once published, any change a respondent's answers must be interpreted
+against is a new version.** Change `version` in the file, load it, activate it.
+The old version is archived, its responses keep pointing at it, and new
+respondents get the new one.
 
-Reloading an *unchanged* file is always safe and reports `unchanged`.
+Re-loading an *unchanged* file is always safe and reports `unchanged`, published
+or not — that is what happens at every container start.
+
+### Getting the instrument right first
+
+Activating and publishing are separate acts, and they answer different
+questions:
+
+| | Decides | Reversible? |
+| --- | --- | --- |
+| **Activate** | which version respondents are given | yes — activate another |
+| **Publish** | that this version's wording is final | **no** |
+
+That separation is deliberate. Getting an instrument right means activating it,
+answering it a few times to see how it reads, fixing the wording, and loading it
+again. Bumping the version for a typo nobody outside the test has read only
+makes the version history harder to read. So until you publish:
+
+- the definition can be re-loaded over the existing version, as often as needed;
+- the responses against it are **test data**.
+
+Because they are test data, a re-load that changes the content has to remove
+them — a response answering questions that no longer exist is worse than no
+response. That is never silent:
+
+```
+$ manage.py load_definition surveys/example.json
+ERROR responses_exist at $.version: example@1.0 (active) has 3 response(s), 1 of
+them submitted. Loading a changed definition over it would leave them answering
+questions that no longer exist; discard them to continue, or bump the version to
+keep them.
+
+$ manage.py load_definition surveys/example.json --discard-responses
+updated: example@1.0 (active) <- surveys/example.json
+```
+
+**Loading is not activating.** A definition loads as a draft, and nothing serves a draft: until a version is activated the runner answers *"This survey is not available."* In the console, the version's row has **Activate…** beside its status; from a shell it is `load_definition --activate` or `activate_version`.
+
+Either way the console can also take a definition that is not mounted at all: **upload one**. Verify it, then press Load — the file you verified is held for that press, because a browser only sends it once.
+
+In the admin console the same thing happens as a question. Each unpublished
+version's row on the survey's page carries **Re-load…**, which opens the verify
+page with the file that version came from already chosen and verified; pressing
+**Re-load 1.0** replaces its content in place. Where responses exist the page
+says how many there are, how many were submitted, and offers **Discard N
+responses and load** beside the ordinary button.
+
+### Publishing
+
+When the wording is settled, publish:
+
+```
+manage.py publish_version example                  # the active version
+manage.py publish_version example --survey-version 1.0
+```
+
+or press **Publish…** in the version's row on the survey's page in the admin,
+which says what it costs before it does it.
+
+From then on: a changed file is refused, `--discard-responses` is refused too,
+and the responses are somebody's answers rather than a test of the wording.
+**Publish before you invite anyone.** A version that has collected real
+responses and was never published is not protected by anything except nobody
+having re-loaded it.
+
+Archiving freezes a version's content as well — it was offered once, published
+or not.
 
 ### What is not a version change
 
@@ -148,13 +219,45 @@ An account is never a condition of answering.
 instrument's **inputs** — which definition and which theme a survey is built
 from, whether they are valid, and loading them.
 
+The survey list opens with **where this deployment reads from**: each configured
+`PROLOG_DEFINITION_DIRS` and `PROLOG_THEME_DIRS` root, how many definitions or
+themes were found under it, and — the useful part — whether the directory is
+there at all. An empty list and a mistyped mount look identical until something
+says which one it is.
+
+**Add survey** goes to the same picker, because a survey is loaded from a
+definition rather than typed into a form: the fields a form would offer are the
+loader's, and it rewrites them from the definition on every load.
+
+**Add another version**, on a survey's own page, is the same picker with one
+thing already decided — which survey the version belongs to. The theme is
+pre-set to the one that survey uses and can be changed, because sometimes
+changing it is the point of the new version. A definition slugged for a
+different survey is refused there: loading it would create a second survey
+rather than a version of this one, which is not what the button said.
+
+Everything that goes wrong is said in one place, at the top of the page it
+happened on: a missing choice, a path outside the mounted directories, a
+definition with errors, one slugged for a different survey, a version that is
+already there. Nothing to navigate to when nothing was written.
+
+Only a load that **wrote** something moves you, and it moves you to what it
+wrote — the survey's own page, where its versions are.
+
 **Surveys → Verify and load a definition** does what steps 1 and 2 above do:
 
 1. Choose a definition **this deployment already mounts** (`PROLOG_DEFINITION_DIRS`),
    or upload one. A deployment that ships definitions in its image should choose
    rather than upload — two copies drift.
-2. Optionally choose a **theme** directory; it is verified beside the definition,
-   because both are what an instrument is made of.
+2. Optionally point at a **theme** — pick one the deployment mounts, or type the
+   path to its folder or its `theme.json`; the assets are read from that folder
+   either way. It is verified beside the definition, because both are what an
+   instrument is made of. A path outside every mounted directory is refused, and
+   says so.
+
+   This is what makes one folder per survey work: a survey's theme travels with
+   the survey, rather than every theme in the deployment sharing one directory
+   and one namespace of codes.
 3. **Verify.** Nothing is written. The page shows the validator's own output —
    level, code, path, message — for every issue, not the first, and names the
    schema it was checked against. A definition that is refused says so and stops
@@ -311,7 +414,8 @@ an activation you expected to work.
 
 | What you see | What it usually is |
 | --- | --- |
-| `version 1.0 is active; bump the version to change it` | You edited a published version. Change `version` in the file. |
+| `version 1.0 is published, so its content is final; bump the version to change it` | You edited a published version. Change `version` in the file. |
+| `example@1.0 has 3 response(s)…` | A re-load would drop the test responses. `--discard-responses`, or bump the version. |
 | `active_surveys: 0` after activating | The activation did not happen, or it was refused for unreviewed translations. Read the load output. |
 | The survey 404s for respondents | No active version, or today is outside `effective_from`/`effective_to`. |
 | The theme is missing and everything is grey | The theme directory did not load. `register_theme <dir>` reports why; check the deployment's theme path. |

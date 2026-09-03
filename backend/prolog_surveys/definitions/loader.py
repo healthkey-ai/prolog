@@ -12,12 +12,28 @@ from django.utils import timezone
 
 from .. import conf
 from ..engine.visibility import iter_questions
-from ..models import LifecycleStatus, Survey, SurveyOption, SurveyQuestion, SurveyVersion
+from ..models import (
+    LifecycleStatus,
+    ResponseStatus,
+    Survey,
+    SurveyOption,
+    SurveyQuestion,
+    SurveyVersion,
+)
 from .normalize import checksum, normalize, source_checksum
 from .schema import Issue, read_json, validate_schema
 from .validate import has_errors, validate_semantics
 
-DEFINITION_GLOB = "*.json"
+#: Definitions are found anywhere under a configured root, not only at its top
+#: level: a deployment running several surveys keeps each one's definition,
+#: theme and assets in a folder of its own rather than pooling every definition
+#: in one directory and every theme in another.
+DEFINITION_GLOB = "**/*.json"
+
+#: A theme's manifest sits beside the definition it belongs to in that layout,
+#: and is not a definition. Nothing else is excluded: any other *.json under a
+#: definition root is meant to be an instrument, as it always was.
+NOT_A_DEFINITION = frozenset({"theme.json"})
 log = logging.getLogger(__name__)
 
 
@@ -62,9 +78,57 @@ def unreviewed_languages(definition: dict[str, Any]) -> list[str]:
     ]
 
 
+class ResponsesExist(DefinitionError):
+    """Re-loading would replace a version that has responses against it.
+
+    Raised rather than deciding: until a version is published its responses are
+    test data, but only the person loading knows whether that is what they are.
+    ``discard_responses=True`` says so explicitly.
+    """
+
+    def __init__(self, version, total: int, submitted: int) -> None:
+        self.version = version
+        self.total = total
+        self.submitted = submitted
+        super().__init__(
+            [
+                Issue(
+                    "responses_exist",
+                    "$.version",
+                    f"{version} has {total} response(s), {submitted} of them submitted. "
+                    "Loading a changed definition over it would leave them answering "
+                    "questions that no longer exist; discard them to continue, or bump "
+                    "the version to keep them.",
+                )
+            ]
+        )
+
+
+def matches_source(version: SurveyVersion, doc: Any) -> bool:
+    """Is ``version`` already this document?
+
+    The stored digest covers the *source* document, so a new normaliser default
+    does not make an unchanged file look edited. Rows written before that
+    change carry the normalised digest instead, which a load migrates — they
+    are the same document too.
+
+    One rule, in one place: anything that offers to do something about a change
+    (the admin's discard prompt, say) has to agree with the load that would
+    carry it out.
+    """
+    if version.checksum == source_checksum(doc):
+        return True
+    return version.checksum == checksum(normalize(doc))
+
+
 @transaction.atomic
 def load_definition(
-    doc: Any, *, source: str = "", activate: bool = False, allow_unreviewed: bool = False
+    doc: Any,
+    *,
+    source: str = "",
+    activate: bool = False,
+    allow_unreviewed: bool = False,
+    discard_responses: bool = False,
 ) -> LoadResult:
     issues = validate_definition(doc)
     if has_errors(issues):
@@ -91,22 +155,39 @@ def load_definition(
         },
     )
     changed = created
-    if not created and version.checksum != digest and version.checksum == checksum(definition):
+    if not created and version.checksum != digest and matches_source(version, doc):
         # Row written while the checksum still covered the normalised document:
         # the same source, so migrate the digest rather than report an edit.
         version.checksum = digest
         version.save(update_fields=["checksum", "updated_at"])
     if not created and version.checksum != digest:
         if not version.is_mutable:
+            why = (
+                "archived"
+                if version.status == LifecycleStatus.ARCHIVED
+                else "published, so its content is final"
+            )
             raise DefinitionError(
                 [
                     Issue(
                         "immutable",
                         "$.version",
-                        f"version {version.version} is {version.status}; bump the version to change it",
+                        f"version {version.version} is {why}; bump the version to change it",
                     )
                 ]
             )
+        # The version may change, but not underneath answers already given
+        # against it. Unpublished responses are test data — that is the whole
+        # point of the loop — and discarding them is still said out loud.
+        total = version.responses.count()
+        if total:
+            if not discard_responses:
+                raise ResponsesExist(
+                    version,
+                    total,
+                    version.responses.filter(status=ResponseStatus.SUBMITTED).count(),
+                )
+            version.responses.all().delete()
         version.definition = definition
         version.checksum = digest
         version.schema_version = definition["schema_version"]
@@ -190,8 +271,8 @@ def activate_version(version: SurveyVersion, *, allow_unreviewed: bool = False) 
         current.archived_at = now
         current.save(update_fields=["status", "archived_at", "updated_at"])
     version.status = LifecycleStatus.ACTIVE
-    version.published_at = now
-    version.save(update_fields=["status", "published_at", "updated_at"])
+    version.activated_at = now
+    version.save(update_fields=["status", "activated_at", "updated_at"])
     _sync_survey(version)
     materialize(version)
 
@@ -207,6 +288,27 @@ def _sync_survey(version: SurveyVersion) -> None:
     survey.save(
         update_fields=["title", "theme_code", "allow_anonymous_participation", "updated_at"]
     )
+
+
+@transaction.atomic
+def publish_version(version: SurveyVersion) -> SurveyVersion:
+    """Freeze this version's content for good.
+
+    Activation decides which version is *served*; publishing decides that its
+    content is *final*. They are separate because the loop that gets an
+    instrument right — activate, answer it a few times, correct it, load it
+    again — needs the second to stay open while the first is already done.
+
+    After this the definition cannot change and its responses cannot be
+    discarded by a re-load: from here a response is somebody's answer rather
+    than a test of the wording.
+    """
+    if version.published_at is not None:
+        return version
+    version.published_at = timezone.now()
+    version.save(update_fields=["published_at", "updated_at"])
+    log.info("published %s; its content is now frozen", version)
+    return version
 
 
 @transaction.atomic
@@ -253,11 +355,19 @@ def materialize(version: SurveyVersion) -> None:
 
 
 def load_file(
-    path: str | Path, *, activate: bool = False, allow_unreviewed: bool = False
+    path: str | Path,
+    *,
+    activate: bool = False,
+    allow_unreviewed: bool = False,
+    discard_responses: bool = False,
 ) -> LoadResult:
     path = Path(path)
     return load_definition(
-        read_json(path), source=str(path), activate=activate, allow_unreviewed=allow_unreviewed
+        read_json(path),
+        source=str(path),
+        activate=activate,
+        allow_unreviewed=allow_unreviewed,
+        discard_responses=discard_responses,
     )
 
 
@@ -267,7 +377,9 @@ def discover(paths: list[str | Path] | None = None) -> list[Path]:
     files: list[Path] = []
     for root in roots:
         if root.is_dir():
-            files.extend(sorted(root.glob(DEFINITION_GLOB)))
+            files.extend(
+                sorted(p for p in root.glob(DEFINITION_GLOB) if p.name not in NOT_A_DEFINITION)
+            )
         elif root.is_file():
             files.append(root)
     return files

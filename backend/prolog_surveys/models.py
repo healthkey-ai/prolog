@@ -84,7 +84,17 @@ class SurveyVersion(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    published_at = models.DateTimeField(null=True, blank=True)
+    activated_at = models.DateTimeField(
+        null=True, blank=True, help_text="When this version was last made the active one."
+    )
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When this version's content was frozen. Until then it can be re-loaded, and "
+            "the responses against it are test data."
+        ),
+    )
     archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -103,7 +113,24 @@ class SurveyVersion(models.Model):
 
     @property
     def is_mutable(self) -> bool:
-        return self.status == LifecycleStatus.DRAFT
+        """May this version's content still be replaced by a re-load?
+
+        Until it is **published** — an explicit, deliberate act — yes. A
+        version is loaded, activated, answered a few times to see how it
+        reads, corrected, loaded again; those responses are test data and
+        that loop is the normal way to get an instrument right.
+
+        Publishing draws the line. From then on the content is frozen for
+        good, because a response records which version it answered and
+        "what did question 7 say?" must have one answer forever. An
+        archived version is frozen too: it was offered once, whether or
+        not anyone published it.
+        """
+        return self.published_at is None and self.status != LifecycleStatus.ARCHIVED
+
+    @property
+    def is_published(self) -> bool:
+        return self.published_at is not None
 
     @property
     def default_language(self) -> str:

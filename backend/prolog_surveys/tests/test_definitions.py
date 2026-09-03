@@ -16,13 +16,14 @@ from prolog_surveys.definitions.loader import (
     DefinitionError,
     activate_version,
     load_definition,
+    publish_version,
     validate_definition,
 )
 from prolog_surveys.definitions.normalize import checksum, normalize, source_checksum
 from prolog_surveys.definitions.validate import has_errors, validate_semantics, walk_i18n
 from prolog_surveys.engine.localize import I18N_FIELDS, localize
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
-from prolog_surveys.tests.conftest import EXAMPLE_PATH
+from prolog_surveys.tests.conftest import EXAMPLE_PATH, make_response
 
 
 def question(doc: dict, key: str) -> dict:
@@ -522,6 +523,7 @@ def test_unchanged_file_reloads_after_a_normaliser_change(example, monkeypatch):
     assert version.definition["presentation"]["new_default"] is True
     assert version.checksum == source_checksum(example)
     # An edit to the source is still a change, and still refused once published.
+    publish_version(version)
     example["title"]["en"] = "Changed"
     with pytest.raises(DefinitionError):
         load_definition(example)
@@ -553,7 +555,7 @@ def test_draft_can_change_published_cannot(example):
     result = load_definition(example)
     example["title"]["en"] = "Changed"
     assert load_definition(example).changed
-    load_definition(example, activate=True)
+    publish_version(load_definition(example, activate=True).version)
     example["title"]["en"] = "Changed again"
     with pytest.raises(DefinitionError) as exc:
         load_definition(example)
@@ -700,3 +702,102 @@ def test_allow_unreviewed_remains_the_preview_route(db, example, settings):
     result = loader.load_definition(example, activate=True, allow_unreviewed=True)
 
     assert result.version.status == "active"
+
+
+# --- correcting a version while it is still being tested ---------------------
+
+
+def _reloaded(example, **changes):
+    import copy
+
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    return edited
+
+
+def test_an_active_version_can_be_corrected_until_it_is_published(db, example):
+    """Getting an instrument right means activating it, answering it, and
+    correcting the wording — bumping a version for a typo nobody outside the
+    test has read is worse than re-loading it. Publishing ends that."""
+    loader.load_definition(example, activate=True)
+
+    result = loader.load_definition(_reloaded(example))
+
+    assert result.changed
+    result.version.refresh_from_db()
+    assert result.version.definition["title"]["en"] == "Corrected title"
+    assert result.version.version == example["version"], "same version, new content"
+
+
+def test_a_published_version_is_frozen(db, example):
+    version = loader.load_definition(example, activate=True).version
+    loader.publish_version(version)
+
+    with pytest.raises(loader.DefinitionError, match="bump the version"):
+        loader.load_definition(_reloaded(example))
+
+
+def test_publishing_is_idempotent_and_keeps_the_first_time(db, example):
+    version = loader.load_definition(example, activate=True).version
+    first = loader.publish_version(version).published_at
+    assert first is not None
+    assert loader.publish_version(version).published_at == first
+    assert version.is_published and not version.is_mutable
+
+
+def test_test_responses_block_a_reload_until_they_are_discarded(db, example):
+    """A version being tested always has responses against it. They are test
+    data — but only the person loading knows that, so they say so."""
+    from prolog_surveys.models import ResponseStatus, SurveyResponse
+
+    version = loader.load_definition(example, activate=True).version
+    make_response(version, language="en")
+    make_response(version, language="en", status=ResponseStatus.SUBMITTED)
+
+    with pytest.raises(loader.ResponsesExist) as exc:
+        loader.load_definition(_reloaded(example))
+    assert (exc.value.total, exc.value.submitted) == (2, 1)
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == example["title"]["en"], "not changed"
+
+    result = loader.load_definition(_reloaded(example), discard_responses=True)
+
+    assert result.changed
+    assert not SurveyResponse.objects.filter(survey_version=version).exists()
+    result.version.refresh_from_db()
+    assert result.version.definition["title"]["en"] == "Corrected title"
+
+
+def test_discarding_responses_is_not_offered_for_a_published_version(db, example):
+    """Published means final: the responses are somebody's answers now, and
+    ``discard_responses`` must not become a way past that."""
+    from prolog_surveys.models import SurveyResponse
+
+    version = loader.load_definition(example, activate=True).version
+    make_response(version, language="en")
+    loader.publish_version(version)
+
+    with pytest.raises(loader.DefinitionError, match="bump the version"):
+        loader.load_definition(_reloaded(example), discard_responses=True)
+    assert SurveyResponse.objects.filter(survey_version=version).exists()
+
+
+def test_an_unchanged_definition_never_touches_responses(db, example):
+    """The re-load at container start must not look like an edit."""
+    from prolog_surveys.models import SurveyResponse
+
+    version = loader.load_definition(example, activate=True).version
+    make_response(version, language="en")
+
+    result = loader.load_definition(example)
+
+    assert not result.changed
+    assert SurveyResponse.objects.filter(survey_version=version).count() == 1
+
+
+def test_an_archived_version_stays_frozen(db, example):
+    version = loader.load_definition(example, activate=True).version
+    loader.archive_version(version)
+
+    with pytest.raises(loader.DefinitionError, match="bump the version"):
+        loader.load_definition(_reloaded(example))

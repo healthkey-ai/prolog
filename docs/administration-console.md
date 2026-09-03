@@ -1,8 +1,8 @@
 # The survey administration console — a design
 
-> **Status:** partly built, 2026-09-03. §2.1 (verify and load) is done, and so
-> is the removal of the data admins. Activate/archive actions, the delete guard
-> and the export actions are not.
+> **Status:** partly built, 2026-09-03. §2.1 (verify and load), §2.2 (publish)
+> and §2.3 (activate and archive) are done, and so is the removal of the data
+> admins. The delete guard and the export actions are not.
 >
 > **Artifacts this describes:** [`administration.md`](administration.md) — the same tasks, done from a terminal · [`../backend/prolog_surveys/admin.py`](../backend/prolog_surveys/admin.py) — what already exists · [`definitions/survey-definition.md`](definitions/survey-definition.md) — what a definition contains · [`../schema/survey-definition.schema.json`](../schema/survey-definition.schema.json) — what it is verified against
 
@@ -41,21 +41,56 @@ The form posts to a view that **verifies before it writes anything**, and shows:
 
 - **errors**, which refuse the file — all of them, not the first, because fixing them is a loop;
 - **warnings**, which do not — an option nothing can select, a language still machine-translated;
-- **what would happen**: new instrument or new version of an existing one, its slug and version, and — where that version already exists with different content — that loading is refused, because a published version is immutable;
+- **what would happen**: new instrument or new version of an existing one, its slug and version; where that version already exists with different content, either the confirmation described in §2.2 (it is unpublished, so its responses are test data) or a refusal (it is published, so its content is final);
 - **which schema it was checked against**, with its `schema_version` and a link. "Valid" means little to an administrator who cannot see what it was checked against, and a deployment can be running an older runner than the definition was written for.
 
 Loading always produces a **draft**. Activation is a separate act, as `--activate` is a separate flag.
 
-### 2.2 Activate and archive — admin actions  *(not built)*
+Every outcome is reached by a redirect to a GET of the same form — verified, refused, loaded, nothing chosen. The verdict is in the admin's own message slot either way, so Back is a page rather than "confirm form resubmission", and reloading the browser repeats nothing.
 
-Register `SurveyVersion` as a **read-only** ModelAdmin — list only, no add, no change — carrying two actions:
+A browser sends an uploaded file once, so verifying an upload and then loading it would otherwise arrive with nothing in hand. A verified upload is held in the administrator's own session until the press that loads it (or another file replaces it), and the page names the file it is holding. Definitions above 512 KB are not held: those are verified and loaded in the one press, which is what Load does anyway — it verifies first and writes nothing if there are errors.
 
-- **Activate** — with a confirmation naming what it costs: which version this archives, whether the non-default languages are reviewed, whether the instrument is inside its effective window. Unreviewed machine translations stay refused unless the deployment opted in (`PROLOG_MACHINE_LANGUAGES`), and then the confirmation says respondents will see the disclosure.
-- **Archive** — kept and readable, no longer offered.
+### 2.2 Publish — an action on the version's row  ✅ built
 
-Actions rather than an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
+A version's content stays re-loadable until it is **published**, and publishing
+is its own act because it is the irreversible one. The **Content** column on
+the survey's page says which state a version is in and carries the action:
 
-### 2.3 Delete — already safe, and it should say why  *(not built)*
+- **Re-load…** and **Publish…** — the definition can be loaded over this
+  version again, and the responses against it are test data;
+- *Published 2026-09-03 14:02 — frozen*, or *Archived — frozen* — neither
+  offers either action.
+
+**Re-load…** opens the verify page with the file this version came from
+already chosen and already verified, so re-loading a corrected file is one
+press. (A version loaded from an upload, or from a directory since unmounted,
+falls back to the pickers.) It says what it is about to do — replace this
+version's content where it stands — rather than the "load as a draft" wording
+that fits adding one.
+
+Two more screens follow from that:
+
+- **Publish…** confirms first, and says what it costs: a changed file will be
+  refused from now on, the responses stop being test data, and it cannot be
+  undone. It neither activates nor deactivates anything.
+- **Loading over a version that has responses** is a question, not a refusal:
+  the page says how many there are and how many were submitted, and offers
+  *Discard N responses and load* beside the ordinary Load. A published version
+  is not offered it at all.
+
+The command line does the same two things: `--discard-responses` on
+`load_definition`, and `publish_version <slug>`.
+
+### 2.3 Activate and archive — on the version's row  ✅ built
+
+Loading never activates, so without this the console could load an instrument and had no way to open it: the runner answered "not available" and nothing on the page said why. The **Status** column carries the act that changes it — *Draft* with **Activate…**, *Active* with **Archive…**, *Archived* with neither.
+
+- **Activate** confirms first, naming what it costs: which version this archives (and that its responses keep pointing at it), which languages are still machine-translated, and — the confusing one — whether the survey's own effective dates keep it shut anyway, so a successful activation is not followed by an unexplained "not available". Unreviewed translations stay refused; the message says the override exists as `load_definition --allow-unreviewed`, which logs loudly, rather than offering it as a button.
+- **Archive** confirms too: nothing is activated in its place, so the survey has no active version afterwards and says "not available" until one is chosen. It names the responses that stay bound to the version and any drafts that could be activated instead.
+
+Links to a confirmation, not actions on a list, and never an editable `status` field: the transitions have rules (one active version per survey, an archived version cannot be re-activated, a serialising lock) that live in `activate_version`. A dropdown on a form would let somebody set a status the engine would never have set.
+
+### 2.4 Delete — already safe, and it should say why  *(not built)*
 
 `SurveyVersion.survey` and `SurveyResponse.survey_version` are both `PROTECT`: a survey with versions, or a version with responses, cannot be deleted. The database refuses before any code does, which is the right default.
 
@@ -63,7 +98,7 @@ What Django gives by default is a protected-objects error page listing rows. Bet
 
 No force flag. A deployment that genuinely wants the data gone has an export, `purge_abandoned_responses` and a database; none of those is a button beside a list.
 
-### 2.4 Exports — actions that download  *(not built)*
+### 2.5 Exports — actions that download  *(not built)*
 
 `Export responses`, `Export contacts` and `Export translations` as actions returning the CSV the management commands already produce. The two response exports stay separate, as they are on the command line: the response export never contains an address, and the contact export never contains an answer.
 

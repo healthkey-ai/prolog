@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DataError, IntegrityError
 
-from ...definitions.loader import DefinitionError, discover, load_file
+from ...definitions.loader import DefinitionError, ResponsesExist, discover, load_file
 from ._definitions import report
 
 
@@ -20,6 +20,19 @@ class Command(BaseCommand):
             # from loading; the command still exits non-zero at the end.
             try:
                 result = load_file(path)
+            except ResponsesExist as exc:
+                # Valid, and deliberately not applied: the version has
+                # responses. Saying "invalid definition" would send whoever
+                # reads the boot log looking for a schema error there isn't.
+                self.stderr.write(
+                    self.style.ERROR(
+                        f"skipped {path}: {exc.version} has {exc.total} response(s). "
+                        "Load it with --discard-responses if they are test data, or bump "
+                        "the version in the file."
+                    )
+                )
+                skipped += 1
+                continue
             except DefinitionError as exc:
                 report(self, exc.issues)
                 self.stderr.write(self.style.ERROR(f"skipped invalid definition: {path}"))

@@ -20,10 +20,31 @@ PostgreSQL 18, with two directories mounted from the customer's private
 repository:
 
 ```
-/data/surveys/   ← PROLOG_DEFINITION_DIRS   survey definition JSON files
-/data/themes/    ← PROLOG_THEME_DIRS        theme directories (theme.json + assets)
+/data/surveys/   ← PROLOG_DEFINITION_DIRS   survey definitions, at any depth
+/data/themes/    ← PROLOG_THEME_DIRS        themes (theme.json + assets), at any depth
 /data/legal/     ← PROLOG_LEGAL_DIRS        the deployment's own legal pages (Markdown)
 ```
+
+**Each of those is a tree, not a flat folder.** One survey per directory is the
+layout that scales — its definition, its theme and the theme's assets together,
+so adding a survey is adding a folder rather than dropping a file into a pool
+of definitions and another into a pool of themes:
+
+```
+/data/surveys/
+  wellbeing-2026/
+    survey.json
+    theme/
+      theme.json
+      assets/logo.svg
+  symptom-check/
+    survey.json
+```
+
+A theme found under a definition root is a theme; `theme.json` is the one file
+under a definition root that is not read as an instrument. Keeping every theme
+together under `PROLOG_THEME_DIRS` still works — it is the same tree, one level
+deep.
 
 Nothing customer-specific is baked into the image. Upgrading PROlog is a
 tag bump; changing content is a file change plus a reload/activation.
@@ -144,6 +165,14 @@ a new migration; CI (`scripts/check_migrations_append_only.sh`) fails a
 pull request that rewrites a released one. Before the first tag migrations
 may still be reshaped: recreate any pre-release database when they change
 (`dropdb prolog && createdb prolog && manage.py migrate`).
+
+`0002_publish_a_version` is **one-way**: it renames `published_at` to
+`activated_at` and gives the old name to the new freeze column. Code from
+before it writes `published_at` on every activation, which against this schema
+stamps the freeze column instead — so do not run an earlier release against a
+database that has this migration. A rollback past it, or an activation from a
+worker that has not been replaced yet during a rolling deploy, would publish
+versions nobody published, and there is no unpublish.
 
 `0001_initial` adds the participant columns only when
 `PROLOG_PARTICIPANT_MODEL` is set (integrated profile). A database migrated

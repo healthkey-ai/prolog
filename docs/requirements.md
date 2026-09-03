@@ -328,7 +328,7 @@ clinical representations of answers are produced only by governed mapping.
 | Entity | Purpose |
 | --- | --- |
 | `Survey` | Stable identity (`slug`), lifecycle metadata, theme code, anonymous-participation policy, effective dates. |
-| `SurveyVersion` | Immutable snapshot: `version`, `status`, `definition` JSON (DEF-8), `schema_version`, `published_at`. |
+| `SurveyVersion` | Versioned snapshot: `version`, `status`, `definition` JSON (DEF-8), `schema_version`, `activated_at` (when it was last served), `published_at` (when its content was frozen — before that it can be re-loaded and its responses are test data). |
 | `SurveyQuestion`, `SurveyOption` | Materialised on publish from the definition (keys, types, order) to give mappings and analytics stable foreign keys. Read-only projections; the JSON stays authoritative. |
 | `SurveyResponse` | Attempt/submission: version FK, language, status, `started_at`, `submitted_at`, `last_question_key`, **participant FK (DEP-2) — always set**, `identity_linked_at` (null until an account exists). No IP, no PII. |
 | `SurveyAnswer` | Typed raw answer per (response, question key): `value` JSON as in Q-1…Q-12, selected option keys, `updated_at`. |

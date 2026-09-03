@@ -1,0 +1,22 @@
+<style>
+  /* Django sizes the save row with a selector that only matches inputs
+     (.submit-row input), so a <button> gets the colours from .button and none
+     of the metrics, and an <a class="button"> gets a third set. These are the
+     numbers Django uses for a Save, applied to all three, so every control in
+     a submit row on these pages is the same height. */
+  .submit-row button,
+  .submit-row a.button {
+    box-sizing: border-box;
+    display: inline-block;
+    padding: 10px 15px;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 15px;
+    margin: 0 8px 0 0;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+</style>
