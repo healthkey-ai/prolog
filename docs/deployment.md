@@ -166,6 +166,14 @@ pull request that rewrites a released one. Before the first tag migrations
 may still be reshaped: recreate any pre-release database when they change
 (`dropdb prolog && createdb prolog && manage.py migrate`).
 
+`0002_publish_a_version` is **one-way**: it renames `published_at` to
+`activated_at` and gives the old name to the new freeze column. Code from
+before it writes `published_at` on every activation, which against this schema
+stamps the freeze column instead — so do not run an earlier release against a
+database that has this migration. A rollback past it, or an activation from a
+worker that has not been replaced yet during a rolling deploy, would publish
+versions nobody published, and there is no unpublish.
+
 `0001_initial` adds the participant columns only when
 `PROLOG_PARTICIPANT_MODEL` is set (integrated profile). A database migrated
 in the standalone profile and later switched to integrated records that

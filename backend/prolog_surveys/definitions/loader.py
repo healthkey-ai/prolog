@@ -104,6 +104,23 @@ class ResponsesExist(DefinitionError):
         )
 
 
+def matches_source(version: SurveyVersion, doc: Any) -> bool:
+    """Is ``version`` already this document?
+
+    The stored digest covers the *source* document, so a new normaliser default
+    does not make an unchanged file look edited. Rows written before that
+    change carry the normalised digest instead, which a load migrates — they
+    are the same document too.
+
+    One rule, in one place: anything that offers to do something about a change
+    (the admin's discard prompt, say) has to agree with the load that would
+    carry it out.
+    """
+    if version.checksum == source_checksum(doc):
+        return True
+    return version.checksum == checksum(normalize(doc))
+
+
 @transaction.atomic
 def load_definition(
     doc: Any,
@@ -138,7 +155,7 @@ def load_definition(
         },
     )
     changed = created
-    if not created and version.checksum != digest and version.checksum == checksum(definition):
+    if not created and version.checksum != digest and matches_source(version, doc):
         # Row written while the checksum still covered the normalised document:
         # the same source, so migrate the digest rather than report an edit.
         version.checksum = digest

@@ -30,11 +30,11 @@ from .definitions.loader import (
     ResponsesExist,
     discover,
     load_definition,
+    matches_source,
     publish_version,
     read_json,
     validate_definition,
 )
-from .definitions.normalize import checksum, normalize, source_checksum
 from .definitions.validate import has_errors
 from .models import (
     LifecycleStatus,
@@ -304,7 +304,7 @@ class SurveyAdmin(admin.ModelAdmin):
         ).first()
         if version is None or not version.is_mutable:
             return None
-        if version.checksum in (source_checksum(doc), checksum(normalize(doc))):
+        if matches_source(version, doc):
             return None  # the same document: a load would write nothing
         total = version.responses.count()
         if not total:
@@ -320,6 +320,19 @@ class SurveyAdmin(admin.ModelAdmin):
         url = reverse("admin:prolog_surveys_survey_verify")
         return f"{url}?{query}" if query else url
 
+    def _may_write(self, request, doc=None) -> bool:
+        """May this user load *this* document?
+
+        ``admin_view`` asks only for a staff session, which is not a permission
+        to write: loading replaces what an instrument says and can discard the
+        responses given against it. Creating a survey is an add and re-loading
+        one is a change, so the document decides which of the two is required.
+        """
+        slug = (doc or {}).get("slug")
+        if slug and Survey.objects.filter(slug=slug).exists():
+            return self.has_change_permission(request)
+        return self.has_add_permission(request)
+
     def verify_view(self, request):
         """Verify a definition, and load it.
 
@@ -329,6 +342,12 @@ class SurveyAdmin(admin.ModelAdmin):
         A POST decides and then redirects, so Back is a page and not a
         resubmission, and reloading the browser repeats nothing.
         """
+        # Reading a mounted definition is admin content, and loading one is a
+        # write; neither is implied by a staff session alone. Add is here
+        # because creating a survey is what add permission is for, and Django
+        # does not read it as implying view (has_view_permission covers change).
+        if not (self.has_view_permission(request) or self.has_add_permission(request)):
+            raise PermissionDenied
         definitions, themes = self._sources()
         # Adding a version to a survey is the same act with one thing already
         # decided: which survey it belongs to. The theme comes pre-set from
@@ -444,14 +463,17 @@ class SurveyAdmin(admin.ModelAdmin):
 
         for field, value in (("definition", definition_path), ("theme", theme_dir)):
             if value and not self._within_a_root(Path(value)):
-                # Nothing to bounce back to: the path is the problem.
+                # The path is the problem, so the form comes back without it —
+                # by a redirect, like every other outcome, so Back is a page.
                 say(
                     messages.ERROR,
                     f"The {field} path is outside every directory this deployment mounts. "
                     "Add it to PROLOG_DEFINITION_DIRS or PROLOG_THEME_DIRS, or upload the file.",
                 )
-                ctx["selected"] = {}
-                return page()
+                if upload is not None:
+                    ctx["selected"] = {}
+                    return page()
+                return redirect(self._form_url(survey=slug, version=label, said="1"))
 
         doc, source = None, ""
         if upload is not None:
@@ -487,6 +509,12 @@ class SurveyAdmin(admin.ModelAdmin):
             )
 
         action = request.POST.get("action")
+        if action in ("load", "load_discarding") and not self._may_write(request, doc):
+            return bounce(
+                messages.ERROR,
+                "You do not have permission to load definitions for this survey. "
+                "Nothing was written.",
+            )
         if action not in ("load", "load_discarding"):
             ctx["discardable"] = self._discardable(doc)
             if upload is not None:
@@ -587,7 +615,7 @@ class SurveyAdmin(admin.ModelAdmin):
                     "opts": self.model._meta,
                     "version": version,
                     "responses": total,
-                    "submitted": version.responses.filter(status="submitted").count(),
+                    "submitted": version.responses.filter(status=ResponseStatus.SUBMITTED).count(),
                 },
             )
 

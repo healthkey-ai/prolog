@@ -23,6 +23,25 @@ def example() -> dict:
     return example_definition()
 
 
+def make_response(version, **fields):
+    """A response against ``version``, in either profile.
+
+    The integrated profile requires a participant on every response (DEP-2,
+    RUN-2), so a test that builds one directly has to mint one the way the
+    runner does; standalone has no such column and mint_participant returns
+    None. Tests that want a response and do not care which profile they are in
+    go through here.
+    """
+    from prolog_surveys.identity import mint_participant
+    from prolog_surveys.models import SurveyResponse
+
+    participant = mint_participant()
+    if participant is not None:
+        # mint_participant returns the pk, which is what the runner stores.
+        fields["participant_id"] = participant
+    return SurveyResponse.objects.create(survey_version=version, **fields)
+
+
 @pytest.fixture
 def api_client():
     from rest_framework.test import APIClient

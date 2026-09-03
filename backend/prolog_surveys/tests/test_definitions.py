@@ -23,7 +23,7 @@ from prolog_surveys.definitions.normalize import checksum, normalize, source_che
 from prolog_surveys.definitions.validate import has_errors, validate_semantics, walk_i18n
 from prolog_surveys.engine.localize import I18N_FIELDS, localize
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
-from prolog_surveys.tests.conftest import EXAMPLE_PATH
+from prolog_surveys.tests.conftest import EXAMPLE_PATH, make_response
 
 
 def question(doc: dict, key: str) -> dict:
@@ -751,10 +751,8 @@ def test_test_responses_block_a_reload_until_they_are_discarded(db, example):
     from prolog_surveys.models import ResponseStatus, SurveyResponse
 
     version = loader.load_definition(example, activate=True).version
-    SurveyResponse.objects.create(survey_version=version, language="en")
-    SurveyResponse.objects.create(
-        survey_version=version, language="en", status=ResponseStatus.SUBMITTED
-    )
+    make_response(version, language="en")
+    make_response(version, language="en", status=ResponseStatus.SUBMITTED)
 
     with pytest.raises(loader.ResponsesExist) as exc:
         loader.load_definition(_reloaded(example))
@@ -776,7 +774,7 @@ def test_discarding_responses_is_not_offered_for_a_published_version(db, example
     from prolog_surveys.models import SurveyResponse
 
     version = loader.load_definition(example, activate=True).version
-    SurveyResponse.objects.create(survey_version=version, language="en")
+    make_response(version, language="en")
     loader.publish_version(version)
 
     with pytest.raises(loader.DefinitionError, match="bump the version"):
@@ -789,7 +787,7 @@ def test_an_unchanged_definition_never_touches_responses(db, example):
     from prolog_surveys.models import SurveyResponse
 
     version = loader.load_definition(example, activate=True).version
-    SurveyResponse.objects.create(survey_version=version, language="en")
+    make_response(version, language="en")
 
     result = loader.load_definition(example)
 

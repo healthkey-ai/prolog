@@ -12,6 +12,7 @@ from django.core.management.base import CommandError
 from prolog_surveys.definitions import loader
 from prolog_surveys.definitions.loader import activate_version, discover, publish_version
 from prolog_surveys.models import LifecycleStatus, Survey, SurveyResponse, SurveyVersion
+from prolog_surveys.tests.conftest import make_response
 from prolog_surveys.themes import registry as theme_registry
 from prolog_surveys.themes import validate_theme
 from prolog_surveys.themes.registry import discover_themes
@@ -249,7 +250,7 @@ def test_admin_refuses_a_path_outside_what_the_deployment_mounts(
     outside.write_text(json.dumps(example), encoding="utf-8")
 
     body = admin_login.post(
-        "/admin/prolog_surveys/survey/verify/", {"definition_path": str(outside)}
+        "/admin/prolog_surveys/survey/verify/", {"definition_path": str(outside)}, follow=True
     ).content.decode()
 
     assert "outside every directory this deployment mounts" in body
@@ -266,6 +267,7 @@ def test_admin_refuses_a_path_that_walks_out_of_a_root(admin_login, tmp_path, se
     body = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(mounted / ".." / "secret.json")},
+        follow=True,
     ).content.decode()
 
     assert "outside every directory this deployment mounts" in body
@@ -623,10 +625,8 @@ def test_the_page_asks_before_discarding_test_responses(admin_login, tmp_path, s
     from prolog_surveys.models import ResponseStatus, SurveyResponse
 
     version = loader.load_definition(example, activate=True).version
-    SurveyResponse.objects.create(survey_version=version, language="en")
-    SurveyResponse.objects.create(
-        survey_version=version, language="en", status=ResponseStatus.SUBMITTED
-    )
+    make_response(version, language="en")
+    make_response(version, language="en", status=ResponseStatus.SUBMITTED)
     edited = copy.deepcopy(example)
     edited["title"]["en"] = "Corrected title"
     (tmp_path / "s.json").write_text(json.dumps(edited), encoding="utf-8")
@@ -823,3 +823,166 @@ def test_no_outcome_leaves_the_browser_on_a_posted_page(admin_login, tmp_path, s
         "/admin/prolog_surveys/survey/verify/", {"definition_path": good}
     ).content.decode()
     assert "Valid" in landing and landing.count('<ul class="messagelist">') <= 1
+
+
+# --- who may do this ---------------------------------------------------------
+
+
+@pytest.fixture
+def staff_without_permissions(db, client, django_user_model, settings):
+    """A staff session and nothing else — Django's own minimum for /admin/."""
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+    user = django_user_model.objects.create_user(username="peon", password="pw", is_staff=True)
+    client.force_login(user)
+    return client
+
+
+def test_a_staff_session_alone_cannot_load_or_discard(
+    staff_without_permissions, tmp_path, settings, example
+):
+    """admin_view asks only for a staff session, which is not a permission to
+    replace what an instrument says or to delete the responses given to it."""
+    import copy
+
+    version = loader.load_definition(example, activate=True).version
+    make_response(version, language="en")
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Rewritten without permission"
+    (tmp_path / "s.json").write_text(json.dumps(edited), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    for action in ("load", "load_discarding"):
+        staff_without_permissions.post(
+            "/admin/prolog_surveys/survey/verify/",
+            {"definition_path": str(tmp_path / "s.json"), "action": action},
+        )
+
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == example["title"]["en"]
+    assert SurveyResponse.objects.filter(survey_version=version).count() == 1
+
+
+def test_a_staff_session_alone_cannot_publish(staff_without_permissions, db, example):
+    version = loader.load_definition(example, activate=True).version
+
+    response = staff_without_permissions.post(f"/admin/prolog_surveys/survey/publish/{version.pk}/")
+
+    assert response.status_code == 403
+    version.refresh_from_db()
+    assert not version.is_published
+
+
+def test_loading_needs_add_to_create_and_change_to_re_load(
+    db, client, django_user_model, tmp_path, settings, example
+):
+    """Creating a survey is an add; re-loading one is a change."""
+    import copy
+
+    from django.contrib.auth.models import Permission
+
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+    user = django_user_model.objects.create_user(username="adder", password="pw", is_staff=True)
+    # Add alone, deliberately: Django does not read add as implying view, and
+    # the form somebody may create a survey with has to open for them.
+    user.user_permissions.add(
+        Permission.objects.get(codename="add_survey", content_type__app_label="prolog_surveys")
+    )
+    client.force_login(user)
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    post = {"definition_path": str(tmp_path / "s.json"), "action": "load"}
+
+    client.post("/admin/prolog_surveys/survey/verify/", post)
+    assert SurveyVersion.objects.count() == 1, "add is enough to create it"
+
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Changed by somebody who may only add"
+    (tmp_path / "s.json").write_text(json.dumps(edited), encoding="utf-8")
+
+    client.post("/admin/prolog_surveys/survey/verify/", post)
+
+    version = SurveyVersion.objects.get()
+    assert version.definition["title"]["en"] == example["title"]["en"], "change is not implied"
+
+
+def test_an_out_of_root_path_comes_back_by_a_redirect_too(admin_login, db, tmp_path, settings):
+    """The one outcome that still rendered on its POST: Back offered to send
+    the form again, which is what started this."""
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    response = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": "/etc/hosts", "action": "load"},
+        follow=True,
+    )
+
+    assert response.redirect_chain, "an error page a POST produced cannot be gone back to"
+    assert "outside every directory" in response.content.decode()
+
+
+# --- the same two things, from a shell ---------------------------------------
+
+
+def test_publish_version_command(db, example, capsys):
+    version = loader.load_definition(example, activate=True).version
+
+    call_command("publish_version", example["slug"])
+
+    version.refresh_from_db()
+    assert version.is_published and not version.is_mutable
+    assert "published" in capsys.readouterr().out
+
+    call_command("publish_version", example["slug"], "--survey-version", version.version)
+
+    assert "already published" in capsys.readouterr().out
+
+
+def test_load_definition_discard_responses_flag(db, example, tmp_path, capsys):
+    import copy
+
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps(example), encoding="utf-8")
+    version = loader.load_file(path, activate=True).version
+    make_response(version, language="en")
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    path.write_text(json.dumps(edited), encoding="utf-8")
+
+    with pytest.raises(CommandError):
+        call_command("load_definition", str(path))
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == example["title"]["en"]
+
+    call_command("load_definition", str(path), "--discard-responses")
+
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == "Corrected title"
+    assert not SurveyResponse.objects.filter(survey_version=version).exists()
+
+
+def test_startup_says_a_version_has_responses_rather_than_calling_it_invalid(
+    db, example, tmp_path, settings, capsys
+):
+    import copy
+
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    version = loader.load_file(path, activate=True).version
+    make_response(version, language="en")
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    path.write_text(json.dumps(edited), encoding="utf-8")
+
+    with pytest.raises(CommandError):
+        call_command("load_definitions")
+
+    err = capsys.readouterr().err
+    assert "response(s)" in err and "--discard-responses" in err
+    assert "invalid definition" not in err
