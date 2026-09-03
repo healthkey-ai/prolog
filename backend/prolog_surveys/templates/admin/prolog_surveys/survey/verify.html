@@ -1,0 +1,97 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div id="content-main">
+
+  <p class="help">
+    Validates a definition the way <code>manage.py validate_definition</code> does, and
+    writes nothing until you press <strong>Load as draft</strong>. Loading never activates:
+    a draft is in the database, validated, and invisible to respondents.
+  </p>
+  <p class="help">Verified against the schema in <code>{{ schema_dir }}</code>.</p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      <h2>The definition</h2>
+
+      <div class="form-row">
+        <label for="definition_path">A file this deployment mounts:</label>
+        <select name="definition_path" id="definition_path">
+          <option value="">—</option>
+          {% for path in definitions %}
+            <option value="{{ path }}" {% if selected.definition_path == path %}selected{% endif %}>{{ path }}</option>
+          {% endfor %}
+        </select>
+        {% if not definitions %}
+          <p class="help">Nothing in <code>PROLOG_DEFINITION_DIRS</code>. Upload one instead.</p>
+        {% endif %}
+      </div>
+
+      <div class="form-row">
+        <label for="definition_file">…or upload one:</label>
+        <input type="file" name="definition_file" id="definition_file" accept=".json,application/json">
+        <p class="help">An upload is used in preference to the file chosen above.</p>
+      </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+      <h2>The theme <span class="help">(optional — verified beside the definition)</span></h2>
+      <div class="form-row">
+        <label for="theme_dir">Theme directory:</label>
+        <select name="theme_dir" id="theme_dir">
+          <option value="">—</option>
+          {% for path in themes %}
+            <option value="{{ path }}" {% if selected.theme_dir == path %}selected{% endif %}>{{ path }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </fieldset>
+
+    <div class="submit-row">
+      <input type="submit" value="Verify" class="default">
+      {% if verified and not blocked %}
+        <input type="submit" name="action" value="load" formnovalidate>
+        <input type="hidden" name="action" value="">
+      {% endif %}
+    </div>
+  </form>
+
+  {% if read_error %}
+    <ul class="messagelist"><li class="error">{{ read_error }}</li></ul>
+  {% endif %}
+  {% if load_error %}
+    <ul class="messagelist"><li class="error">{{ load_error }}</li></ul>
+  {% endif %}
+
+  {% if verified %}
+    <div class="module">
+      <h2>Result — {{ source }}</h2>
+      {% if blocked %}
+        <p class="errornote">Refused. Nothing was written.</p>
+      {% else %}
+        <p>
+          Valid. This would load <strong>{{ slug }}</strong> version <strong>{{ version }}</strong> as a draft.
+          {% if issues or theme_issues %}Warnings below are legal, and probably not what was meant.{% endif %}
+        </p>
+      {% endif %}
+
+      {% if issues or theme_issues %}
+        <table>
+          <thead><tr><th>Level</th><th>Code</th><th>Where</th><th>What</th></tr></thead>
+          <tbody>
+            {% for issue in issues %}
+              <tr><td>{{ issue.level }}</td><td>{{ issue.code }}</td><td><code>{{ issue.path }}</code></td><td>{{ issue.message }}</td></tr>
+            {% endfor %}
+            {% for issue in theme_issues %}
+              <tr><td>{{ issue.level }}</td><td>theme: {{ issue.code }}</td><td><code>{{ issue.path }}</code></td><td>{{ issue.message }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>No errors and no warnings.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
