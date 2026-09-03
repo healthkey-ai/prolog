@@ -700,3 +700,77 @@ def test_allow_unreviewed_remains_the_preview_route(db, example, settings):
     result = loader.load_definition(example, activate=True, allow_unreviewed=True)
 
     assert result.version.status == "active"
+
+
+# --- re-loading a version that nobody can have answered ----------------------
+
+
+def _reloaded(example, **changes):
+    import copy
+
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    return edited
+
+
+def test_an_active_version_can_be_corrected_until_its_survey_opens(db, example):
+    """Until the window opens nobody can start it, so nothing can be
+    reinterpreted — and bumping a version for a typo nobody has read is worse
+    than re-loading it."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    version = loader.load_definition(example, activate=True).version
+    survey = version.survey
+    survey.effective_from = timezone.localdate() + timedelta(days=7)
+    survey.save(update_fields=["effective_from"])
+
+    result = loader.load_definition(_reloaded(example))
+
+    assert result.changed
+    result.version.refresh_from_db()
+    assert result.version.definition["title"]["en"] == "Corrected title"
+    assert result.version.version == example["version"], "same version, new content"
+
+
+def test_an_open_active_version_is_still_frozen(db, example):
+    version = loader.load_definition(example, activate=True).version
+    assert version.survey.closed_reason() is None, "open: no effective_from"
+
+    with pytest.raises(loader.DefinitionError, match="bump the version"):
+        loader.load_definition(_reloaded(example))
+
+
+def test_a_version_with_a_response_is_frozen_even_before_it_opens(db, example):
+    """effective_from can be moved forward after collection started; a version
+    somebody answered must not become editable because a date was edited."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from prolog_surveys.models import SurveyResponse
+
+    version = loader.load_definition(example, activate=True).version
+    SurveyResponse.objects.create(survey_version=version, language="en")
+    survey = version.survey
+    survey.effective_from = timezone.localdate() + timedelta(days=7)
+    survey.save(update_fields=["effective_from"])
+
+    with pytest.raises(loader.DefinitionError, match="bump the version"):
+        loader.load_definition(_reloaded(example))
+
+
+def test_an_archived_version_stays_frozen(db, example):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    version = loader.load_definition(example, activate=True).version
+    loader.archive_version(version)
+    survey = version.survey
+    survey.effective_from = timezone.localdate() + timedelta(days=7)
+    survey.save(update_fields=["effective_from"])
+
+    with pytest.raises(loader.DefinitionError, match="bump the version"):
+        loader.load_definition(_reloaded(example))

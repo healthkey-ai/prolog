@@ -112,6 +112,27 @@ one.
 
 Reloading an *unchanged* file is always safe and reports `unchanged`.
 
+### Until it opens, a version can still be corrected
+
+The rule exists because a response records which version it answered. Until
+somebody can answer, there is nothing to reinterpret — so a version may be
+re-loaded with corrected content while **its survey has not opened yet**:
+`effective_from` is a future date, and the runner refuses to start a response
+before then.
+
+That covers the ordinary case of activating a survey a week early, spotting a
+typo, and fixing it — bumping the version for wording nobody has read only
+makes the version history harder to read.
+
+Two things end it, and either is enough:
+
+- the survey **opens** — `effective_from` arrives, or there was never one;
+- the version **has a response**, whatever the dates say. `effective_from` can
+  be moved forward after collection has started, and a version somebody has
+  answered must not become editable because a date was edited.
+
+After that, changing wording or structure is a new version, as it always was.
+
 ### What is not a version change
 
 Changing the theme, the effective dates, or the deployment's own settings. Those

@@ -112,7 +112,8 @@ def load_definition(
                     Issue(
                         "immutable",
                         "$.version",
-                        f"version {version.version} is {version.status}; bump the version to change it",
+                        f"version {version.version} is {version.status} and its survey is "
+                        "open or has responses; bump the version to change it",
                     )
                 ]
             )

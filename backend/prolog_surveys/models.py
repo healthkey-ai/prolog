@@ -103,7 +103,26 @@ class SurveyVersion(models.Model):
 
     @property
     def is_mutable(self) -> bool:
-        return self.status == LifecycleStatus.DRAFT
+        """May this version's content still be replaced by a re-load?
+
+        A draft always may. An **active version whose survey has not opened
+        yet** may too: nobody can have answered it, so there is nothing to
+        reinterpret. That is the whole reason published versions are frozen —
+        a response records which version it answered — and until a respondent
+        can reach it, re-loading a corrected file beats bumping the version
+        for a typo nobody has read.
+
+        The window is the reason; the absence of responses is the invariant, so
+        both are checked. `effective_from` can be moved forward after
+        collection has started, and a version somebody has answered must not
+        become editable because a date was edited.
+        """
+        if self.status == LifecycleStatus.DRAFT:
+            return True
+        if self.status != LifecycleStatus.ACTIVE:
+            return False
+        not_open_yet = self.survey.closed_reason() == "survey is not yet open"
+        return not_open_yet and not self.responses.exists()
 
     @property
     def default_language(self) -> str:
