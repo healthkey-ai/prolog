@@ -114,6 +114,7 @@ def test_admin_verify_writes_nothing(admin_login, tmp_path, settings, example):
     body = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "s.json")},
+        follow=True,
     ).content.decode()
 
     assert "Valid" in body
@@ -130,9 +131,10 @@ def test_admin_verify_reports_every_error_in_the_page(admin_login, tmp_path, set
     body = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "bad.json")},
+        follow=True,
     ).content.decode()
 
-    assert "Refused" in body and '<ul class="messagelist">' in body
+    assert "has errors" in body and '<ul class="messagelist">' in body
     assert "options_source_include" in body
     assert Survey.objects.count() == 0
 
@@ -280,6 +282,7 @@ def test_admin_accepts_a_theme_beside_its_survey(admin_login, tmp_path, settings
             "definition_path": str(folder / "survey.json"),
             "theme_dir": str(folder / "theme" / "theme.json"),
         },
+        follow=True,
     ).content.decode()
 
     assert "outside every directory" not in body
@@ -384,9 +387,10 @@ def test_changing_a_published_version_is_refused_on_the_page(
     body = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
     ).content.decode()
 
-    assert "immutable" in body or "active" in body
+    assert "immutable" in body or "published" in body
     version.refresh_from_db()
     assert version.definition["title"]["en"] == example["title"]["en"]
 
@@ -500,9 +504,12 @@ def test_a_refused_version_says_so_in_the_error_slot(admin_login, db, example, t
             "action": "load",
             "survey": survey.slug,
         },
+        follow=True,
     )
 
-    assert response.status_code == 200, "an error stays where it can be corrected"
+    # An error stays where it can be corrected — and it is reached by a GET, so
+    # Back is a page rather than "confirm form resubmission".
+    assert response.redirect_chain[-1][0].startswith("/admin/prolog_surveys/survey/verify/")
     body = response.content.decode()
     assert '<ul class="messagelist">' in body and 'class="error"' in body
 
@@ -519,6 +526,7 @@ def test_a_mismatched_slug_is_said_in_the_error_slot(admin_login, db, example, t
     body = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "other.json"), "action": "load", "survey": survey.slug},
+        follow=True,
     ).content.decode()
 
     assert "would create a second survey" in body
@@ -557,7 +565,9 @@ def test_the_buttons_carry_the_admin_button_classes(admin_login, tmp_path, setti
     settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
 
     body = admin_login.post(
-        "/admin/prolog_surveys/survey/verify/", {"definition_path": str(tmp_path / "s.json")}
+        "/admin/prolog_surveys/survey/verify/",
+        {"definition_path": str(tmp_path / "s.json")},
+        follow=True,
     ).content.decode()
 
     assert 'class="button default"' in body, "Verify is the primary action"
@@ -581,14 +591,18 @@ def test_every_outcome_uses_the_same_slot(admin_login, tmp_path, settings, examp
     (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
     settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
 
-    nothing_chosen = admin_login.post("/admin/prolog_surveys/survey/verify/", {}).content.decode()
+    nothing_chosen = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {}, follow=True
+    ).content.decode()
     admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
     )
     already_there = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
     ).content.decode()
 
     for body in (nothing_chosen, already_there):
@@ -620,7 +634,7 @@ def test_the_page_asks_before_discarding_test_responses(admin_login, tmp_path, s
     post = {"definition_path": str(tmp_path / "s.json")}
 
     asked = admin_login.post(
-        "/admin/prolog_surveys/survey/verify/", {**post, "action": "load"}
+        "/admin/prolog_surveys/survey/verify/", {**post, "action": "load"}, follow=True
     ).content.decode()
 
     assert "2 response" in asked and "Discard 2 responses and load" in asked
@@ -659,6 +673,7 @@ def test_publishing_freezes_the_version_from_the_page(admin_login, tmp_path, set
     refused = admin_login.post(
         "/admin/prolog_surveys/survey/verify/",
         {"definition_path": str(tmp_path / "s.json"), "action": "load"},
+        follow=True,
     ).content.decode()
 
     assert "bump the version" in refused
@@ -773,3 +788,38 @@ def test_every_control_in_a_submit_row_is_sized_the_same(admin_login, db, exampl
     # button beside it rather than Django's third set of metrics.
     assert ".submit-row a.button" in page and ".submit-row button" in page
     assert 'class="button cancel-link"' in page
+
+
+def test_no_outcome_leaves_the_browser_on_a_posted_page(admin_login, tmp_path, settings, example):
+    """Back must be a page, not "confirm form resubmission".
+
+    Every outcome of the form — verified, refused, nothing chosen, already
+    loaded — is reached by a redirect to a GET, so the browser has an address
+    to go back to and reloading repeats nothing. The one exception is an
+    uploaded file, which a redirect cannot carry.
+    """
+    import copy
+
+    bad = copy.deepcopy(example)
+    bad["sections"][0]["questions"][0]["config"] = {"options_source_include": ["DE"]}
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    (tmp_path / "bad.json").write_text(json.dumps(bad), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    good = str(tmp_path / "s.json")
+
+    posts = [
+        {},  # nothing chosen
+        {"definition_path": good},  # verify
+        {"definition_path": str(tmp_path / "bad.json"), "action": "load"},  # refused
+        {"definition_path": good, "action": "load"},  # loads
+        {"definition_path": good, "action": "load"},  # already there
+    ]
+    for post in posts:
+        response = admin_login.post("/admin/prolog_surveys/survey/verify/", post)
+        assert response.status_code == 302, f"{post} rendered a page a POST can be repeated on"
+
+    # And the GET it lands on renders the same verdict, without asking twice.
+    landing = admin_login.get(
+        "/admin/prolog_surveys/survey/verify/", {"definition_path": good}
+    ).content.decode()
+    assert "Valid" in landing and landing.count('<ul class="messagelist">') <= 1

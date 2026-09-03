@@ -46,17 +46,27 @@ The form posts to a view that **verifies before it writes anything**, and shows:
 
 Loading always produces a **draft**. Activation is a separate act, as `--activate` is a separate flag.
 
+Every outcome is reached by a redirect to a GET of the same form — verified, refused, loaded, nothing chosen. The verdict is in the admin's own message slot either way, so Back is a page rather than "confirm form resubmission", and reloading the browser repeats nothing. An uploaded file is the one exception, because a redirect cannot carry it.
+
 ### 2.2 Publish — an action on the version's row  ✅ built
 
 A version's content stays re-loadable until it is **published**, and publishing
 is its own act because it is the irreversible one. The **Content** column on
 the survey's page says which state a version is in and carries the action:
 
-- *re-loadable until then*, with a **Publish…** link — the definition can be
-  loaded over it again, and the responses against it are test data;
-- *Published 2026-09-03 14:02 — frozen*, or *Archived — frozen*.
+- **Re-load…** and **Publish…** — the definition can be loaded over this
+  version again, and the responses against it are test data;
+- *Published 2026-09-03 14:02 — frozen*, or *Archived — frozen* — neither
+  offers either action.
 
-Two screens follow from that:
+**Re-load…** opens the verify page with the file this version came from
+already chosen and already verified, so re-loading a corrected file is one
+press. (A version loaded from an upload, or from a directory since unmounted,
+falls back to the pickers.) It says what it is about to do — replace this
+version's content where it stands — rather than the "load as a draft" wording
+that fits adding one.
+
+Two more screens follow from that:
 
 - **Publish…** confirms first, and says what it costs: a changed file will be
   refused from now on, the responses stop being test data, and it cannot be

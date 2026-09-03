@@ -13,6 +13,7 @@ somebody produce an instrument the validator never saw.
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
@@ -33,9 +34,11 @@ from .definitions.loader import (
     read_json,
     validate_definition,
 )
+from .definitions.normalize import checksum, normalize, source_checksum
 from .definitions.validate import has_errors
 from .models import (
     LifecycleStatus,
+    ResponseStatus,
     Survey,
     SurveyAdministration,
     SurveyConsent,
@@ -289,13 +292,42 @@ class SurveyAdmin(admin.ModelAdmin):
         )
         return blocked
 
+    def _discardable(self, doc):
+        """The responses a load of ``doc`` would have to delete, if any.
+
+        Recomputed for the page rather than remembered from the request that
+        found out, so the answer survives a redirect — and a Back button, which
+        must never mean "submit that again".
+        """
+        version = SurveyVersion.objects.filter(
+            survey__slug=doc.get("slug"), version=doc.get("version")
+        ).first()
+        if version is None or not version.is_mutable:
+            return None
+        if version.checksum in (source_checksum(doc), checksum(normalize(doc))):
+            return None  # the same document: a load would write nothing
+        total = version.responses.count()
+        if not total:
+            return None
+        return SimpleNamespace(
+            version=version,
+            total=total,
+            submitted=version.responses.filter(status=ResponseStatus.SUBMITTED).count(),
+        )
+
+    def _form_url(self, **params) -> str:
+        query = urlencode({k: v for k, v in params.items() if v})
+        url = reverse("admin:prolog_surveys_survey_verify")
+        return f"{url}?{query}" if query else url
+
     def verify_view(self, request):
         """Verify a definition, and load it.
 
-        Everything that goes wrong is said in one place on this page — a
-        refusal, an unreadable file, a path outside the mounted roots, a
-        version that is already there. Only a load that actually wrote
-        something navigates, and it navigates to what it wrote.
+        Everything that goes wrong is said in one place — a refusal, an
+        unreadable file, a path outside the mounted roots, a version that is
+        already there — and the page it is said on is always reached by a GET.
+        A POST decides and then redirects, so Back is a page and not a
+        resubmission, and reloading the browser repeats nothing.
         """
         definitions, themes = self._sources()
         # Adding a version to a survey is the same act with one thing already
@@ -316,13 +348,21 @@ class SurveyAdmin(admin.ModelAdmin):
         # falls back to the pickers.
         label = request.GET.get("version") or request.POST.get("version") or ""
         reload_of = survey.versions.filter(version=label).first() if survey and label else None
-        preset_definition = ""
-        if reload_of is not None and reload_of.source in definitions:
-            preset_definition = reload_of.source
 
-        selected = {"theme_dir": preset_theme} if survey else {}
-        if preset_definition:
-            selected["definition_path"] = preset_definition
+        chosen = request.GET.get("definition_path") or ""
+        if chosen not in definitions:
+            # Only a file this deployment mounts can be chosen by a link; a
+            # query parameter must not become a way to read anything else.
+            chosen = ""
+        if not chosen and reload_of is not None and reload_of.source in definitions:
+            chosen = reload_of.source
+        chosen_theme = request.GET.get("theme_dir") or ""
+        if chosen_theme and not self._within_a_root(Path(chosen_theme)):
+            chosen_theme = ""
+
+        selected = {"theme_dir": chosen_theme or preset_theme}
+        if chosen:
+            selected["definition_path"] = chosen
 
         if reload_of is not None:
             title = f"Re-load {reload_of.survey.slug} {reload_of.version}"
@@ -352,22 +392,26 @@ class SurveyAdmin(admin.ModelAdmin):
             # on this page or after a redirect. A second list of our own looked
             # different and stacked underneath the first.
             self.message_user(request, text, level)
-            return page()
 
         if request.method != "POST":
-            if preset_definition:
+            # A POST has already said what happened; repeating the verdict here
+            # would print it twice.
+            quiet = request.GET.get("said") == "1"
+            path = selected.get("definition_path")
+            if path:
                 try:
-                    doc = read_json(Path(preset_definition))
+                    doc = read_json(Path(path))
                 except (OSError, ValueError) as exc:
-                    return say(messages.ERROR, f"{preset_definition} could not be read: {exc}")
-                if self._verify_into(ctx, doc, preset_definition, preset_theme):
-                    return say(
-                        messages.ERROR,
-                        "This file no longer validates. Nothing was written; fix it and "
-                        "verify again.",
-                    )
-                if reload_of is not None and doc.get("version") != reload_of.version:
-                    return say(
+                    say(messages.ERROR, f"{path} could not be read: {exc}")
+                    return page()
+                blocked = self._verify_into(ctx, doc, path, selected["theme_dir"])
+                ctx["discardable"] = None if blocked else self._discardable(doc)
+                if quiet:
+                    return page()
+                if blocked:
+                    say(messages.ERROR, "This definition has errors. Nothing was written.")
+                elif reload_of is not None and doc.get("version") != reload_of.version:
+                    say(
                         messages.WARNING,
                         f"That file is version {doc.get('version')}, not {reload_of.version}. "
                         f"Loading it adds a version rather than replacing {reload_of.version}.",
@@ -379,13 +423,35 @@ class SurveyAdmin(admin.ModelAdmin):
         upload = request.FILES.get("definition_file")
         ctx["selected"] = {"definition_path": definition_path, "theme_dir": theme_dir}
 
+        def bounce(level, text):
+            """Say it, then land the administrator on a GET of this form.
+
+            An uploaded file cannot be sent again by a redirect, so that one
+            case renders in place and keeps the browser's resubmit warning.
+            """
+            say(level, text)
+            if upload is not None:
+                return page()
+            return redirect(
+                self._form_url(
+                    survey=slug,
+                    version=label,
+                    definition_path=definition_path,
+                    theme_dir=theme_dir,
+                    said="1",
+                )
+            )
+
         for field, value in (("definition", definition_path), ("theme", theme_dir)):
             if value and not self._within_a_root(Path(value)):
-                return say(
+                # Nothing to bounce back to: the path is the problem.
+                say(
                     messages.ERROR,
                     f"The {field} path is outside every directory this deployment mounts. "
                     "Add it to PROLOG_DEFINITION_DIRS or PROLOG_THEME_DIRS, or upload the file.",
                 )
+                ctx["selected"] = {}
+                return page()
 
         doc, source = None, ""
         if upload is not None:
@@ -393,26 +459,28 @@ class SurveyAdmin(admin.ModelAdmin):
             try:
                 doc = json.loads(upload.read().decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as exc:
-                return say(messages.ERROR, f"{upload.name} is not readable JSON: {exc}")
+                return bounce(messages.ERROR, f"{upload.name} is not readable JSON: {exc}")
         elif definition_path:
             source = definition_path
             try:
                 doc = read_json(Path(definition_path))
             except (OSError, ValueError) as exc:
-                return say(messages.ERROR, f"{definition_path} could not be read: {exc}")
+                return bounce(messages.ERROR, f"{definition_path} could not be read: {exc}")
         else:
-            return say(messages.ERROR, "Choose a mounted definition or upload one.")
+            return bounce(messages.ERROR, "Choose a mounted definition or upload one.")
 
         blocked = self._verify_into(ctx, doc, source, theme_dir)
         if blocked:
-            return say(messages.ERROR, "Refused: this definition has errors. Nothing was written.")
+            return bounce(
+                messages.ERROR, "Refused: this definition has errors. Nothing was written."
+            )
 
         # A definition names its own survey. Adding a version to one survey
         # from a definition slugged for another would quietly create a second
         # survey, which is not what the button said.
         if survey is not None and doc.get("slug") != survey.slug:
             ctx["blocked"] = True
-            return say(
+            return bounce(
                 messages.ERROR,
                 f"That definition is for '{doc.get('slug') or '—'}', not '{survey.slug}'. "
                 "Loading it here would create a second survey; use Add survey for that.",
@@ -420,7 +488,14 @@ class SurveyAdmin(admin.ModelAdmin):
 
         action = request.POST.get("action")
         if action not in ("load", "load_discarding"):
-            return page()
+            ctx["discardable"] = self._discardable(doc)
+            if upload is not None:
+                return page()
+            return redirect(
+                self._form_url(
+                    survey=slug, version=label, definition_path=definition_path, theme_dir=theme_dir
+                )
+            )
 
         try:
             result = load_definition(
@@ -431,7 +506,7 @@ class SurveyAdmin(admin.ModelAdmin):
             # the test data from trying the instrument out. Only the person
             # loading knows that, so the page asks rather than deciding.
             ctx["discardable"] = exc
-            return say(
+            return bounce(
                 messages.WARNING,
                 f"There are {exc.total} response(s) against {exc.version}, "
                 f"{exc.submitted} of them submitted. It is not published, so they are "
@@ -440,7 +515,7 @@ class SurveyAdmin(admin.ModelAdmin):
             )
         except DefinitionError as exc:
             ctx["blocked"] = True
-            return say(messages.ERROR, str(exc))
+            return bounce(messages.ERROR, str(exc))
 
         if not result.created and not result.changed:
             # Not an error and not a success: nothing happened, and saying
@@ -448,7 +523,7 @@ class SurveyAdmin(admin.ModelAdmin):
             # Which advice follows depends on why — telling somebody re-loading
             # an unpublished version to bump it sends them to fix a rule they
             # have not hit.
-            return say(
+            return bounce(
                 messages.WARNING,
                 f"Nothing to load: the file is identical to {result.version} as it "
                 + (
