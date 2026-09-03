@@ -45,4 +45,38 @@ describe("renderMarkdown", () => {
   it("survives an empty page", () => {
     expect(renderMarkdown("")).toEqual([]);
   });
+
+  it("renders a table, which a legal notice usually has one of", () => {
+    const out = html("| What | Why |\n| --- | --- |\n| answers | research |\n");
+    expect(out).toContain("<table");
+    expect(out).toContain("<th");
+    expect(out).toContain("research");
+    // the |---| rule is structure, not a row
+    expect(out).not.toContain("---");
+  });
+
+  it("keeps a wrapped list item in its item", () => {
+    // Source files are hard-wrapped; a continuation is not a new paragraph.
+    const out = html("- a long item that continues\n  on the next line\n- second\n");
+    expect(out).toContain("<li>a long item that continues on the next line</li>");
+    expect(out.match(/<li>/g)).toHaveLength(2);
+    expect(out).not.toContain("<p");
+  });
+
+  it("joins a wrapped line before reading inline syntax", () => {
+    // **bold across a line break** would otherwise render its own asterisks.
+    const out = html("this is **bold\nacross lines** here\n");
+    expect(out).toContain("<strong>bold across lines</strong>");
+    expect(out).not.toContain("**");
+  });
+
+  it("scrolls a wide table instead of the page", () => {
+    expect(html("| a | b |\n| --- | --- |\n| 1 | 2 |\n")).toContain("overflow-x-auto");
+  });
+
+  it("escapes a pipe inside a cell", () => {
+    const out = html("| a | b |\n| --- | --- |\n| one \\| two | 2 |\n");
+    expect(out).toContain("one | two");
+  });
+
 });

@@ -222,9 +222,11 @@ Configure nothing and there is no page and no link. PROlog ships no policy
 text, no template and no placeholder wording: what the notice says is yours,
 and so is keeping the translations current.
 
-Only a small Markdown subset is rendered — headings, paragraphs, lists, links,
-bold and italic. Anything else appears as the characters you typed, which for a
-notice is a readable failure rather than a broken one.
+Only a Markdown subset is rendered — headings, paragraphs, lists, tables,
+links, bold and italic. Anything else appears as the characters you typed,
+which for a notice is a readable failure rather than a broken one. Hard-wrapped
+source is fine: wrapped lines are joined before anything is read, so a bold span
+or a link broken across two lines still works.
 
 ## Getting the answers out
 

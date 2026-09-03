@@ -10,8 +10,14 @@ import type { ReactNode } from "react";
  * library has to be trusted, shipped or kept patched.
  *
  * Supported: headings (# to ###), paragraphs, unordered and ordered lists,
- * links, bold and italic. Anything else renders as the text it is written as,
- * which for a notice is a readable failure rather than a broken one.
+ * tables, links, bold and italic. Anything else renders as the text it is
+ * written as, which for a notice is a readable failure rather than a broken
+ * one.
+ *
+ * Source lines are hard-wrapped in the files these come from, so wrapped
+ * continuations are joined back together before anything is parsed inline —
+ * in paragraphs, in list items and in table cells. Without that, a bold span
+ * or a link broken across two lines renders as its own asterisks.
  */
 
 const INLINE = /(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)/g;
@@ -64,6 +70,7 @@ export function renderMarkdown(source: string): ReactNode[] {
   const lines = source.replace(/\r\n/g, "\n").split("\n");
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
+  let table: string[][] | null = null;
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
@@ -74,6 +81,40 @@ export function renderMarkdown(source: string): ReactNode[] {
       </p>,
     );
     paragraph = [];
+  };
+  const flushTable = () => {
+    if (!table) return;
+    const [header, ...body] = table;
+    const key = `t${blocks.length}`;
+    blocks.push(
+      // Wide tables scroll rather than pushing the page sideways: a notice is
+      // read on a phone as often as not.
+      <div key={key} className="mb-4 overflow-x-auto">
+        <table className="w-full border-collapse text-left text-[0.95rem]">
+          <thead>
+            <tr>
+              {header.map((cell, i) => (
+                <th key={i} className="border-b border-line px-2 py-2 align-top font-semibold">
+                  {renderInline(cell, `${key}h${i}`)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((cells, r) => (
+              <tr key={r}>
+                {cells.map((cell, i) => (
+                  <td key={i} className="border-b border-line px-2 py-2 align-top">
+                    {renderInline(cell, `${key}r${r}c${i}`)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>,
+    );
+    table = null;
   };
   const flushList = () => {
     if (!list) return;
@@ -99,12 +140,24 @@ export function renderMarkdown(source: string): ReactNode[] {
     const heading = /^(#{1,3})\s+(.*)$/.exec(line);
     const bullet = /^[-*]\s+(.*)$/.exec(line);
     const numbered = /^\d+\.\s+(.*)$/.exec(line);
+    const row = /^\|(.*)\|\s*$/.exec(line);
 
     if (!line.trim()) {
       flushParagraph();
       flushList();
+      flushTable();
       continue;
     }
+    if (row) {
+      flushParagraph();
+      flushList();
+      const cells = row[1].split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+      // The |---|---| rule under the header carries no content of its own.
+      if (cells.every((c) => /^:?-{3,}:?$/.test(c))) continue;
+      (table ??= []).push(cells);
+      continue;
+    }
+    flushTable();
     if (heading) {
       flushParagraph();
       flushList();
@@ -128,10 +181,16 @@ export function renderMarkdown(source: string): ReactNode[] {
       list.items.push((bullet ?? numbered)![1]);
       continue;
     }
-    flushList();
+    if (list) {
+      // A wrapped list item: the continuation belongs to the item above, not
+      // to a paragraph of its own.
+      list.items[list.items.length - 1] += ` ${line.trim()}`;
+      continue;
+    }
     paragraph.push(line.trim());
   }
   flushParagraph();
   flushList();
+  flushTable();
   return blocks;
 }
