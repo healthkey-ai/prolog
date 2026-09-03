@@ -137,9 +137,20 @@ def load_definition(
 def activate_version(version: SurveyVersion, *, allow_unreviewed: bool = False) -> None:
     """Make ``version`` the single active version of its survey (DEF-4, DEF-5).
 
-    ``allow_unreviewed`` bypasses the translation gate for local/staging review
-    of machine-translated content; it logs loudly and must never be used for a
-    production launch.
+    Two different things get a version past the translation gate, and they mean
+    different things:
+
+    * ``allow_unreviewed`` — "I am previewing this." A CLI flag, for local and
+      staging review of machine-translated content. It logs loudly and must
+      never be used for a launch: the respondent is shown nothing.
+    * ``PROLOG_MACHINE_LANGUAGES`` — "respondents will read a machine
+      translation of this language, and that is intended." A deployment
+      setting, empty by default, and the runner *discloses* the machine origin
+      to anyone reading one of those languages.
+
+    For a short, plain-language instrument a machine translation is usually
+    better for the respondent than no translation at all — as long as they are
+    told which they are reading.
     """
     # Serialise activations of one survey: two concurrent ones would both read
     # the same current version and race the one-active-version constraint.
@@ -150,15 +161,26 @@ def activate_version(version: SurveyVersion, *, allow_unreviewed: bool = False) 
             "an archived version cannot be re-activated; load it as a new version"
         )
     pending = unreviewed_languages(version.definition)
-    if pending and not allow_unreviewed:
+    accepted = conf.machine_languages()
+    blocking = [lang for lang in pending if lang not in accepted]
+    if blocking and not allow_unreviewed:
         raise ActivationError(
-            "cannot activate while translations are not reviewed: " + ", ".join(pending)
+            "cannot activate while translations are not reviewed: "
+            + ", ".join(blocking)
+            + ". Get them reviewed, or name them in PROLOG_MACHINE_LANGUAGES to offer "
+            "them as machine translations — which the runner discloses to respondents."
         )
-    if pending:
+    if blocking:
         log.warning(
             "activating %s with UNREVIEWED translations (%s) — review use only, not for launch",
             version,
-            ", ".join(pending),
+            ", ".join(blocking),
+        )
+    if disclosed := [lang for lang in pending if lang in accepted]:
+        log.info(
+            "activating %s offering %s as machine translations; respondents are told so",
+            version,
+            ", ".join(disclosed),
         )
     now = timezone.now()
     for current in version.survey.versions.filter(status=LifecycleStatus.ACTIVE).exclude(

@@ -642,3 +642,61 @@ def test_validate_command_fails_when_no_file_matches(tmp_path):
     # A typo'd path must not pass a CI gate silently.
     with pytest.raises(CommandError, match="no definition files"):
         call_command("validate_definition", str(tmp_path / "missing.json"))
+
+
+# --- machine languages, offered deliberately and disclosed --------------------
+
+
+def test_activation_still_refuses_an_unreviewed_language_by_default(db, example):
+    """With the setting unset, DEF-5 behaves exactly as it did."""
+    example["translation_status"]["es"] = "machine"
+
+    with pytest.raises(loader.ActivationError, match="not reviewed"):
+        loader.load_definition(example, activate=True)
+
+
+def test_a_named_machine_language_may_be_activated(db, example, settings):
+    """A deployment that consciously offers a machine translation, and says so."""
+    example["translation_status"]["es"] = "machine"
+    settings.PROLOG_MACHINE_LANGUAGES = ["es"]
+
+    result = loader.load_definition(example, activate=True)
+
+    assert result.version.status == "active"
+
+
+def test_a_language_not_named_still_blocks(db, example, settings):
+    """Naming one language is not naming them all."""
+    example["translation_status"]["es"] = "machine"
+    example["translation_status"]["fr"] = "machine"
+    settings.PROLOG_MACHINE_LANGUAGES = ["es"]
+
+    with pytest.raises(loader.ActivationError, match="fr"):
+        loader.load_definition(example, activate=True)
+
+
+def test_the_refusal_says_what_the_two_ways_past_it_are(db, example):
+    example["translation_status"]["es"] = "machine"
+
+    with pytest.raises(loader.ActivationError, match="PROLOG_MACHINE_LANGUAGES"):
+        loader.load_definition(example, activate=True)
+
+
+def test_reviewing_a_language_needs_no_setting(db, example, settings):
+    """Flipping machine -> reviewed removes the disclosure with nothing else to change."""
+    settings.PROLOG_MACHINE_LANGUAGES = []
+    example["translation_status"]["es"] = "reviewed"
+    example["translation_status"]["fr"] = "reviewed"
+
+    assert loader.load_definition(example, activate=True).version.status == "active"
+
+
+def test_allow_unreviewed_remains_the_preview_route(db, example, settings):
+    """--allow-unreviewed is 'I am previewing'; the setting is 'respondents will
+    read this'. Neither implies the other."""
+    settings.PROLOG_MACHINE_LANGUAGES = []
+    example["translation_status"]["es"] = "machine"
+
+    result = loader.load_definition(example, activate=True, allow_unreviewed=True)
+
+    assert result.version.status == "active"

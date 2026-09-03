@@ -6,6 +6,8 @@ export interface RunnerDefinition extends Definition {
   theme_code: string;
   /** Legal pages this deployment mounted (e.g. ["privacy"]); absent or empty means none. */
   legal_pages?: string[];
+  /** Per-language "machine" | "reviewed"; the runner discloses a machine one to the respondent. */
+  translation_status?: Record<string, "machine" | "reviewed">;
 }
 
 export interface ResponseSummary {

@@ -163,4 +163,59 @@ describe("IntroPage", () => {
     });
   });
 
+
+  describe("machine translation disclosure", () => {
+    it("tells a respondent when the language they are reading was machine-translated", async () => {
+      runnerServer(
+        definition({
+          language: "es",
+          languages: ["en", "es"],
+          default_language: "en",
+          translation_status: { es: "machine" },
+        }),
+      );
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      const note = m.$("machine-translation");
+      expect(note).not.toBeNull();
+      // it names both languages: what a person wrote, and what a machine did
+      expect(note?.textContent).toContain("Español");
+      expect(note?.textContent).toContain("English");
+    });
+
+    it("says nothing about a reviewed language", async () => {
+      runnerServer(
+        definition({
+          language: "es",
+          languages: ["en", "es"],
+          default_language: "en",
+          translation_status: { es: "reviewed" },
+        }),
+      );
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("machine-translation")).toBeNull();
+    });
+
+    it("says nothing when reading the language the survey was written in", async () => {
+      runnerServer(
+        definition({
+          language: "en",
+          languages: ["en", "es"],
+          default_language: "en",
+          translation_status: { es: "machine" },
+        }),
+      );
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("machine-translation")).toBeNull();
+    });
+  });
+
 });

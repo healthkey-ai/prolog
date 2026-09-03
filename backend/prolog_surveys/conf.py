@@ -85,6 +85,15 @@ DEFAULTS: dict[str, Any] = {
     # created with no participant, which is what a deployment without a
     # participant model does anyway.
     "PROLOG_PARTICIPANT_FACTORY": None,
+    # Languages this deployment consciously offers as machine-translated (DEF-5).
+    # Empty (the default) keeps the translation gate exactly as it was: a
+    # version offering an unreviewed language cannot be activated at all.
+    #
+    # Naming a language here is a different statement from `--allow-unreviewed`,
+    # which means "I am previewing this". This means "respondents will read a
+    # machine translation of this language, and that is intended" — so the
+    # runner discloses it to them rather than serving it silently.
+    "PROLOG_MACHINE_LANGUAGES": [],
     # Salt for hashed client keys used by throttling (never stores raw IPs).
     # Unset = SECRET_KEY (see client_key_salt); rotate it to reset the counters.
     "PROLOG_CLIENT_KEY_SALT": None,
@@ -120,6 +129,11 @@ def profile() -> str:
 
 def is_integrated() -> bool:
     return profile() == "integrated"
+
+
+def machine_languages() -> set[str]:
+    """Languages the deployment offers as machine-translated, disclosed as such."""
+    return {str(lang) for lang in get("PROLOG_MACHINE_LANGUAGES")}
 
 
 def participant_model() -> str | None:

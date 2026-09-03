@@ -141,7 +141,7 @@ mirrors it:
 | Area | Keys |
 | --- | --- |
 | App | `app.title` `app.loading` `app.error` `app.retry` `app.reload` `app.notFound` `app.closed` `app.forbidden` `app.throttled` `app.hint` (`{{path}}`) `app.pageTitle` (`{{survey}}`, `{{step}}`) |
-| Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainAction` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` |
+| Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainAction` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` `intro.machineTranslation` (`{{source}}`, `{{language}}`) |
 | Header | `header.section` (`{{number}}`, `{{total}}`) `header.steps` (`{{number}}`, `{{total}}`) `header.overview` `header.language` `header.progress` |
 | Question | `question.eyebrow` (`{{number}}`, `{{total}}`) `question.optional` `question.info` |
 | Footer | `nav.back` `nav.next` `nav.finish` `nav.saving` `nav.saved` `nav.saveFailed` |
