@@ -40,6 +40,21 @@ def codes(issues, level="error"):
 # --- example instrument -----------------------------------------------------
 
 
+def test_priority_orders_without_restricting(example):
+    """A pinned list is accepted, and leaves every option answerable.
+
+    Ordering and restriction are separate keys on purpose: pinning three
+    countries must not quietly make the other two hundred unanswerable.
+    """
+    from prolog_surveys.engine.answers import source_keys
+
+    cfg = question(example, "country")["config"]
+    cfg.update(options_source_priority=["DE", "FR"])
+
+    assert not has_errors(validate_definition(example, profile="standalone"))
+    assert source_keys(cfg, {"DE", "FR", "GB", "US"}) == {"DE", "FR", "GB", "US"}
+
+
 def test_example_is_valid(example):
     issues = validate_definition(example)
     assert not has_errors(issues), [str(i) for i in issues]
@@ -156,6 +171,23 @@ def _repeat(**overrides):
                 "config", {"options_source_include": ["DE"]}
             ),
             "options_source_include",
+        ),
+        # a typo in the priority list pins nothing, and nobody notices in review
+        (
+            lambda d: question(d, "country")["config"].update(options_source_priority=["XX"]),
+            "options_source_priority",
+        ),
+        (  # without options_source there is nothing to order
+            lambda d: question(d, "age_band").__setitem__(
+                "config", {"options_source_priority": ["DE"]}
+            ),
+            "options_source_priority",
+        ),
+        (  # pinning what the include list leaves out asks for an option nobody can pick
+            lambda d: question(d, "country")["config"].update(
+                options_source_include=["DE", "FR"], options_source_priority=["GB"]
+            ),
+            "options_source_priority",
         ),
         # the runner renders privacy_url as a link: only absolute http(s) URLs
         (

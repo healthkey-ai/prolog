@@ -169,6 +169,39 @@ export function sourceKeys(cfg: QuestionConfig, sourceOptions: ReadonlySet<strin
   return new Set([...keys].filter((k) => allowed.has(k)));
 }
 
+/**
+ * A dropdown's source options in the order the respondent should see them:
+ * `options_source_priority` first, in the order given, then the rest of the
+ * source in its own order.
+ *
+ * Presentation only, and deliberately not mirrored in the Python engine — the
+ * server decides what may be *answered* (see sourceKeys / source_keys), and
+ * nothing server-side renders this list. Keys that are pinned but absent from
+ * the source are ignored here; the definition validator refuses them at load,
+ * which is where an author finds out.
+ */
+export function orderedSourceOptions<T extends { key: string }>(
+  cfg: QuestionConfig | undefined,
+  options: readonly T[],
+): readonly T[] {
+  const priority = cfg?.options_source_priority;
+  if (!priority?.length) return options;
+  const rank = new Map(priority.map((key, index) => [key, index]));
+  const pinned: T[] = [];
+  const rest: T[] = [];
+  for (const option of options) (rank.has(option.key) ? pinned : rest).push(option);
+  pinned.sort((a, b) => rank.get(a.key)! - rank.get(b.key)!);
+  return [...pinned, ...rest];
+}
+
+/** How many of `options` the pinned group holds, for a renderer that separates them. */
+export function priorityCount(cfg: QuestionConfig | undefined, options: readonly { key: string }[]): number {
+  const priority = cfg?.options_source_priority;
+  if (!priority?.length) return 0;
+  const pinned = new Set(priority);
+  return options.filter((o) => pinned.has(o.key)).length;
+}
+
 export function validateAnswer(
   q: Question,
   raw: unknown,
