@@ -19,7 +19,7 @@ from prolog_surveys.definitions.loader import (
     validate_definition,
 )
 from prolog_surveys.definitions.normalize import checksum, normalize, source_checksum
-from prolog_surveys.definitions.validate import _walk_i18n, has_errors, validate_semantics
+from prolog_surveys.definitions.validate import has_errors, validate_semantics, walk_i18n
 from prolog_surveys.engine.localize import I18N_FIELDS, localize
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
 from prolog_surveys.tests.conftest import EXAMPLE_PATH
@@ -434,12 +434,12 @@ def _resolve(doc, path: str):
 
 
 def test_i18n_walk_matches_localizer(example):
-    """The validator's i18n inventory (``_walk_i18n``) and the engine's
+    """The validator's i18n inventory (``walk_i18n``) and the engine's
     ``I18N_FIELDS`` are maintained separately; a field one knows and the other
     does not would validate yet reach the runner as a ``{lang: text}`` object
     (or be localised without its default-language check)."""
     example["consent"] = {"version": "1", "text": {"en": "Consent", "es": "Consentimiento"}}
-    walked = _walk_i18n(example)
+    walked = walk_i18n(example)
     # every field name the localiser localises occurs in the walk (the example
     # exercises them all), and every walked path is a language map
     assert I18N_FIELDS <= {re.split(r"[.\[]", path)[-1] for path, _ in walked}

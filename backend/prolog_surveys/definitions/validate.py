@@ -55,8 +55,13 @@ class QuestionInfo:
     option_keys: list[str] = field(default_factory=list)
 
 
-def _walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    """Every i18n object in the definition with its path."""
+def walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Every i18n object in the definition with its path, in presentation order.
+
+    Public because it answers "every string a respondent can read", which the
+    translation export needs as much as validation does. A second walker would
+    drift, and the strings it missed would be the ones nobody reviewed.
+    """
     found: list[tuple[str, dict[str, Any]]] = []
 
     def add(path: str, value: Any) -> None:
@@ -171,7 +176,7 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 f"$.translation_status.{lang}",
                 "default language needs no status",
             )
-    for path, obj in _walk_i18n(definition):
+    for path, obj in walk_i18n(definition):
         if default_lang not in obj:
             err("i18n_default", path, f"missing text for default language '{default_lang}'")
         for lang in obj:

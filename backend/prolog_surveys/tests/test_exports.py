@@ -8,10 +8,17 @@ from datetime import timedelta
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.utils import timezone
 
 from prolog_surveys.definitions.loader import load_definition
-from prolog_surveys.exports import safe_cell, write_contacts, write_responses
+from prolog_surveys.exports import (
+    safe_cell,
+    translation_rows,
+    write_contacts,
+    write_responses,
+    write_translations,
+)
 from prolog_surveys.models import SurveyContact, SurveyResponse
 
 
@@ -215,3 +222,111 @@ def test_health_reports_checks(api_client, version):
     assert body["checks"]["active_surveys"] == 1
     assert "default" in body["checks"]["themes"]
     assert SurveyContact.objects.count() == 0
+
+
+# --- translation review sheet ------------------------------------------------
+
+
+def test_translation_rows_pair_the_languages_in_presentation_order(example):
+    rows = list(translation_rows(example, "es"))
+
+    assert rows[0][0] == "$.title"
+    assert rows[0][2] == example["title"]["en"]
+    assert rows[0][3] == example["title"]["es"]
+    # every translatable string, not only the ones that happen to be translated
+    from prolog_surveys.definitions.validate import walk_i18n
+
+    assert [r[0] for r in rows] == [path for path, _ in walk_i18n(example)]
+
+
+def test_a_missing_translation_is_an_empty_cell_not_a_missing_row(example):
+    """The gaps are the point: a shorter file hides what nobody has translated."""
+    del example["sections"][0]["questions"][0]["text"]["es"]
+
+    rows = list(translation_rows(example, "es"))
+    row = next(r for r in rows if r[0] == "$.sections[0].questions[0].text")
+
+    assert row[2] and row[3] == ""
+    assert len(rows) == len(list(translation_rows(example, "en")))
+
+
+def test_the_status_travels_with_the_text(example):
+    example["translation_status"]["es"] = "machine"
+
+    assert {r[1] for r in translation_rows(example, "es")} == {"machine"}
+
+
+def test_against_picks_the_column_to_compare(example):
+    rows = list(translation_rows(example, "es", against="fr"))
+
+    assert rows[0][2] == example["title"]["fr"]
+
+
+def test_csv_is_not_a_formula_injection_route(example):
+    """Survey text is free text, and a reviewer opens this in a spreadsheet."""
+    example["title"]["es"] = "=cmd|' /c calc'!A1"
+
+    out = io.StringIO()
+    write_translations(example, out, language="es")
+    body = out.getvalue()
+
+    assert "'=cmd" in body
+
+
+def test_markdown_escapes_a_pipe_so_the_columns_survive(example):
+    example["title"]["es"] = "uno | dos"
+
+    out = io.StringIO()
+    write_translations(example, out, language="es", markdown=True)
+    line = next(ln for ln in out.getvalue().splitlines() if ln.startswith("| $.title "))
+
+    import re
+
+    assert r"uno \| dos" in line
+    # split on delimiters only — an escaped pipe is content, not a column break
+    assert len(re.split(r"(?<!\\)\|", line)) - 2 == 4  # leading and trailing empties
+
+
+def test_export_translations_command(version, tmp_path, capsys):
+    call_command(
+        "export_translations",
+        "sample-wellbeing",
+        "--language",
+        "es",
+        "--out",
+        str(tmp_path / "es.csv"),
+    )
+    rows = list(csv.reader(io.StringIO((tmp_path / "es.csv").read_text())))
+
+    assert rows[0] == ["path", "status", "en", "es"]
+    assert len(rows) > 1
+    assert "string(s)" in capsys.readouterr().err
+
+
+def test_export_translations_refuses_a_language_the_survey_does_not_offer(version):
+    with pytest.raises(CommandError, match="does not offer 'de'"):
+        call_command("export_translations", "sample-wellbeing", "--language", "de")
+
+
+def test_export_translations_refuses_comparing_a_language_with_itself(version):
+    with pytest.raises(CommandError, match="must differ"):
+        call_command(
+            "export_translations", "sample-wellbeing", "--language", "es", "--against", "es"
+        )
+
+
+def test_export_translations_says_when_nothing_has_been_reviewed(db, example, capsys):
+    """A reviewer opening a machine file should know that is what it is."""
+    example["translation_status"]["es"] = "machine"
+    load_definition(example)
+
+    call_command(
+        "export_translations",
+        "sample-wellbeing",
+        "--language",
+        "es",
+        "--survey-version",
+        example["version"],
+    )
+
+    assert "machine-translated" in capsys.readouterr().err

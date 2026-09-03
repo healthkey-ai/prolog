@@ -150,6 +150,24 @@ Two ways past it, and they are not the same:
 - Getting the translations reviewed, and changing `translation_status` to
   `reviewed`. This is the one that ships.
 
+### Giving a reviewer something they can read
+
+A definition is not a review document. Export the two languages side by side:
+
+```sh
+manage.py export_translations <slug> --language es [--against en] [--format csv|md] [--out file.csv]
+```
+
+One row per translatable string, in the order a respondent meets them, with the
+source and the target in adjacent columns and the language's
+`translation_status` on every row. CSV opens in a spreadsheet, which is what a
+reviewer will ask for; `--format md` renders in a document or a pull request.
+
+**A string nobody has translated is an empty cell, not a missing row** — the
+gaps are the most useful thing in the file. Corrections come back keyed by the
+`path` column, which is stable, so you can apply them to the definition without
+guessing which string was meant.
+
 The respondent's chosen language is recorded on the response, and option keys
 stay the same in every language, so answers stay comparable across them.
 
