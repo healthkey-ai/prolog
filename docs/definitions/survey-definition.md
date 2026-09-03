@@ -258,13 +258,28 @@ reachable question; changing an answer re-runs the cascade forward.
   "overview": true,              // "All questions" panel with jump-back
   "section_interstitials": true, // interstitial when entering a new section
   "skip_policy": "soft",         // soft | hard | none (see §3.4)
-  "progress": "bar"              // bar | steps | none
+  "progress": "bar",             // bar | steps | none
+  "language_step": "inline"      // inline | first | auto
 }
 ```
 
 Defaults reproduce the one-question-per-screen wizard. `progress: "bar"` draws a
 completion bar in the header; `"steps"` shows a **Step n of m** counter over the
 visible screens instead; `"none"` hides both.
+
+`language_step` decides where a multilingual survey asks which language to use.
+`inline` (the default) puts the picker on the intro, which is therefore read in
+whatever language the browser asked for until the respondent changes it.
+`first` asks **before** the intro, so the intro and the consent notice — the
+text somebody has to understand before agreeing to anything — are themselves
+read in the chosen language. `auto` asks first only when the browser's language
+is not one the survey offers, which is when the default would otherwise be a
+guess.
+
+A single-language survey ignores it. A link carrying `?lang=` that the survey
+offers skips the step either way: that question has already been answered, and
+asking again is asking twice. A resumed response is never asked — it has a
+language already.
 
 ---
 

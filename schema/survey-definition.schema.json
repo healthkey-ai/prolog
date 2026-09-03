@@ -137,6 +137,10 @@
         "progress": {
           "description": "Progress indicator style. Default bar.",
           "enum": ["bar", "steps", "none"]
+        },
+        "language_step": {
+          "description": "Where a multilingual survey asks for a language. \"inline\" (default) puts the picker on the intro, which is read in the browser's language until the respondent changes it. \"first\" asks before the intro, so the intro itself is read in the chosen language. \"auto\" asks first only when the browser's language is not one the survey offers. Ignored by a single-language survey, and skipped when a link carries a language the survey offers.",
+          "enum": ["inline", "first", "auto"]
         }
       }
     },
