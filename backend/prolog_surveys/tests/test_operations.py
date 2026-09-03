@@ -559,3 +559,13 @@ def test_the_buttons_carry_the_admin_button_classes(admin_login, tmp_path, setti
 
     assert 'class="button default"' in body, "Verify is the primary action"
     assert 'value="load" class="button"' in body, "Load is styled, and offered once it verifies"
+
+
+def test_the_buttons_are_sized_like_the_admin_save_row(admin_login):
+    """Django's own sizing selector is .submit-row input, which never matches a
+    <button>: without this the buttons render at the browser's default size
+    beside an admin that is not."""
+    body = admin_login.get("/admin/prolog_surveys/survey/verify/").content.decode()
+
+    assert ".submit-row button" in body
+    assert "padding: 10px 15px" in body

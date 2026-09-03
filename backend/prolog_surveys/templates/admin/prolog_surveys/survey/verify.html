@@ -1,4 +1,24 @@
 {% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}
+<style>
+  /* Django sizes the save row with a selector that only matches inputs
+     (.submit-row input), so a <button> gets the colours from .button and none
+     of the metrics. These are the same numbers, so Verify and Load are the
+     size of a Save. */
+  .submit-row button {
+    padding: 10px 15px;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 15px;
+    margin: 0 8px 0 0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div id="content-main" style="max-width:1000px">
 
