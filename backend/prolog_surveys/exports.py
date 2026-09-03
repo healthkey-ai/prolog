@@ -150,3 +150,58 @@ def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
         )
         n += 1
     return n
+
+
+# --- translations -----------------------------------------------------------
+
+TRANSLATION_HEADER = ("path", "status", "source", "target")
+
+
+def translation_rows(
+    definition: dict[str, Any], language: str, *, against: str | None = None
+) -> Iterator[tuple[str, str, str, str]]:
+    """Every translatable string as (path, status, source text, target text).
+
+    In presentation order, from the same inventory the validator uses — a
+    second walker would drift, and the strings it missed would be exactly the
+    ones nobody reviewed.
+
+    A missing translation yields an empty target rather than no row: the gaps
+    are what a reviewer most needs to see.
+    """
+    from .definitions.validate import walk_i18n
+
+    source_lang = against or definition.get("default_language", "en")
+    status = (definition.get("translation_status") or {}).get(language, "")
+    for path, text in walk_i18n(definition):
+        yield (
+            path,
+            status,
+            safe_cell(str(text.get(source_lang, ""))),
+            safe_cell(str(text.get(language, ""))),
+        )
+
+
+def write_translations(
+    definition: dict[str, Any],
+    out: IO[str],
+    *,
+    language: str,
+    against: str | None = None,
+    markdown: bool = False,
+) -> int:
+    """Write the side-by-side review sheet. Returns the number of strings."""
+    source_lang = against or definition.get("default_language", "en")
+    header = ("path", "status", source_lang, language)
+    rows = list(translation_rows(definition, language, against=against))
+    if markdown:
+        out.write("| " + " | ".join(header) + " |\n")
+        out.write("|" + "|".join(["---"] * len(header)) + "|\n")
+        for row in rows:
+            # A literal pipe would end the cell and shift every column after it.
+            out.write("| " + " | ".join(c.replace("|", "\\|") for c in row) + " |\n")
+    else:
+        writer = csv.writer(out)
+        writer.writerow(header)
+        writer.writerows(rows)
+    return len(rows)
