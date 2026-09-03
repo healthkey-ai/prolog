@@ -536,3 +536,26 @@ def test_a_successful_load_lands_on_the_survey_not_the_list(
 
     survey = Survey.objects.get()
     assert response["Location"] == f"/admin/prolog_surveys/survey/{survey.pk}/change/"
+
+
+def test_the_verify_page_renders_no_template_source(admin_login):
+    """A multi-line {# #} is not a comment in Django, it is text on the page —
+    which is how an explanation of the button markup ended up above the
+    buttons."""
+    body = admin_login.get("/admin/prolog_surveys/survey/verify/").content.decode()
+
+    assert "{#" not in body and "#}" not in body
+    assert "{%" not in body and "%}" not in body
+
+
+def test_the_buttons_carry_the_admin_button_classes(admin_login, tmp_path, settings, example):
+    """Django styles .button and .button.default; a bare <button> gets neither."""
+    (tmp_path / "s.json").write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+
+    body = admin_login.post(
+        "/admin/prolog_surveys/survey/verify/", {"definition_path": str(tmp_path / "s.json")}
+    ).content.decode()
+
+    assert 'class="button default"' in body, "Verify is the primary action"
+    assert 'value="load" class="button"' in body, "Load is styled, and offered once it verifies"

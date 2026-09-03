@@ -1,8 +1,8 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
-<div id="content-main">
+<div id="content-main" style="max-width:1000px">
 
-  <p class="help">
+  <p class="help" style="margin:1rem 0">
     Validates a definition the way <code>manage.py validate_definition</code> does, and
     writes nothing until you press <strong>Load as draft</strong>. Loading never activates:
     a draft is in the database, validated, and invisible to respondents.
@@ -20,7 +20,7 @@
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     {% if for_survey %}<input type="hidden" name="survey" value="{{ for_survey.slug }}">{% endif %}
-    <fieldset class="module aligned">
+    <fieldset class="module aligned" style="margin-bottom:1.5rem">
       <h2>The definition</h2>
 
       <div class="form-row">
@@ -43,7 +43,7 @@
       </div>
     </fieldset>
 
-    <fieldset class="module aligned">
+    <fieldset class="module aligned" style="margin-bottom:1.5rem">
       <h2>The theme <span class="help">(optional — verified beside the definition)</span></h2>
       <div class="form-row">
         <label for="theme_pick">A theme this deployment mounts:</label>
@@ -65,14 +65,11 @@
       </div>
     </fieldset>
 
+    {# buttons, not inputs: an input's label is its value, and these need both #}
     <div class="submit-row">
-      {# A button, not an input: the label is its text and "load" is its value,
-         so the two are independent. Two fields named `action` — a submit input
-         and a hidden one — meant the hidden empty value won and Load silently
-         re-verified. #}
-      <button type="submit" name="action" value="verify" class="default">Verify</button>
+      <button type="submit" name="action" value="verify" class="button default">Verify</button>
       {% if verified and not blocked %}
-        <button type="submit" name="action" value="load">Load as draft</button>
+        <button type="submit" name="action" value="load" class="button">Load as draft</button>
       {% endif %}
     </div>
   </form>
@@ -85,7 +82,7 @@
   {% endif %}
 
   {% if verified %}
-    <div class="module">
+    <div class="module" style="margin-top:1.5rem">
       <h2>Result — {{ source }}</h2>
       {% if slug_mismatch %}
         <p class="errornote">
