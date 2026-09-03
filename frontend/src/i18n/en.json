@@ -133,5 +133,9 @@
   "error.date_format": "Please enter a date as YYYY-MM-DD.",
   "error.date_invalid": "Please enter a valid date.",
   "error.date_too_early": "Please enter a date on or after {{min}}.",
-  "error.date_too_late": "Please enter a date on or before {{max}}."
+  "error.date_too_late": "Please enter a date on or before {{max}}.",
+  "legal.back": "Back to the survey",
+  "legal.missing": "This page is not available.",
+  "legal.privacy": "Privacy notice",
+  "legal.terms": "Terms"
 }

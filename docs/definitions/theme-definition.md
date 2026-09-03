@@ -148,6 +148,7 @@ mirrors it:
 | Skip prompt | `skip.prompt` `skip.skip` `skip.answer` `skip.hard` |
 | Overview | `overview.title` `overview.close` `overview.answered` `overview.skipped` `overview.current` `overview.unanswered` `overview.unreachable` `overview.noAnswer` |
 | Interstitial | `interstitial.eyebrow` (`{{number}}`) `interstitial.continue` |
+| Legal pages | `legal.privacy` `legal.terms` `legal.back` `legal.missing` — the link to a deployment's own notice and the page around it; the notice's *content* comes from the deployment's own Markdown file, never from a chrome string |
 | Controls | `single.other` `dropdown.placeholder` `dropdown.noResults` `dropdown.clear` `dropdown.error` `dropdown.retry` `text.remaining` (`{{count}}`) `number.placeholder` `multi.counter` (`{{count}}`, `{{max}}`) `multi.limit` (`{{max}}`) `matrix.legend` |
 | Ranking | `ranking.help` `ranking.srInstructions` `ranking.drag` (`{{label}}`) `ranking.moveUp` (`{{label}}`) `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragStart` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOver` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOutside` (`{{label}}`) `ranking.dragDropped` (`{{label}}`) `ranking.dragCancel` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` `ranking.skipped` |
 | Email step | `email.placeholder` `email.save` `email.skip` `email.saved` `email.invalid` `email.unavailable` |

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
 import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
 import {
@@ -169,6 +169,10 @@ export function IntroPage() {
     });
   // Only an absolute http(s) URL becomes a link; anything else in the definition is not rendered.
   const privacyUrl = httpUrl(consent?.privacy_url);
+  // A notice this deployment serves itself, on this origin and under this
+  // theme: preferred over an off-site link, because the respondent is deciding
+  // whether to trust the survey and should not have to leave it to find out.
+  const hasLocalPrivacy = def.legal_pages?.includes("privacy") ?? false;
 
   if (askLanguageFirst) {
     return (
@@ -269,10 +273,16 @@ export function IntroPage() {
             {consent && (
               <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink">
                 <p className="text-[0.95rem]">{consent.text as string}</p>
-                {privacyUrl && (
-                  <a href={privacyUrl} className="mt-2 inline-block text-sm text-primary underline" target="_blank" rel="noreferrer">
-                    {privacyUrl}
-                  </a>
+                {hasLocalPrivacy ? (
+                  <Link to={`/s/${slug}/privacy`} className="mt-2 inline-block text-sm text-primary underline" data-testid="privacy-link">
+                    {t("legal.privacy")}
+                  </Link>
+                ) : (
+                  privacyUrl && (
+                    <a href={privacyUrl} className="mt-2 inline-block text-sm text-primary underline" target="_blank" rel="noreferrer">
+                      {privacyUrl}
+                    </a>
+                  )
                 )}
                 <div className="mt-2 flex min-h-[44px] items-center gap-3">
                   <Checkbox id="consent" className="size-5" checked={agreed} onCheckedChange={(c) => { setAgreed(c === true); setConsentError(false); }} data-testid="consent" />

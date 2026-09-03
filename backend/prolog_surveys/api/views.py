@@ -21,7 +21,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .. import conf
+from .. import conf, legal
 from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade, retained_when_hidden
 from ..engine.completion import missing_keys, progress
@@ -262,6 +262,10 @@ class SurveyDefinitionView(RunnerView):
         payload = dict(version.localized(lang))  # shared cache entry: copy before adding keys
         payload["theme_code"] = theme_code
         payload["translation_status"] = definition.get("translation_status", {})
+        # Which legal pages this deployment actually mounted, so the runner can
+        # decide whether to render a link. A link to a 404 is worse than no
+        # link, and worst on the screen that asks for an email address.
+        payload["legal_pages"] = sorted(legal.available())
         return Response(payload, headers={"ETag": etag, "Cache-Control": "private, max-age=60"})
 
 
@@ -294,6 +298,27 @@ class OptionsSourceView(RunnerView):
         return Response(
             {"source": source, "language": lang, "options": provider(lang)},
             headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+
+class LegalPageView(RunnerView):
+    """A deployment's legal page, as Markdown, in the respondent's language.
+
+    Markdown rather than HTML on purpose: the runner renders a small, known
+    subset into elements, so a page cannot inject markup into the survey it is
+    opened from. Cached like the option sources — a notice changes with a
+    deployment, not with a request.
+    """
+
+    throttle_classes = [ClientKeyThrottle]
+
+    def get(self, request, page: str):
+        found = legal.find(page, request.query_params.get("lang"))
+        if found is None:
+            raise NotFound("no such page")
+        return Response(
+            {"page": found.name, "language": found.language, "markdown": found.markdown},
+            headers={"Cache-Control": "public, max-age=3600"},
         )
 
 

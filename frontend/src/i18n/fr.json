@@ -133,5 +133,9 @@
   "error.date_format": "Veuillez saisir une date au format AAAA-MM-JJ.",
   "error.date_invalid": "Veuillez saisir une date valide.",
   "error.date_too_early": "Veuillez saisir une date à partir du {{min}}.",
-  "error.date_too_late": "Veuillez saisir une date jusqu'au {{max}}."
+  "error.date_too_late": "Veuillez saisir une date jusqu'au {{max}}.",
+  "legal.back": "Retour au questionnaire",
+  "legal.missing": "Cette page n'est pas disponible.",
+  "legal.privacy": "Avis de confidentialité",
+  "legal.terms": "Conditions"
 }

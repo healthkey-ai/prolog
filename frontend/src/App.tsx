@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from "react-router";
 import { Trans, useTranslation } from "react-i18next";
 import { CompletePage } from "./pages/CompletePage";
+import { LegalPage } from "./pages/LegalPage";
 import { IntroPage } from "./pages/IntroPage";
 import { WizardPage } from "./pages/WizardPage";
 import { ThemeProvider } from "./theme/ThemeProvider";
@@ -33,6 +34,9 @@ export default function App() {
         <Route index element={<IntroPage />} />
         <Route path="q/:key" element={<WizardPage />} />
         <Route path="complete" element={<CompletePage />} />
+        {/* A deployment's own pages, inside the survey's theme and origin. */}
+        <Route path="privacy" element={<LegalPage page="privacy" />} />
+        <Route path="terms" element={<LegalPage page="terms" />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

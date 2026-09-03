@@ -133,5 +133,9 @@
   "error.date_format": "Introduza uma data no formato AAAA-MM-DD.",
   "error.date_invalid": "Introduza uma data válida.",
   "error.date_too_early": "Introduza uma data igual ou posterior a {{min}}.",
-  "error.date_too_late": "Introduza uma data igual ou anterior a {{max}}."
+  "error.date_too_late": "Introduza uma data igual ou anterior a {{max}}.",
+  "legal.back": "Voltar ao questionário",
+  "legal.missing": "Esta página não está disponível.",
+  "legal.privacy": "Aviso de privacidade",
+  "legal.terms": "Termos"
 }
