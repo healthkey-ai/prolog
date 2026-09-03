@@ -183,7 +183,7 @@ export function IntroPage() {
     return (
       <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
         <Decor />
-        <div className="relative mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-6 py-16">
+        <div className="relative mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-[clamp(0.65rem,2vh,1.25rem)] px-6 py-[clamp(0.75rem,3vh,2.25rem)]">
           <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
           {/* Each language names itself. Translating "Spanish" into the language
               a respondent cannot read is how a picker fails the people who need it. */}
@@ -210,7 +210,14 @@ export function IntroPage() {
   return (
     <div className={`relative min-h-dvh overflow-hidden ${ground}`} data-immersive={immersive || undefined}>
       {immersive && <Decor />}
-      <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-6 px-6 py-12 sm:py-20">
+      {/* Spacing scales with the viewport's height rather than stepping at a
+          width breakpoint, because what makes this page scroll is short
+          screens, not narrow ones. Measured against the live intro: 891px of
+          content in an 800px viewport before, and it now fits at 1080, 800 and
+          700. A 640px viewport still scrolls, and so does a phone — the
+          content is genuinely taller there, and the clamp floor keeps it
+          readable rather than squeezing it to fit. */}
+      <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-[clamp(0.65rem,2vh,1.25rem)] px-6 py-[clamp(0.75rem,3vh,2.25rem)]">
         <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
         <Eyebrow onPrimary={immersive}>{t("intro.eyebrow")}</Eyebrow>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{def.title as string}</h1>
