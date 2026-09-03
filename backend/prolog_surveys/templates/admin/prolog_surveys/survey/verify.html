@@ -1,22 +1,7 @@
 {% extends "admin/base_site.html" %}
 
 {% block extrahead %}{{ block.super }}
-<style>
-  /* Django sizes the save row with a selector that only matches inputs
-     (.submit-row input), so a <button> gets the colours from .button and none
-     of the metrics. These are the same numbers, so Verify and Load are the
-     size of a Save. */
-  .submit-row button {
-    padding: 10px 15px;
-    font-size: 0.8125rem;
-    font-weight: 400;
-    line-height: 15px;
-    margin: 0 8px 0 0;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-</style>
+{% include "admin/prolog_surveys/survey/_buttons.css.html" %}
 {% endblock %}
 
 {% block content %}
@@ -24,13 +9,22 @@
 
 
   <p class="help" style="margin:1rem 0">
-    Validates a definition the way <code>manage.py validate_definition</code> does, and
-    writes nothing until you press <strong>Load as draft</strong>. Loading never activates:
-    a draft is in the database, validated, and invisible to respondents.
+    Validates a definition the way <code>manage.py validate_definition</code> does, and writes
+    nothing until you press
+    {% if reload_of %}<strong>Re-load {{ reload_of.version }}</strong>. A re-load replaces this
+    version's content where it stands, and changes nothing about which version is active.
+    {% else %}<strong>Load as draft</strong>. Loading never activates: a draft is in the
+    database, validated, and invisible to respondents.{% endif %}
   </p>
   <p class="help">Verified against the schema in <code>{{ schema_dir }}</code>.</p>
 
-  {% if for_survey %}
+  {% if reload_of %}
+    <p class="help">
+      Re-loading <strong>{{ reload_of.survey.slug }} {{ reload_of.version }}</strong> from the file
+      it came from. Its content is replaced in place — which is allowed because it is not published
+      yet, and its responses are still test data. If it has any, you will be asked before they go.
+    </p>
+  {% elif for_survey %}
     <p class="help">
       Adding a version of <strong>{{ for_survey.slug }}</strong>. The theme is set to the one it
       uses and can be changed. The definition must be for this survey — one slugged for another
@@ -41,6 +35,7 @@
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     {% if for_survey %}<input type="hidden" name="survey" value="{{ for_survey.slug }}">{% endif %}
+    {% if reload_of %}<input type="hidden" name="version" value="{{ reload_of.version }}">{% endif %}
     <fieldset class="module aligned" style="margin-bottom:1.5rem">
       <h2>The definition</h2>
 
@@ -90,7 +85,9 @@
     <div class="submit-row">
       <button type="submit" name="action" value="verify" class="button default">Verify</button>
       {% if verified and not blocked %}
-        <button type="submit" name="action" value="load" class="button">Load as draft</button>
+        <button type="submit" name="action" value="load" class="button">
+          {% if reload_of %}Re-load {{ reload_of.version }}{% else %}Load as draft{% endif %}
+        </button>
       {% endif %}
       {% if discardable %}
         {# Same form, different verb: the responses are test data until the
@@ -107,7 +104,13 @@
       <h2>Result — {{ source }}</h2>
       {% if not blocked %}
         <p>
-          Valid. This would load <strong>{{ slug }}</strong> version <strong>{{ version }}</strong> as a draft.
+          Valid. This would
+          {% if reload_of and version == reload_of.version %}
+            replace the content of <strong>{{ slug }}</strong> version <strong>{{ version }}</strong>,
+            which is {{ reload_of.status }}.
+          {% else %}
+            load <strong>{{ slug }}</strong> version <strong>{{ version }}</strong> as a draft.
+          {% endif %}
           {% if issues or theme_issues %}Warnings below are legal, and probably not what was meant.{% endif %}
         </p>
       {% endif %}

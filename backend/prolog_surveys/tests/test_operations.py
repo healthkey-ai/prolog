@@ -355,7 +355,7 @@ def test_loading_the_same_definition_twice_says_it_already_exists(
     body = response.content.decode()
 
     assert response.status_code == 200, "nothing was written, so there is nowhere to go"
-    assert "already exists with this exact content" in body
+    assert "Nothing to load" in body and "Edit the file and re-load" in body
     assert 'class="warning"' in body, "not an error and not a success"
     assert SurveyVersion.objects.count() == 1, "a second row would be a second truth"
 
@@ -594,7 +594,7 @@ def test_every_outcome_uses_the_same_slot(admin_login, tmp_path, settings, examp
     for body in (nothing_chosen, already_there):
         assert body.count('<ul class="messagelist">') == 1
     assert "Choose a mounted definition" in nothing_chosen
-    assert "already exists" in already_there
+    assert "Nothing to load" in already_there
 
 
 # --- test responses, and the act that ends them ------------------------------
@@ -679,3 +679,97 @@ def test_the_survey_page_offers_publishing_only_while_it_is_open(admin_login, db
     body = admin_login.get(page).content.decode()
     assert f"/admin/prolog_surveys/survey/publish/{version.pk}/" not in body
     assert "frozen" in body
+
+
+# --- re-loading a version from the row it is on ------------------------------
+
+
+def test_the_row_offers_re_load_and_the_page_arrives_verified(
+    admin_login, tmp_path, settings, example
+):
+    """Re-load starts from the file the version came from: the administrator
+    pressed a button on a row, not "find me a file"."""
+    import copy
+
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    version = loader.load_file(path, activate=True).version
+    survey_page = admin_login.get(
+        f"/admin/prolog_surveys/survey/{version.survey_id}/change/"
+    ).content.decode()
+
+    link = (
+        f"/admin/prolog_surveys/survey/verify/?survey={version.survey.slug}"
+        f"&version={version.version}"
+    )
+    assert link.replace("&", "&amp;") in survey_page, "an href says &amp;, not a bare &"
+
+    edited = copy.deepcopy(example)
+    edited["title"]["en"] = "Corrected title"
+    path.write_text(json.dumps(edited), encoding="utf-8")
+
+    page = admin_login.get(link).content.decode()
+
+    assert str(path) in page, "the file it came from is chosen"
+    assert "No errors and no warnings" in page, "verified on arrival"
+    assert f"Re-load {version.version}" in page
+
+    admin_login.post(
+        "/admin/prolog_surveys/survey/verify/",
+        {
+            "definition_path": str(path),
+            "survey": version.survey.slug,
+            "version": version.version,
+            "action": "load",
+        },
+        follow=True,
+    )
+
+    version.refresh_from_db()
+    assert version.definition["title"]["en"] == "Corrected title"
+
+
+def test_re_loading_a_file_that_bumped_its_version_says_so(
+    admin_login, tmp_path, settings, example
+):
+    import copy
+
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps(example), encoding="utf-8")
+    settings.PROLOG_DEFINITION_DIRS = [str(tmp_path)]
+    version = loader.load_file(path, activate=True).version
+    bumped = copy.deepcopy(example)
+    bumped["version"] = "9.9"
+    path.write_text(json.dumps(bumped), encoding="utf-8")
+
+    page = admin_login.get(
+        f"/admin/prolog_surveys/survey/verify/?survey={version.survey.slug}"
+        f"&version={version.version}"
+    ).content.decode()
+
+    assert "adds a version rather than replacing" in page
+
+
+def test_a_published_version_offers_no_re_load(admin_login, db, example):
+    version = loader.load_definition(example, activate=True).version
+    loader.publish_version(version)
+
+    page = admin_login.get(
+        f"/admin/prolog_surveys/survey/{version.survey_id}/change/"
+    ).content.decode()
+
+    assert "Re-load" not in page and "Publish…" not in page
+
+
+def test_every_control_in_a_submit_row_is_sized_the_same(admin_login, db, example):
+    """A <button>, an <a class="button"> and Django's own input rule are three
+    different sets of metrics; the pages that mix them say so once."""
+    version = loader.load_definition(example).version
+
+    page = admin_login.get(f"/admin/prolog_surveys/survey/publish/{version.pk}/").content.decode()
+
+    # One rule for all three kinds of control, so Cancel is the height of the
+    # button beside it rather than Django's third set of metrics.
+    assert ".submit-row a.button" in page and ".submit-row button" in page
+    assert 'class="button cancel-link"' in page

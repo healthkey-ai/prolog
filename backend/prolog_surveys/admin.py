@@ -21,6 +21,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
+from django.utils.http import urlencode
 
 from . import conf
 from .definitions.loader import (
@@ -83,8 +84,14 @@ class VersionInline(ReadOnlyMixin, admin.TabularInline):
             return f"Published {obj.published_at:%Y-%m-%d %H:%M} — frozen"
         if obj.status == LifecycleStatus.ARCHIVED:
             return "Archived — frozen"
+        # Re-load reads the file this version came from again; publish ends
+        # both. The pair is the whole loop of getting an instrument right, so
+        # they sit together on the row rather than in two different places.
+        query = urlencode({"survey": obj.survey.slug, "version": obj.version})
         return format_html(
-            '<a class="button" href="{}">Publish…</a> <span class="help">re-loadable until then</span>',
+            '<a class="button" href="{}?{}">Re-load…</a> <a class="button" href="{}">Publish…</a>',
+            reverse("admin:prolog_surveys_survey_verify"),
+            query,
             reverse("admin:prolog_surveys_surveyversion_publish", args=[obj.pk]),
         )
 
@@ -253,6 +260,35 @@ class SurveyAdmin(admin.ModelAdmin):
                 continue
         return False
 
+    def _verify_into(self, ctx, doc, source, theme_dir) -> bool:
+        """Validate a definition (and its theme) into the page's context.
+
+        The same work whether an administrator asked for it or arrived from a
+        version's Re-load link with the file it came from already chosen.
+        """
+        issues = validate_definition(doc)
+        # A theme is part of what makes an instrument, so it is verified beside
+        # the definition rather than in a separate trip.
+        theme_issues = []
+        if theme_dir:
+            # Either the folder or its theme.json: an administrator points at
+            # whichever they have in front of them.
+            _, theme_issues = validate_theme(theme_directory(Path(theme_dir)))
+
+        blocked = has_errors(issues) or has_errors(theme_issues)
+        ctx.update(
+            {
+                "verified": True,
+                "source": source,
+                "issues": issues,
+                "theme_issues": theme_issues,
+                "blocked": blocked,
+                "slug": (doc or {}).get("slug"),
+                "version": (doc or {}).get("version"),
+            }
+        )
+        return blocked
+
     def verify_view(self, request):
         """Verify a definition, and load it.
 
@@ -273,17 +309,38 @@ class SurveyAdmin(admin.ModelAdmin):
             theme = theme_registry.get(survey.theme_code)
             preset_theme = str(theme.directory) if theme is not None else ""
 
+        # Re-loading is this same act with one more thing already decided:
+        # which version is being replaced, and therefore which file to read
+        # again. Only a source this deployment still mounts is offered — a
+        # version loaded from an upload, or from a directory since unmounted,
+        # falls back to the pickers.
+        label = request.GET.get("version") or request.POST.get("version") or ""
+        reload_of = survey.versions.filter(version=label).first() if survey and label else None
+        preset_definition = ""
+        if reload_of is not None and reload_of.source in definitions:
+            preset_definition = reload_of.source
+
+        selected = {"theme_dir": preset_theme} if survey else {}
+        if preset_definition:
+            selected["definition_path"] = preset_definition
+
+        if reload_of is not None:
+            title = f"Re-load {reload_of.survey.slug} {reload_of.version}"
+        elif survey is not None:
+            title = f"Add a version of {survey.slug}"
+        else:
+            title = "Verify and load a definition"
+
         ctx = {
             **self.admin_site.each_context(request),
-            "title": (
-                f"Add a version of {survey.slug}" if survey else "Verify and load a definition"
-            ),
+            "title": title,
             "opts": self.model._meta,
             "definitions": definitions,
             "themes": themes,
             "schema_dir": str(conf.schema_dir()),
             "for_survey": survey,
-            "selected": {"theme_dir": preset_theme} if survey else {},
+            "reload_of": reload_of,
+            "selected": selected,
         }
 
         def page():
@@ -298,6 +355,23 @@ class SurveyAdmin(admin.ModelAdmin):
             return page()
 
         if request.method != "POST":
+            if preset_definition:
+                try:
+                    doc = read_json(Path(preset_definition))
+                except (OSError, ValueError) as exc:
+                    return say(messages.ERROR, f"{preset_definition} could not be read: {exc}")
+                if self._verify_into(ctx, doc, preset_definition, preset_theme):
+                    return say(
+                        messages.ERROR,
+                        "This file no longer validates. Nothing was written; fix it and "
+                        "verify again.",
+                    )
+                if reload_of is not None and doc.get("version") != reload_of.version:
+                    return say(
+                        messages.WARNING,
+                        f"That file is version {doc.get('version')}, not {reload_of.version}. "
+                        f"Loading it adds a version rather than replacing {reload_of.version}.",
+                    )
             return page()
 
         definition_path = request.POST.get("definition_path", "")
@@ -329,27 +403,7 @@ class SurveyAdmin(admin.ModelAdmin):
         else:
             return say(messages.ERROR, "Choose a mounted definition or upload one.")
 
-        issues = validate_definition(doc)
-        # A theme is part of what makes an instrument, so it is verified beside
-        # the definition rather than in a separate trip.
-        theme_issues = []
-        if theme_dir:
-            # Either the folder or its theme.json: an administrator points at
-            # whichever they have in front of them.
-            _, theme_issues = validate_theme(theme_directory(Path(theme_dir)))
-
-        blocked = has_errors(issues) or has_errors(theme_issues)
-        ctx.update(
-            {
-                "verified": True,
-                "source": source,
-                "issues": issues,
-                "theme_issues": theme_issues,
-                "blocked": blocked,
-                "slug": (doc or {}).get("slug"),
-                "version": (doc or {}).get("version"),
-            }
-        )
+        blocked = self._verify_into(ctx, doc, source, theme_dir)
         if blocked:
             return say(messages.ERROR, "Refused: this definition has errors. Nothing was written.")
 
@@ -379,10 +433,10 @@ class SurveyAdmin(admin.ModelAdmin):
             ctx["discardable"] = exc
             return say(
                 messages.WARNING,
-                f"{exc.version} has {exc.total} response(s), {exc.submitted} of them "
-                "submitted. It is not published, so they are test data — press "
-                "\u201cDiscard responses and load\u201d to replace the definition and "
-                "delete them, or bump the version in the file to keep them.",
+                f"There are {exc.total} response(s) against {exc.version}, "
+                f"{exc.submitted} of them submitted. It is not published, so they are "
+                "test data — press \u201cDiscard responses and load\u201d to replace the "
+                "definition and delete them, or bump the version in the file to keep them.",
             )
         except DefinitionError as exc:
             ctx["blocked"] = True
@@ -391,18 +445,26 @@ class SurveyAdmin(admin.ModelAdmin):
         if not result.created and not result.changed:
             # Not an error and not a success: nothing happened, and saying
             # "loaded" would leave an administrator wondering why nothing moved.
+            # Which advice follows depends on why — telling somebody re-loading
+            # an unpublished version to bump it sends them to fix a rule they
+            # have not hit.
             return say(
                 messages.WARNING,
-                f"{result.version} already exists with this exact content. Nothing was "
-                "written. To change a published version, bump the version in the "
-                "definition — a response records which version it answered.",
+                f"Nothing to load: the file is identical to {result.version} as it "
+                + (
+                    "already stands. It is published, so a change to it is a new version — "
+                    "bump the version in the file."
+                    if result.version.is_published
+                    else "already stands, so nothing was written. Edit the file and re-load, "
+                    "or bump the version in it to add a second version."
+                ),
             )
 
         note = (
             f"Created {result.version} as a draft. Activate it deliberately when it is ready."
             if result.created
-            else f"Updated {result.version} from this definition. Publish it when the wording "
-            "is settled; until then it can be re-loaded again."
+            else f"Re-loaded {result.version} from this definition. Publish it when the "
+            "wording is settled; until then it can be re-loaded again."
         )
         self.message_user(request, note, messages.SUCCESS)
         # Only a load that wrote something navigates, and it lands on what it
