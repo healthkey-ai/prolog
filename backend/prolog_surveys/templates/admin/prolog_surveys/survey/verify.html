@@ -1,0 +1,146 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}
+{% include "admin/prolog_surveys/survey/_buttons.css.html" %}
+{% endblock %}
+
+{% block content %}
+<div id="content-main" style="max-width:1000px">
+
+
+  <p class="help" style="margin:1rem 0">
+    Validates a definition the way <code>manage.py validate_definition</code> does, and writes
+    nothing until you press
+    {% if reload_of %}<strong>Re-load {{ reload_of.version }}</strong>. A re-load replaces this
+    version's content where it stands, and changes nothing about which version is active.
+    {% else %}<strong>Load as draft</strong>. Loading never activates: a draft is in the
+    database, validated, and invisible to respondents.{% endif %}
+  </p>
+  <p class="help">Verified against the schema in <code>{{ schema_dir }}</code>.</p>
+
+  {% if reload_of %}
+    <p class="help">
+      Re-loading <strong>{{ reload_of.survey.slug }} {{ reload_of.version }}</strong> from the file
+      it came from. Its content is replaced in place — which is allowed because it is not published
+      yet, and its responses are still test data. If it has any, you will be asked before they go.
+    </p>
+  {% elif for_survey %}
+    <p class="help">
+      Adding a version of <strong>{{ for_survey.slug }}</strong>. The theme is set to the one it
+      uses and can be changed. The definition must be for this survey — one slugged for another
+      would create a second survey rather than a version of this one.
+    </p>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if for_survey %}<input type="hidden" name="survey" value="{{ for_survey.slug }}">{% endif %}
+    {% if reload_of %}<input type="hidden" name="version" value="{{ reload_of.version }}">{% endif %}
+    {# A browser sends an uploaded file once; this says "the one already verified". #}
+    {% if uploaded %}<input type="hidden" name="uploaded" value="1">{% endif %}
+    <fieldset class="module aligned" style="margin-bottom:1.5rem">
+      <h2>The definition</h2>
+
+      <div class="form-row">
+        <label for="definition_path">A file this deployment mounts:</label>
+        <select name="definition_path" id="definition_path">
+          <option value="">—</option>
+          {% for path in definitions %}
+            <option value="{{ path }}" {% if selected.definition_path == path %}selected{% endif %}>{{ path }}</option>
+          {% endfor %}
+        </select>
+        {% if not definitions %}
+          <p class="help">Nothing in <code>PROLOG_DEFINITION_DIRS</code>. Upload one instead.</p>
+        {% endif %}
+      </div>
+
+      <div class="form-row">
+        <label for="definition_file">…or upload one:</label>
+        <input type="file" name="definition_file" id="definition_file" accept=".json,application/json">
+        {% if uploaded %}
+          <p class="help">
+            Holding <strong>{{ uploaded }}</strong>, which you just verified — press Load
+            without choosing it again. Choosing another file replaces it.
+          </p>
+        {% else %}
+          <p class="help">An upload is used in preference to the file chosen above.</p>
+        {% endif %}
+      </div>
+    </fieldset>
+
+    <fieldset class="module aligned" style="margin-bottom:1.5rem">
+      <h2>The theme <span class="help">(optional — verified beside the definition)</span></h2>
+      <div class="form-row">
+        <label for="theme_pick">A theme this deployment mounts:</label>
+        <select id="theme_pick" onchange="document.getElementById('theme_dir').value = this.value;">
+          <option value="">—</option>
+          {% for path in themes %}
+            <option value="{{ path }}" {% if selected.theme_dir == path %}selected{% endif %}>{{ path }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="theme_dir">…or a path:</label>
+        <input type="text" name="theme_dir" id="theme_dir" size="70" value="{{ selected.theme_dir }}"
+               placeholder="/data/surveys/my-survey/theme/theme.json">
+        <p class="help">
+          The theme's folder or its <code>theme.json</code> — assets are read from that folder either way.
+          It has to sit inside a directory this deployment mounts.
+        </p>
+      </div>
+    </fieldset>
+
+    {# buttons, not inputs: an input's label is its value, and these need both #}
+    <div class="submit-row">
+      <button type="submit" name="action" value="verify" class="button default">Verify</button>
+      {% if verified and not blocked %}
+        <button type="submit" name="action" value="load" class="button">
+          {% if reload_of %}Re-load {{ reload_of.version }}{% else %}Load as draft{% endif %}
+        </button>
+      {% endif %}
+      {% if discardable %}
+        {# Same form, different verb: the responses are test data until the
+           version is published, and deleting them is said out loud. #}
+        <button type="submit" name="action" value="load_discarding" class="button">
+          Discard {{ discardable.total }} response{{ discardable.total|pluralize }} and load
+        </button>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if verified %}
+    <div class="module" style="margin-top:1.5rem">
+      <h2>Result — {{ source }}</h2>
+      {% if not blocked %}
+        <p>
+          Valid. This would
+          {% if reload_of and version == reload_of.version %}
+            replace the content of <strong>{{ slug }}</strong> version <strong>{{ version }}</strong>,
+            which is {{ reload_of.status }}.
+          {% else %}
+            load <strong>{{ slug }}</strong> version <strong>{{ version }}</strong> as a draft.
+          {% endif %}
+          {% if issues or theme_issues %}Warnings below are legal, and probably not what was meant.{% endif %}
+        </p>
+      {% endif %}
+
+      {% if issues or theme_issues %}
+        <table>
+          <thead><tr><th>Level</th><th>Code</th><th>Where</th><th>What</th></tr></thead>
+          <tbody>
+            {% for issue in issues %}
+              <tr><td>{{ issue.level }}</td><td>{{ issue.code }}</td><td><code>{{ issue.path }}</code></td><td>{{ issue.message }}</td></tr>
+            {% endfor %}
+            {% for issue in theme_issues %}
+              <tr><td>{{ issue.level }}</td><td>theme: {{ issue.code }}</td><td><code>{{ issue.path }}</code></td><td>{{ issue.message }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>No errors and no warnings.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,5 @@
+{% autoescape off %}{{ t.intro }} {{ title }}
+
+{{ t.open }}: {{ link }}
+
+{{ t.footer }}{% endautoescape %}

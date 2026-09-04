@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "code": "e2e-test",
+  "name": "E2E test theme",
+  "version": "1.0.0",
+  "color_scheme": "light",
+  "colors": {
+    "light": {
+      "primary": "#4a1a7a",
+      "primary_deep": "#36125a",
+      "on_primary": "#ffffff",
+      "secondary": "#7a4fb0",
+      "accent": "#a0a2f0",
+      "focus": "#a0a2f0",
+      "ground": "#f7f5fb",
+      "surface": "#ffffff",
+      "tint": "#f1ecf8",
+      "ink": "#241b2e",
+      "ink_soft": "#5f5570",
+      "line": "#e3dcee",
+      "error": "#b42318",
+      "success": "#067647"
+    }
+  },
+  "typography": { "heading_family": "Georgia, serif", "body_family": "Georgia, serif", "heading_weight": 500, "tracking": "0.02em", "base_size_px": 17 },
+  "shape": { "radius_card": "12px", "radius_input": "12px", "radius_button": "999px", "radius_sheet": "20px" },
+  "layout": { "copy_alignment": "left", "content_max_width": "640px", "immersive_intro": true, "logo_placement": "top-right" },
+  "assets": { "logo": "logo.svg", "logo_on_primary": "logo-on-primary.svg", "favicon": "logo.svg", "decor": ["decor/blob-1.svg", "decor/blob-2.svg"] },
+  "strings": { "intro.start": { "en": "Begin the survey", "es": "Comenzar la encuesta" } }
+}

@@ -2,12 +2,21 @@
 __pycache__/
 *.py[cod]
 .venv/
+backend/staticfiles/
+.pytest_cache/
+.ruff_cache/
 
 # JavaScript
 node_modules/
 dist/
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
 
 # Local configuration
 .env
 .env.*
 !.env.example
+
+# converging-code-review ledger (local)
+.review/

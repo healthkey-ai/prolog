@@ -1,0 +1,44 @@
+import { Navigate, Outlet, Route, Routes } from "react-router";
+import { Trans, useTranslation } from "react-i18next";
+import { CompletePage } from "./pages/CompletePage";
+import { LegalPage } from "./pages/LegalPage";
+import { IntroPage } from "./pages/IntroPage";
+import { WizardPage } from "./pages/WizardPage";
+import { ThemeProvider } from "./theme/ThemeProvider";
+
+function Home() {
+  const { t } = useTranslation();
+  return (
+    <main className="mx-auto max-w-[var(--p-content-max)] px-6 py-16">
+      <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">PROlog</p>
+      <h1 className="mt-2 text-3xl">{t("app.title")}</h1>
+      <p className="mt-4 text-ink-soft">
+        <Trans i18nKey="app.hint" components={{ code: <code /> }} values={{ path: "/s/<slug>" }} />
+      </p>
+    </main>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route
+        path="/s/:slug"
+        element={
+          <ThemeProvider>
+            <Outlet />
+          </ThemeProvider>
+        }
+      >
+        <Route index element={<IntroPage />} />
+        <Route path="q/:key" element={<WizardPage />} />
+        <Route path="complete" element={<CompletePage />} />
+        {/* A deployment's own pages, inside the survey's theme and origin. */}
+        <Route path="privacy" element={<LegalPage page="privacy" />} />
+        <Route path="terms" element={<LegalPage page="terms" />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

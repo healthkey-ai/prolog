@@ -1,0 +1,65 @@
+{
+  "$schema": "../../schema/theme.schema.json",
+  "schema_version": 1,
+  "code": "contrast",
+  "name": "PROlog high contrast",
+  "version": "1.0.0",
+  "color_scheme": "light-dark",
+  "colors": {
+    "light": {
+      "primary": "#0b3d91",
+      "primary_deep": "#072a66",
+      "on_primary": "#ffffff",
+      "secondary": "#0b3d91",
+      "accent": "#0b3d91",
+      "focus": "#d97706",
+      "ground": "#ffffff",
+      "surface": "#ffffff",
+      "tint": "#e8eefb",
+      "ink": "#000000",
+      "ink_soft": "#333333",
+      "line": "#000000",
+      "error": "#a10000",
+      "success": "#005c1f"
+    },
+    "dark": {
+      "primary": "#8ab4ff",
+      "primary_deep": "#5f97ff",
+      "on_primary": "#000000",
+      "secondary": "#8ab4ff",
+      "accent": "#8ab4ff",
+      "focus": "#ffbf47",
+      "ground": "#000000",
+      "surface": "#0d0d0d",
+      "tint": "#1c2a44",
+      "ink": "#ffffff",
+      "ink_soft": "#d0d0d0",
+      "line": "#ffffff",
+      "error": "#ff8080",
+      "success": "#7fe0a0"
+    }
+  },
+  "typography": {
+    "heading_family": "system-ui, sans-serif",
+    "body_family": "system-ui, sans-serif",
+    "heading_weight": 700,
+    "body_weight": 400,
+    "tracking": "0",
+    "base_size_px": 19
+  },
+  "shape": {
+    "radius_card": "6px",
+    "radius_input": "4px",
+    "radius_button": "4px",
+    "radius_sheet": "8px",
+    "shadow": "none"
+  },
+  "layout": {
+    "copy_alignment": "left",
+    "content_max_width": "680px",
+    "immersive_intro": false,
+    "logo_placement": "top-left"
+  },
+  "assets": { "logo": "logo.svg" },
+  "motion": { "enabled": false }
+}

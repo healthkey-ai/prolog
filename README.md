@@ -1,16 +1,63 @@
 # PROlog
 
-PROlog is a survey designer and runner for patient-reported outcomes. Its Django
-application is intended to run alongside **PRomop**; React provides the designer
-and participant experience.
+PROlog is a generic, customer-agnostic survey platform for patient-reported
+outcomes. Its **runner** executes any survey described by the declarative
+definition in [`schema/survey-definition.schema.json`](schema/survey-definition.schema.json),
+styled by a runtime **theme** ([`schema/theme.schema.json`](schema/theme.schema.json)),
+and installs as a Django app inside **PRomop**, which owns the database: every
+response is bound to a PRomop `Person`, and a participant who gives an email
+gets an account. A **designer** for authoring instruments is the final phase.
 
-The evolving product requirements are in [docs/requirements.md](docs/requirements.md).
+- Requirements: [docs/requirements.md](docs/requirements.md)
+- Implementation plan: [docs/implementation-plan.md](docs/implementation-plan.md)
+- Deployment and operations: [docs/deployment.md](docs/deployment.md)
+- Installing in a host platform: [docs/integration.md](docs/integration.md)
+- Running surveys (administrator's manual): [docs/administration.md](docs/administration.md)
+- Manuals: [survey definition](docs/definitions/survey-definition.md) · [theme](docs/definitions/theme-definition.md)
+- Working agreements: [CLAUDE.md](CLAUDE.md)
+
+## Quick start
+
+```sh
+cd backend && uv sync && createdb prolog && uv run python manage.py migrate
+uv run python manage.py load_definition ../examples/sample-wellbeing.json --activate
+uv run python manage.py runserver 8000
+cd ../frontend && npm ci && npm run dev        # open http://localhost:5173/s/sample-wellbeing
+```
+
+Tests: `uv run pytest` · `npm test` · `npm run e2e` (see docs/deployment.md).
 
 ## Layout
 
-- `backend/` — Django project and reusable survey app.
-- `frontend/` — React/Vite interface.
-- `docs/` — requirements and integration decisions.
+- `schema/` — survey definition and theme contracts (JSON Schema 2020-12).
+- `themes/` — built-in themes (`default`, `contrast`).
+- `examples/` — neutral sample instrument and the shared engine test vectors.
+- `backend/` — Django project and the reusable `prolog_surveys` app.
+- `frontend/` — React/Vite runner (designer later).
+- `docs/` — requirements, plan, integration decisions.
 
-The backend intentionally has no SQLite fallback. Configure it to use the PRomop
-database, and install its app in the PRomop Django project before migrating.
+Customer instruments and brand themes are **not** part of this repository.
+A customer repository holds its definition JSON and theme directory and mounts
+them into a PROlog deployment (`PROLOG_DEFINITION_DIRS`, `PROLOG_THEME_DIRS`);
+see the plan, §5.
+
+## Python tooling
+
+The backend uses [`uv`](https://docs.astral.sh/uv/) with `backend/pyproject.toml`
+and a committed `uv.lock` instead of `venv` + `pip`. The main reason is CI
+speed: `uv sync` installs a locked environment roughly 10–100× faster than
+`pip install`, which keeps every pull-request build short. The lockfile also
+gives identical installs across developer machines, CI, and the container
+image. `pyproject.toml` remains tool-agnostic, so `pip install -e backend/`
+still works if needed.
+
+## Branches
+
+`dev` is the default working branch; `main` is release-ready. Both are
+protected: changes land only via pull requests.
+
+## Database
+
+There is no SQLite fallback. Standalone deployments use their own PostgreSQL
+database; integrated deployments use PRomop's database and apply migrations
+from the PRomop project.

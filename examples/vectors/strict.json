@@ -1,0 +1,357 @@
+{
+  "definition": "sample-strict.json",
+  "description": "Hard skip policy, min_selections (which an exclusive option alone satisfies), a 'neq' gate, the text limit on the stripped value, and the cascade fixed point: re-selecting the matrix source so no rated row survives must also hide (and invalidate) the question gated on the matrix being answered.",
+  "initial": {
+    "visible": [
+      "mood",
+      "areas"
+    ]
+  },
+  "steps": [
+    {
+      "answer": {
+        "key": "mood",
+        "value": {
+          "option": "bad"
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "areas",
+        "value": {
+          "options": [
+            "energy",
+            "sleep"
+          ]
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas",
+          "area_impact"
+        ],
+        "answers": {
+          "mood": {
+            "option": "bad"
+          },
+          "areas": {
+            "options": [
+              "sleep",
+              "energy"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "answer": {
+        "key": "area_impact",
+        "value": {
+          "ratings": {
+            "sleep": 1,
+            "energy": 2
+          }
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas",
+          "area_impact",
+          "impact_note"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "impact_note",
+        "value": {
+          "text": "tired"
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas",
+          "area_impact",
+          "impact_note"
+        ],
+        "missing": [
+          "why_not_good"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "areas",
+        "value": {
+          "options": [
+            "mobility",
+            "pain"
+          ]
+        }
+      },
+      "expect": {
+        "invalidated": [
+          "area_impact",
+          "impact_note"
+        ],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas",
+          "area_impact"
+        ],
+        "answers": {
+          "mood": {
+            "option": "bad"
+          },
+          "areas": {
+            "options": [
+              "pain",
+              "mobility"
+            ]
+          }
+        },
+        "missing": [
+          "why_not_good",
+          "area_impact"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "area_impact",
+        "value": {
+          "ratings": {
+            "pain": 3,
+            "mobility": 1
+          }
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas",
+          "area_impact",
+          "impact_note"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "areas",
+        "value": {
+          "options": [
+            "pain",
+            "sleep"
+          ]
+        }
+      },
+      "expect": {
+        "invalidated": [
+          "area_impact"
+        ],
+        "visible": [
+          "mood",
+          "why_not_good",
+          "areas",
+          "area_impact",
+          "impact_note"
+        ],
+        "answers_subset": {
+          "area_impact": {
+            "ratings": {
+              "pain": 3
+            }
+          }
+        },
+        "missing": [
+          "why_not_good",
+          "area_impact",
+          "impact_note"
+        ]
+      }
+    },
+    {
+      "answer": {
+        "key": "mood",
+        "value": {
+          "option": "good"
+        }
+      },
+      "expect": {
+        "invalidated": [],
+        "visible": [
+          "mood",
+          "areas",
+          "area_impact",
+          "impact_note"
+        ]
+      }
+    }
+  ],
+  "reject": [
+    {
+      "key": "mood",
+      "value": {
+        "skipped": true
+      },
+      "code": "skip_not_allowed"
+    },
+    {
+      "key": "areas",
+      "value": {
+        "skipped": true
+      },
+      "code": "skip_not_allowed"
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "sleep"
+        ]
+      },
+      "code": "min_selections"
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "sleep",
+          "energy",
+          "pain",
+          "mobility"
+        ]
+      },
+      "code": "max_selections"
+    },
+    {
+      "given": {
+        "areas": {
+          "options": [
+            "sleep",
+            "energy"
+          ]
+        }
+      },
+      "key": "area_impact",
+      "value": {
+        "ratings": {
+          "sleep": 1
+        }
+      },
+      "code": "rows_incomplete"
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "none",
+          "sleep"
+        ]
+      },
+      "code": "exclusive_combined"
+    },
+    {
+      "key": "why_not_good",
+      "value": {
+        "text": "\ufeffxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "code": "text_too_long"
+    },
+    {
+      "key": "why_not_good",
+      "value": {
+        "text": "\u0085xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "code": "text_too_long"
+    }
+  ],
+  "accept": [
+    {
+      "key": "why_not_good",
+      "value": {
+        "skipped": true
+      },
+      "canonical": {
+        "skipped": true
+      }
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "mobility",
+          "sleep"
+        ]
+      },
+      "canonical": {
+        "options": [
+          "sleep",
+          "mobility"
+        ]
+      }
+    },
+    {
+      "key": "areas",
+      "value": {
+        "options": [
+          "none"
+        ]
+      },
+      "canonical": {
+        "options": [
+          "none"
+        ]
+      }
+    },
+    {
+      "key": "why_not_good",
+      "value": {
+        "text": "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx "
+      },
+      "canonical": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "key": "why_not_good",
+      "value": {
+        "text": "\t\r\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\r\t"
+      },
+      "canonical": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  ],
+  "final": {
+    "missing": [
+      "area_impact",
+      "impact_note"
+    ],
+    "progress": {
+      "answered": 2,
+      "total": 4
+    }
+  }
+}

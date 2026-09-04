@@ -1,0 +1,33 @@
+{% extends "admin/change_list.html" %}
+
+{% block content %}
+  <div class="module" style="margin-bottom:1rem">
+    <h2>Where this deployment reads surveys and themes from</h2>
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>Directory</th><th>Found</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for row in mounted %}
+          <tr>
+            <td><code>{{ row.setting }}</code></td>
+            <td><code>{{ row.path }}</code></td>
+            <td>{{ row.count }}</td>
+            <td>
+              {% if row.exists is None %}<span class="help">nothing configured</span>
+              {% elif not row.exists %}<strong class="errornote" style="padding:2px 6px">directory does not exist</strong>
+              {% elif row.count == 0 %}<span class="help">nothing found under it</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="help" style="padding:0 10px 10px">
+      Each is a tree: a definition or a theme is found at any depth, so a deployment
+      running several surveys can keep each one's definition, theme and assets in a
+      folder of its own.
+    </p>
+  </div>
+  {{ block.super }}
+{% endblock %}

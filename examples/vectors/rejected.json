@@ -1,0 +1,385 @@
+{
+  "definition": "sample-wellbeing.json",
+  "description": "Answers the engine must reject (per-type validation) with the code both engines must emit — each 'reject' entry is applied to an empty response unless 'given' answers are set first.",
+  "reject": [
+    {
+      "key": "welcome",
+      "value": {
+        "text": "x"
+      },
+      "code": "info_no_answer"
+    },
+    {
+      "key": "age_band",
+      "value": {
+        "option": "teen"
+      },
+      "code": "option_unknown"
+    },
+    {
+      "key": "age_band",
+      "value": {
+        "option": "30_49",
+        "other_text": "no free text option"
+      },
+      "code": "other_text_without_free_option"
+    },
+    {
+      "key": "country",
+      "value": {
+        "option": "XX"
+      },
+      "code": "option_unknown"
+    },
+    {
+      "key": "overall",
+      "value": {
+        "value": 6
+      },
+      "code": "value_out_of_range"
+    },
+    {
+      "key": "overall",
+      "value": {
+        "value": "4"
+      },
+      "code": "value_not_integer"
+    },
+    {
+      "key": "birth_year",
+      "value": {
+        "number": 1850
+      },
+      "code": "number_too_small"
+    },
+    {
+      "key": "birth_year",
+      "value": {
+        "number": 1990.5
+      },
+      "code": "number_not_integer"
+    },
+    {
+      "key": "last_visit",
+      "value": {
+        "date": "01/05/2025"
+      },
+      "code": "date_format"
+    },
+    {
+      "key": "last_visit",
+      "value": {
+        "date": "1999-12-31"
+      },
+      "code": "date_too_early"
+    },
+    {
+      "key": "anything_else",
+      "value": {
+        "text": "   "
+      },
+      "code": "text_required"
+    },
+    {
+      "key": "contact_email",
+      "value": {
+        "provided": true
+      },
+      "code": "email_via_endpoint"
+    },
+    {
+      "key": "support_wanted",
+      "value": {
+        "options": [
+          "information",
+          "peer",
+          "practical"
+        ]
+      },
+      "code": "max_selections"
+    },
+    {
+      "key": "support_wanted",
+      "value": {
+        "options": [
+          "nothing",
+          "peer"
+        ]
+      },
+      "code": "exclusive_combined"
+    },
+    {
+      "key": "support_wanted",
+      "value": {
+        "options": []
+      },
+      "code": "min_selections"
+    },
+    {
+      "key": "support_wanted",
+      "value": {
+        "options": [
+          "peer",
+          "peer"
+        ]
+      },
+      "code": "options_duplicate"
+    },
+    {
+      "key": "outcome_ranking",
+      "value": {
+        "order": [
+          "energy",
+          "independence",
+          "side_effects"
+        ]
+      },
+      "code": "order_incomplete"
+    },
+    {
+      "key": "outcome_ranking",
+      "value": {
+        "order": [
+          "energy",
+          "independence",
+          "side_effects",
+          "fewer_visits",
+          "energy"
+        ]
+      },
+      "code": "order_duplicate"
+    },
+    {
+      "key": "daily_activities",
+      "value": {
+        "ratings": {
+          "walking": 2
+        }
+      },
+      "code": "rows_incomplete"
+    },
+    {
+      "key": "daily_activities",
+      "value": {
+        "ratings": {
+          "walking": 2,
+          "housework": 1,
+          "socialising": 9
+        }
+      },
+      "code": "rating_out_of_range"
+    },
+    {
+      "given": {
+        "has_symptoms": {
+          "option": "yes"
+        },
+        "symptoms": {
+          "options": [
+            "fatigue"
+          ]
+        }
+      },
+      "key": "symptom_impact",
+      "value": {
+        "ratings": {
+          "fatigue": 3,
+          "pain": 2
+        }
+      },
+      "code": "rows_unknown"
+    },
+    {
+      "given": {
+        "has_symptoms": {
+          "option": "yes"
+        }
+      },
+      "key": "symptoms",
+      "value": {
+        "options": [
+          "fatigue",
+          "pain",
+          "sleep",
+          "worry"
+        ]
+      },
+      "code": "max_selections"
+    },
+    {
+      "key": "last_visit",
+      "value": {
+        "date": "2100-01-01"
+      },
+      "code": "date_too_late"
+    },
+    {
+      "key": "last_visit",
+      "value": {
+        "date": "2025-02-30"
+      },
+      "code": "date_invalid"
+    },
+    {
+      "key": "last_visit",
+      "value": {
+        "date": "2025-13-01"
+      },
+      "code": "date_invalid"
+    },
+    {
+      "key": "worry_detail",
+      "value": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "code": "text_too_long"
+    },
+    {
+      "given": {
+        "has_symptoms": {
+          "option": "yes"
+        }
+      },
+      "key": "symptoms",
+      "value": {
+        "options": [
+          "other"
+        ],
+        "other_text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+      },
+      "code": "other_text_too_long"
+    },
+    {
+      "key": "last_visit",
+      "value": {
+        "date": "0000-01-01"
+      },
+      "code": "date_invalid"
+    }
+  ],
+  "accept": [
+    {
+      "key": "country",
+      "value": {
+        "option": "prefer_not_to_say"
+      }
+    },
+    {
+      "key": "country",
+      "value": {
+        "option": "FR"
+      }
+    },
+    {
+      "key": "outcome_ranking",
+      "value": {
+        "order": [
+          "energy",
+          "independence",
+          "side_effects",
+          "fewer_visits",
+          "other"
+        ],
+        "other_text": "Sleeping well"
+      },
+      "canonical": {
+        "order": [
+          "energy",
+          "independence",
+          "side_effects",
+          "fewer_visits",
+          "other"
+        ],
+        "other_text": "Sleeping well"
+      }
+    },
+    {
+      "given": {
+        "has_symptoms": {
+          "option": "yes"
+        }
+      },
+      "key": "symptoms",
+      "value": {
+        "options": [
+          "other",
+          "pain"
+        ],
+        "other_text": "  Dizziness "
+      },
+      "canonical": {
+        "options": [
+          "pain",
+          "other"
+        ],
+        "other_text": "Dizziness"
+      }
+    },
+    {
+      "given": {
+        "has_symptoms": {
+          "option": "yes"
+        }
+      },
+      "key": "symptoms",
+      "value": {
+        "options": [
+          "pain"
+        ],
+        "other_text": ""
+      },
+      "canonical": {
+        "options": [
+          "pain"
+        ]
+      }
+    },
+    {
+      "key": "birth_year",
+      "value": {
+        "number": 1990
+      },
+      "canonical": {
+        "number": 1990
+      }
+    },
+    {
+      "key": "anything_else",
+      "value": {
+        "text": "  Thanks  "
+      },
+      "canonical": {
+        "text": "Thanks"
+      }
+    },
+    {
+      "given": {
+        "has_symptoms": {
+          "option": "yes"
+        }
+      },
+      "key": "symptoms",
+      "value": {
+        "options": [
+          "other"
+        ],
+        "other_text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      },
+      "canonical": {
+        "options": [
+          "other"
+        ],
+        "other_text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      }
+    },
+    {
+      "key": "worry_detail",
+      "value": {
+        "text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      },
+      "canonical": {
+        "text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      }
+    }
+  ]
+}

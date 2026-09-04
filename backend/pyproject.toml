@@ -1,0 +1,62 @@
+[project]
+name = "prolog"
+version = "0.3.0"
+description = "PROlog — generic survey runner and designer for patient-reported outcomes"
+# PRomop's image is python:3.12-slim and the app runs in its process, so the
+# floor is PRomop's, not the newest Python. See docs/promop-migration-plan.md M0.
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    # The backend runs inside PRomop's process, so it must accept whatever
+    # PRomop pins rather than pin against it: ranges wide enough for the host to
+    # take a patch or minor release without a resolution conflict, and narrow
+    # enough to exclude the majors the app has not been run on. An exact pin
+    # here fails the moment the host bumps — which it did, 5.2.6 -> 5.2.17 and
+    # DRF 3.15.2 -> 3.17.2, within a day. See docs/promop-migration-plan.md M0.
+    "Django>=5.2.6,<6.0",
+    "djangorestframework>=3.15.2,<4",
+    "django-cors-headers>=4.4,<5",
+    "psycopg[binary]>=3.3,<4",
+    "jsonschema>=4.26,<5",
+    "pycountry>=24.6",
+    "whitenoise>=6.7,<7",
+    "gunicorn>=23",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "pytest-django>=4.11",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["prolog_surveys"]
+
+# The definition and theme schemas are the app's contract, so an installed app
+# carries them: without this the wheel validates nothing and a host fails at
+# startup on a PROLOG_SCHEMA_DIR that only exists in a source checkout. They are
+# authored at the repository root and copied in at build time, so there is one
+# source of truth and no second copy to drift.
+[tool.hatch.build.targets.wheel.force-include]
+"../schema" = "prolog_surveys/schema"
+"../themes" = "prolog_surveys/themes_builtin"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "prolog.settings_dev"
+python_files = ["test_*.py"]
+testpaths = ["prolog_surveys/tests"]
+addopts = "-q --reuse-db"
+filterwarnings = ["ignore:No directory at:UserWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "DJ"]
+ignore = ["E501"]

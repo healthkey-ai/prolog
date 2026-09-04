@@ -1,0 +1,49 @@
+{
+  "$schema": "../../schema/theme.schema.json",
+  "schema_version": 1,
+  "code": "default",
+  "name": "PROlog default",
+  "version": "1.0.0",
+  "color_scheme": "light",
+  "colors": {
+    "light": {
+      "primary": "#176b58",
+      "primary_deep": "#0f4f41",
+      "on_primary": "#ffffff",
+      "secondary": "#2f8f79",
+      "accent": "#8fd3c0",
+      "focus": "#2f8f79",
+      "ground": "#f2f7f5",
+      "surface": "#ffffff",
+      "tint": "#e7f2ee",
+      "ink": "#17212b",
+      "ink_soft": "#62726e",
+      "line": "#d8e4df",
+      "error": "#b42318",
+      "success": "#067647"
+    }
+  },
+  "typography": {
+    "heading_family": "Inter, ui-sans-serif, system-ui, sans-serif",
+    "body_family": "Inter, ui-sans-serif, system-ui, sans-serif",
+    "heading_weight": 600,
+    "body_weight": 400,
+    "tracking": "0",
+    "base_size_px": 17
+  },
+  "shape": {
+    "radius_card": "12px",
+    "radius_input": "8px",
+    "radius_button": "8px",
+    "radius_sheet": "16px",
+    "shadow": "0 2px 12px rgb(23 33 43 / 0.06)"
+  },
+  "layout": {
+    "copy_alignment": "left",
+    "content_max_width": "640px",
+    "immersive_intro": false,
+    "logo_placement": "top-left"
+  },
+  "assets": {},
+  "motion": { "enabled": true }
+}

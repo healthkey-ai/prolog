@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}
+{% include "admin/prolog_surveys/survey/_buttons.css.html" %}
+{% endblock %}
+
+{% block content %}
+<div id="content-main" style="max-width:800px">
+  <p>
+    Archiving <strong>{{ version }}</strong> stops it being offered. Nothing else is activated
+    in its place.
+  </p>
+
+  <ul>
+    <li>
+      <strong>{{ version.survey.slug }} will have no active version</strong>, so it answers
+      respondents with “not available” until one is activated.
+    </li>
+    {% if responses %}
+      <li>
+        Its {{ responses }} response{{ responses|pluralize }} stay where they are, still bound to
+        this version, and still in the exports. Anyone part-way through it cannot continue.
+      </li>
+    {% endif %}
+    {% if drafts %}
+      <li>{{ drafts }} draft version{{ drafts|pluralize }} could be activated instead.</li>
+    {% endif %}
+    <li>An archived version's content is frozen, and it cannot be re-activated.</li>
+  </ul>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="submit-row">
+      <button type="submit" class="button default">Archive this version</button>
+      <a href="{% url 'admin:prolog_surveys_survey_change' version.survey_id %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
