@@ -9,7 +9,7 @@ joined to responses.
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from typing import IO, Any
 
 from .engine.visibility import iter_questions, question_by_key, visible_keys
@@ -182,6 +182,74 @@ def translation_rows(
         )
 
 
+def translation_matrix(
+    definition: dict[str, Any], languages: Sequence[str], *, against: str | None = None
+) -> Iterator[tuple[str, ...]]:
+    """Every translatable string with all of its translations on one row.
+
+    The pair export (``translation_rows``) is for a reviewer working through
+    one language. This is for seeing the instrument whole: what each string
+    says in every language it is offered in, gaps included.
+    """
+    from .definitions.validate import walk_i18n
+
+    source_lang = against or definition.get("default_language", "en")
+    for path, text in walk_i18n(definition):
+        yield (
+            path,
+            safe_cell(str(text.get(source_lang, ""))),
+            *(safe_cell(str(text.get(lang, ""))) for lang in languages),
+        )
+
+
+def matrix_header(
+    definition: dict[str, Any], languages: Sequence[str], *, against: str | None = None
+) -> tuple[str, ...]:
+    """``path``, the source language, then each language with its review state.
+
+    The state belongs in the header because it is a property of the language,
+    not of the string: repeating "machine" on all 300 rows says it 300 times
+    and still leaves a reader guessing which column it applies to.
+    """
+    source_lang = against or definition.get("default_language", "en")
+    status = definition.get("translation_status") or {}
+    return (
+        "path",
+        source_lang,
+        *(f"{lang} ({status.get(lang, 'unset')})" for lang in languages),
+    )
+
+
+def write_translation_matrix(
+    definition: dict[str, Any],
+    out: IO[str],
+    *,
+    languages: Sequence[str],
+    against: str | None = None,
+    markdown: bool = False,
+) -> int:
+    """Write every language side by side. Returns the number of strings."""
+    header = matrix_header(definition, languages, against=against)
+    rows = list(translation_matrix(definition, languages, against=against))
+    _write_table(out, header, rows, markdown=markdown)
+    return len(rows)
+
+
+def _write_table(
+    out: IO[str], header: Sequence[str], rows: Sequence[Sequence[str]], *, markdown: bool
+) -> None:
+    if markdown:
+        out.write("| " + " | ".join(header) + " |\n")
+        out.write("|" + "|".join(["---"] * len(header)) + "|\n")
+        for row in rows:
+            # A literal pipe would end the cell and shift every column after it.
+            out.write("| " + " | ".join(c.replace("|", "\\|") for c in row) + " |\n")
+        return
+    writer = csv.writer(out)
+    writer.writerow(header)
+    writer.writerows(rows)
+
+
 def write_translations(
     definition: dict[str, Any],
     out: IO[str],
@@ -194,14 +262,5 @@ def write_translations(
     source_lang = against or definition.get("default_language", "en")
     header = ("path", "status", source_lang, language)
     rows = list(translation_rows(definition, language, against=against))
-    if markdown:
-        out.write("| " + " | ".join(header) + " |\n")
-        out.write("|" + "|".join(["---"] * len(header)) + "|\n")
-        for row in rows:
-            # A literal pipe would end the cell and shift every column after it.
-            out.write("| " + " | ".join(c.replace("|", "\\|") for c in row) + " |\n")
-    else:
-        writer = csv.writer(out)
-        writer.writerow(header)
-        writer.writerows(rows)
+    _write_table(out, header, rows, markdown=markdown)
     return len(rows)

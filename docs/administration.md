@@ -319,6 +319,21 @@ source and the target in adjacent columns and the language's
 `translation_status` on every row. CSV opens in a spreadsheet, which is what a
 reviewer will ask for; `--format md` renders in a document or a pull request.
 
+**Every language at once** — `--language all`, or a comma-separated list — puts
+each one in its own column instead: `path`, the source, then one column per
+language headed with that language's review state (`es (machine)`). That is the
+form to keep somewhere people read, because it shows the instrument whole; a
+single `--language` is the sheet a reviewer works through.
+
+**Without a database** — `--file <definition.json>` in place of the slug. The
+strings live in the file, so keeping a review sheet current is a repository job
+and does not wait for a deployment to hold the version:
+
+```sh
+manage.py export_translations --file ../content/surveys/instrument.json \
+    --language all --out translations.csv
+```
+
 **A string nobody has translated is an empty cell, not a missing row** — the
 gaps are the most useful thing in the file. Corrections come back keyed by the
 `path` column, which is stable, so you can apply them to the definition without
