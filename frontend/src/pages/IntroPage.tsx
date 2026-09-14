@@ -295,6 +295,7 @@ export function IntroPage() {
             <LanguageSwitch
               languages={def.languages}
               language={def.language}
+              onPrimary={immersive}
               onLanguage={(l) => {
                 setLanguage(l);
                 if (hasExisting && bound)
