@@ -57,7 +57,7 @@ export function Shell(p: ShellProps) {
             {p.onOverview && (
               // The same pill as the language control beside it: on a phone
               // it is the icon alone, a round target rather than a bare glyph.
-              <button type="button" onClick={p.onOverview} aria-label={t("header.overview")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 sm:px-3.5", "sm:pr-3.5")} data-testid="overview">
+              <button type="button" onClick={p.onOverview} aria-label={t("header.overview")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 sm:px-3.5")} data-testid="overview">
                 <ListIcon className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">{t("header.overview")}</span>
               </button>
