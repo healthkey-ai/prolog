@@ -214,12 +214,13 @@ export function IntroPage() {
       {immersive && <Decor />}
       {/* Spacing scales with the viewport's height rather than stepping at a
           width breakpoint, because what makes this page scroll is short
-          screens, not narrow ones. Measured against the live intro: 891px of
-          content in an 800px viewport before, and it now fits at 1080, 800 and
-          700. A 640px viewport still scrolls, and so does a phone — the
-          content is genuinely taller there, and the clamp floor keeps it
+          screens, not narrow ones. Below 800px of height — a phone, or a 768px laptop — the
+          type tightens a step as well (title, paragraph leading, padding),
+          which is what gets a ten-line intro and its Start button onto one
+          iPhone-13 screen. A 568px screen (iPhone SE) still scrolls: the
+          content is genuinely taller than that, and the floors keep it
           readable rather than squeezing it to fit. */}
-      <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-[clamp(0.65rem,2vh,1.25rem)] px-6 py-[clamp(0.75rem,3vh,2.25rem)]">
+      <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-[clamp(0.65rem,2vh,1.25rem)] px-6 py-[clamp(0.75rem,3vh,2.25rem)] [@media(max-height:800px)]:gap-[clamp(0.5rem,1.6vh,1rem)] [@media(max-height:800px)]:py-[clamp(0.5rem,2vh,1.5rem)]">
         {/* The same control as the wizard header, in the same place: top row,
             for a first visit and a return alike. For a returning respondent the
             choice is also the stored response's language, so it is written to
@@ -241,18 +242,18 @@ export function IntroPage() {
           {layout.logoPlacement === "top-right" && logo}
         </div>
         <Eyebrow onPrimary={immersive}>{t("intro.eyebrow")}</Eyebrow>
-        <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{def.title as string}</h1>
-        {def.intro && <p className={`text-[1.05rem] ${soft}`}>{def.intro as string}</p>}
+        <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem] [@media(max-height:800px)]:text-[1.85rem] [@media(max-height:800px)]:sm:text-[2.6rem]">{def.title as string}</h1>
+        {def.intro && <p className={`text-[1.05rem] [@media(max-height:800px)]:text-[1rem] [@media(max-height:800px)]:leading-[1.45] ${soft}`}>{def.intro as string}</p>}
         <div className="flex flex-wrap gap-2">
           {def.estimated_minutes && <span className={`rounded-full border px-3 py-1 text-sm ${immersive ? "border-on-primary/40" : "border-line bg-surface"}`}>{t("intro.minutes", { count: def.estimated_minutes })}</span>}
           {def.participation?.anonymous && <span className={`rounded-full border px-3 py-1 text-sm ${immersive ? "border-on-primary/40" : "border-line bg-surface"}`}>{t("intro.anonymous")}</span>}
         </div>
 
         {hasExisting ? (
-          <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink shadow-[var(--p-shadow)]" data-testid="resume-card">
+          <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink shadow-[var(--p-shadow)] [@media(max-height:800px)]:p-4" data-testid="resume-card">
             <h2 className="text-lg">{t("intro.welcomeBack")}</h2>
-            <p className="mt-1 text-ink-soft">{existing.data!.status === "submitted" ? t("intro.submitted") : t("intro.resumeHint")}</p>
-            <div className="mt-4 flex flex-wrap gap-3">
+            <p className="mt-1 text-ink-soft [@media(max-height:800px)]:leading-snug">{existing.data!.status === "submitted" ? t("intro.submitted") : t("intro.resumeHint")}</p>
+            <div className="mt-4 flex flex-wrap gap-3 [@media(max-height:800px)]:mt-3">
               <Button variant="primary" size="runner" onClick={resume} data-testid="resume">
                 {t("intro.continue")}
               </Button>
@@ -294,7 +295,7 @@ export function IntroPage() {
         ) : (
           <>
             {machineTranslated && (
-              <p className="rounded-[var(--p-radius-card)] bg-surface p-4 text-[0.95rem] text-ink" role="note" data-testid="machine-translation">
+              <p className="rounded-[var(--p-radius-card)] bg-surface p-4 text-[0.95rem] text-ink [@media(max-height:800px)]:p-3 [@media(max-height:800px)]:text-[0.9rem] [@media(max-height:800px)]:leading-snug" role="note" data-testid="machine-translation">
                 {t("intro.machineTranslation", {
                   source: languageName(def.default_language),
                   language: languageName(def.language),

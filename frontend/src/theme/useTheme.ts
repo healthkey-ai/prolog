@@ -25,7 +25,10 @@ export function useThemeLogo(onPrimary = false, screen: "header" | "intro" = "he
   const src = onPrimary ? (theme?.assets?.logo_on_primary ?? theme?.assets?.logo) : theme?.assets?.logo;
   if (!src) return null;
   const headerHeight = theme?.layout?.logo_height ?? "2rem";
-  const height = screen === "intro" ? (theme?.layout?.intro_logo_height ?? headerHeight) : headerHeight;
+  // On the intro the theme's height is a ceiling, not a demand: a short
+  // viewport (a phone) gives the logo a tenth of its height and keeps the
+  // rest for the words the respondent came for.
+  const height = screen === "intro" ? `min(${theme?.layout?.intro_logo_height ?? headerHeight}, 10dvh)` : headerHeight;
   return createElement("img", { src, alt: theme?.name ?? "", className: "w-auto shrink-0", style: { height }, "data-testid": "theme-logo" });
 }
 
