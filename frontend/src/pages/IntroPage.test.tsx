@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SLUG, click, definition, installDom, mount, response, runnerServer, t, type Mounted } from "./testHarness";
+import { RESPONSE_ID, SLUG, click, definition, findOnLanguage, installDom, mount, response, runnerServer, t, type Mounted } from "./testHarness";
 
 describe("IntroPage", () => {
   let m: Mounted | null = null;
@@ -104,7 +104,25 @@ describe("IntroPage", () => {
       await m.flush();
 
       expect(m.$("language-step")).toBeNull();
-      expect(m.$("lang-es")).not.toBeNull();
+      expect(m.$("language-switch")).not.toBeNull();
+    });
+
+    it("lets a returning respondent change language, and writes it to their response", async () => {
+      // The picker lived in the start branch, so for someone back on the intro
+      // with an unfinished response — Continue / Start again — it did not exist.
+      const server = runnerServer(multilingual(), response({ language: "en" }));
+      server.on("GET", `/surveys/${SLUG}/`, (call) => ({ body: { ...multilingual(), language: call.path.includes("lang=es") ? "es" : "en" } }));
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.$("resume-card")).not.toBeNull();
+      expect(m.$("language-switch")).not.toBeNull();
+
+      findOnLanguage(m).onLanguage("es");
+      await m.flush();
+
+      const patches = server.of("PATCH", `/responses/${RESPONSE_ID}/`);
+      expect(patches.map((c) => c.body)).toEqual([{ language: "es" }]);
+      expect(server.of("GET", "/surveys/").some((c) => c.path.includes("lang=es"))).toBe(true);
     });
 
     it("asks before the intro when the definition says first", async () => {
@@ -130,7 +148,7 @@ describe("IntroPage", () => {
       expect(m.$("language-step")).toBeNull();
       expect(m.$("start")).not.toBeNull();
       // and the inline picker is gone: the question has been asked
-      expect(m.$("lang-es")).toBeNull();
+      expect(m.$("language-switch")).toBeNull();
     });
 
     it("does not ask when the link already names a language the survey offers", async () => {

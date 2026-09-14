@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
-import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
+import { useCreateResponse, usePatchResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { OptionCard } from "@/components/ui/OptionCard";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Eyebrow } from "@/components/Eyebrow";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { languageName } from "@/i18n/languageName";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
@@ -42,6 +43,7 @@ export function IntroPage() {
   const existingId = storedResponseId(slug);
   const existing = useResponse(existingId);
   const create = useCreateResponse();
+  const patch = usePatchResponse(existingId ?? "");
   const [agreed, setAgreed] = useState(false);
   const [consentError, setConsentError] = useState(false);
   // "Start a new response" / "Start again": show the start form (with the
@@ -218,7 +220,26 @@ export function IntroPage() {
           content is genuinely taller there, and the clamp floor keeps it
           readable rather than squeezing it to fit. */}
       <main className="relative mx-auto flex max-w-[var(--p-content-max)] flex-col gap-[clamp(0.65rem,2vh,1.25rem)] px-6 py-[clamp(0.75rem,3vh,2.25rem)]">
-        <div className={`flex ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-start"}`}>{logo}</div>
+        {/* The same control as the wizard header, in the same place: top row,
+            for a first visit and a return alike. For a returning respondent the
+            choice is also the stored response's language, so it is written to
+            the response — the wizard reads it from there — and snaps back if
+            that write fails, so the screen never shows a language the survey
+            would not continue in. */}
+        <div className={`flex items-center gap-3 ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-between"}`}>
+          {layout.logoPlacement !== "top-right" && logo}
+          {def.presentation?.language_step !== "first" && (
+            <LanguageSwitch
+              languages={def.languages}
+              language={def.language}
+              onLanguage={(l) => {
+                setLanguage(l);
+                if (hasExisting && bound) patch.mutate({ language: l }, { onError: () => setLanguage(undefined) });
+              }}
+            />
+          )}
+          {layout.logoPlacement === "top-right" && logo}
+        </div>
         <Eyebrow onPrimary={immersive}>{t("intro.eyebrow")}</Eyebrow>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{def.title as string}</h1>
         {def.intro && <p className={`text-[1.05rem] ${soft}`}>{def.intro as string}</p>}
@@ -279,16 +300,6 @@ export function IntroPage() {
                   language: languageName(def.language),
                 })}
               </p>
-            )}
-            {def.languages.length > 1 && def.presentation?.language_step !== "first" && (
-              <fieldset className="border-0 p-0">
-                <legend className={`mb-3 text-sm ${soft}`}>{t("intro.language")}</legend>
-                <RadioGroup value={def.language} onValueChange={(l) => setLanguage(l)} aria-label={t("intro.language")} className="grid gap-3 sm:grid-cols-3">
-                  {def.languages.map((l) => (
-                    <OptionCard key={l} kind="radio" value={l} label={languageName(l)} checked={def.language === l} className="text-foreground" data-testid={`lang-${l}`} />
-                  ))}
-                </RadioGroup>
-              </fieldset>
             )}
             {consent && (
               <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink">
