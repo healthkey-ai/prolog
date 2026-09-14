@@ -277,14 +277,14 @@
       "properties": {
         "question": { "$ref": "#/$defs/key" },
         "op": {
-          "description": "eq/neq: single-valued answer equals / does not equal value. in: single-valued answer is one of values. contains: multi-valued answer includes value. answered: question has a non-skipped answer. `question` is a DAG edge and must point to an earlier question.",
-          "enum": ["eq", "neq", "in", "contains", "answered"]
+          "description": "eq/neq: single-valued answer equals / does not equal value. in: single-valued answer is one of values. contains / not_contains: multi-valued answer does / does not include value (both are false while the question is unanswered, so not_contains is 'answered, and without this option', never 'not yet answered'). answered: question has a non-skipped answer. `question` is a DAG edge and must point to an earlier question.",
+          "enum": ["eq", "neq", "in", "contains", "not_contains", "answered"]
         },
         "value": { "type": "string" },
         "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
       },
       "allOf": [
-        { "if": { "properties": { "op": { "enum": ["eq", "neq", "contains"] } } }, "then": { "required": ["value"] } },
+        { "if": { "properties": { "op": { "enum": ["eq", "neq", "contains", "not_contains"] } } }, "then": { "required": ["value"] } },
         { "if": { "properties": { "op": { "const": "in" } } }, "then": { "required": ["values"] } }
       ]
     },
@@ -333,6 +333,10 @@
               "description": "One label per point, min..max (used by matrix legends and labelled scales).",
               "type": "array",
               "items": { "$ref": "#/$defs/i18n" }
+            },
+            "not_applicable": {
+              "description": "matrix only: the label of a non-scored \"not applicable\" column. When present a row may be rated \"na\" instead of a number: the row counts as answered, the export writes NA, and no numeric summary includes it.",
+              "$ref": "#/$defs/i18n"
             }
           }
         },

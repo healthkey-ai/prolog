@@ -9,7 +9,9 @@ import {
   type Answers,
   type Question,
   type QuestionConfig,
+  type Rating,
   type SkipPolicy,
+  NOT_APPLICABLE,
   exclusiveKeys,
   freeTextKeys,
   questionConfig,
@@ -282,11 +284,18 @@ export function validateAnswer(
     const missing = rows.filter((r) => !(r in ratings));
     if (missing.length) fail("rows_incomplete", { missing });
     const scale = cfg.scale!;
+    // "na" is an answer, not a number: the row does not apply. Only a grid that
+    // offers the column accepts it (mirrors answers.py).
+    const allowNa = scale.not_applicable !== undefined;
     // Built in rows order (as the server returns it), so a draft rated out of
     // order compares equal to the stored value.
-    const out: Record<string, number> = {};
+    const out: Record<string, Rating> = {};
     for (const row of rows) {
       const v = ratings[row];
+      if (allowNa && v === NOT_APPLICABLE) {
+        out[row] = NOT_APPLICABLE;
+        continue;
+      }
       if (!isInt(v)) fail("rating_not_integer", { row });
       if (v < scale.min || v > scale.max) fail("rating_out_of_range", { row, min: scale.min, max: scale.max });
       out[row] = v;

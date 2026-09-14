@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from datetime import timedelta
 
 import pytest
@@ -13,13 +14,15 @@ from django.utils import timezone
 
 from prolog_surveys.definitions.loader import load_definition
 from prolog_surveys.exports import (
+    matrix_header,
     safe_cell,
+    translation_matrix,
     translation_rows,
     write_contacts,
     write_responses,
     write_translations,
 )
-from prolog_surveys.models import SurveyContact, SurveyResponse
+from prolog_surveys.models import Survey, SurveyContact, SurveyResponse
 
 
 @pytest.fixture
@@ -330,3 +333,156 @@ def test_export_translations_says_when_nothing_has_been_reviewed(db, example, ca
     )
 
     assert "machine-translated" in capsys.readouterr().err
+
+
+# --- every language on one row -----------------------------------------------
+
+
+def test_the_matrix_puts_each_language_in_its_own_column(example):
+    rows = list(translation_matrix(example, ["es", "fr"]))
+
+    assert rows[0] == (
+        "$.title",
+        example["title"]["en"],
+        example["title"]["es"],
+        example["title"]["fr"],
+    )
+    from prolog_surveys.definitions.validate import walk_i18n
+
+    assert [r[0] for r in rows] == [path for path, _ in walk_i18n(example)]
+
+
+def test_a_gap_in_one_language_does_not_shift_the_others(example):
+    del example["sections"][0]["questions"][0]["text"]["es"]
+
+    row = next(
+        r
+        for r in translation_matrix(example, ["es", "fr"])
+        if r[0] == "$.sections[0].questions[0].text"
+    )
+
+    assert row[2] == "" and row[3] == example["sections"][0]["questions"][0]["text"]["fr"]
+
+
+def test_the_review_state_is_in_the_header_not_on_every_row(example):
+    """It is a property of the language, so saying it 300 times says nothing."""
+    example["translation_status"] = {"es": "machine", "fr": "reviewed"}
+
+    header = matrix_header(example, ["es", "fr"])
+
+    assert header == ("path", "en", "es (machine)", "fr (reviewed)")
+    assert matrix_header(example, ["de"])[2] == "de (unset)"
+
+
+def test_export_translations_all_covers_every_language_but_the_source(version, tmp_path, capsys):
+    call_command(
+        "export_translations",
+        "sample-wellbeing",
+        "--language",
+        "all",
+        "--out",
+        str(tmp_path / "all.csv"),
+    )
+    rows = list(csv.reader(io.StringIO((tmp_path / "all.csv").read_text())))
+
+    assert rows[0][0] == "path" and rows[0][1] == "en"
+    assert [c.split(" ")[0] for c in rows[0][2:]] == ["es", "fr"]
+    assert len(rows) > 1
+
+
+def test_export_translations_takes_several_languages_at_once(version, tmp_path):
+    call_command(
+        "export_translations",
+        "sample-wellbeing",
+        "--language",
+        "es,fr",
+        "--out",
+        str(tmp_path / "two.csv"),
+    )
+    rows = list(csv.reader(io.StringIO((tmp_path / "two.csv").read_text())))
+
+    assert [c.split(" ")[0] for c in rows[0]] == ["path", "en", "es", "fr"]
+
+
+def test_export_translations_reads_a_definition_file_without_a_database(
+    db, example, tmp_path, capsys
+):
+    """Keeping a review sheet current is a repository job: the strings are in
+    the file, and waiting for a deployment to hold them would date the sheet."""
+    source = tmp_path / "instrument.json"
+    source.write_text(json.dumps(example), encoding="utf-8")
+
+    call_command(
+        "export_translations",
+        "--file",
+        str(source),
+        "--language",
+        "all",
+        "--out",
+        str(tmp_path / "from-file.csv"),
+    )
+    rows = list(csv.reader(io.StringIO((tmp_path / "from-file.csv").read_text())))
+
+    assert rows[0][0] == "path" and len(rows) > 1
+    assert not Survey.objects.exists(), "nothing was loaded to export it"
+    assert str(source) in capsys.readouterr().err
+
+
+def test_export_translations_wants_a_slug_or_a_file_and_not_both(db, example, tmp_path):
+    source = tmp_path / "instrument.json"
+    source.write_text(json.dumps(example), encoding="utf-8")
+
+    with pytest.raises(CommandError, match="not both"):
+        call_command(
+            "export_translations", "sample-wellbeing", "--file", str(source), "--language", "es"
+        )
+    with pytest.raises(CommandError, match="slug, or --file"):
+        call_command("export_translations", "--language", "es")
+
+
+def test_export_translations_from_a_file_still_checks_the_languages(db, example, tmp_path):
+    source = tmp_path / "instrument.json"
+    source.write_text(json.dumps(example), encoding="utf-8")
+
+    with pytest.raises(CommandError, match="does not offer 'de'"):
+        call_command("export_translations", "--file", str(source), "--language", "de")
+
+
+# --- a row that does not apply -------------------------------------------------
+
+
+def test_a_not_applicable_row_exports_as_NA_never_as_a_number(db, api_client):
+    """`NA` is distinct from SKIPPED (the whole question) and from blank (never
+    reached), and it must never sit in a numeric column as a number — an
+    analyst averaging the column would otherwise count "does not apply" as
+    better than "much better"."""
+    from pathlib import Path
+
+    from prolog_surveys.definitions.schema import read_json
+    from prolog_surveys.exports import write_responses
+
+    doc = read_json(Path(__file__).resolve().parents[3] / "examples" / "sample-followup.json")
+    version = load_definition(doc, activate=True).version
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-followup", "language": "en"}, format="json"
+    ).json()["id"]
+    fill(
+        api_client,
+        rid,
+        {
+            "treatments": {"options": ["medication"]},
+            "treatment_change": {"ratings": {"symptoms": 4, "daily_life": 3, "work": "na"}},
+            "symptoms_had": {"options": ["none"]},
+        },
+    )
+    assert api_client.post(f"/api/run/responses/{rid}/submit/", format="json").status_code == 200
+
+    out = io.StringIO()
+    assert write_responses(version, out) == 1
+    rows = list(csv.reader(io.StringIO(out.getvalue())))
+    header, row = rows[0], rows[1]
+    cell = dict(zip(header, row, strict=True))
+
+    assert cell["treatment_change.symptoms"] == "4"
+    assert cell["treatment_change.work"] == "NA"
+    assert cell["symptom_interference.fatigue"] == "", "hidden: blank, not NA"

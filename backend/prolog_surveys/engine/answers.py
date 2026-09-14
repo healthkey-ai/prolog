@@ -22,6 +22,8 @@ MAX_OTHER_TEXT = 500
 # store request-sized bodies per PUT (sec.dos-unbounded). Mirrored in
 # frontend/src/survey/answers.ts.
 MAX_TEXT_LENGTH = 10_000
+# The matrix rating that means "this row does not apply" (config.scale.not_applicable).
+NOT_APPLICABLE = "na"
 # The one whitespace set both engines strip from text and other_text: ASCII
 # space, tab, CR, LF. str.strip() and String.prototype.trim() disagree on
 # U+FEFF and U+0085, which would make accept/reject at max_length depend on
@@ -278,7 +280,13 @@ def validate_answer(
         if missing:
             _fail("rows_incomplete", missing=missing)
         scale = cfg["scale"]
+        # "na" is an answer, not a number: the row does not apply. Only a grid
+        # that offers the column accepts it, so a stray "na" cannot become a
+        # silent gap in a scale that has no such column.
+        allow_na = scale.get("not_applicable") is not None
         for row, value in ratings.items():
+            if value == NOT_APPLICABLE and allow_na:
+                continue
             if not isinstance(value, int) or isinstance(value, bool):
                 _fail("rating_not_integer", row=row)
             if not scale["min"] <= value <= scale["max"]:

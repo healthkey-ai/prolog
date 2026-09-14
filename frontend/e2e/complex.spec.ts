@@ -79,6 +79,26 @@ test.describe("complex question types", () => {
     expect(after.answers.symptoms).toEqual({ options: ["fatigue"] });
   });
 
+  test("matrix: a row that does not apply is chosen like a point and stored as 'na'", async ({ page, request }) => {
+    const id = await startAndPrefill(page, request, { ...BASE, has_symptoms: { option: "no" } });
+    await page.goto(`/s/${SLUG}/q/daily_activities`);
+    await expect(page.getByTestId("question-daily_activities")).toBeVisible();
+    await expectAccessible(page, "matrix with a not-applicable column");
+
+    await page.getByTestId("scale-daily_activities-walking-2").click();
+    await page.getByTestId("scale-daily_activities-housework-na").click();
+    await page.getByTestId("scale-daily_activities-socialising-3").click();
+    await expect(page.getByText("Saved")).toBeVisible();
+    const after = await serverAnswers(request, id);
+    expect(after.answers.daily_activities).toEqual({ ratings: { walking: 2, housework: "na", socialising: 3 } });
+
+    // choosing a point again un-chooses "not applicable": one radio group per row
+    await page.getByTestId("scale-daily_activities-housework-1").click();
+    await expect(page.getByTestId("scale-daily_activities-housework-na")).toHaveAttribute("data-state", "unchecked");
+    await expect(page.getByText("Saved")).toBeVisible();
+    expect((await serverAnswers(request, id)).answers.daily_activities).toEqual({ ratings: { walking: 2, housework: 1, socialising: 3 } });
+  });
+
   test("ranking by keyboard/buttons with an optional item", async ({ page, request }) => {
     const id = await startAndPrefill(page, request, { ...BASE, has_symptoms: { option: "no" }, daily_activities: { ratings: { walking: 1, housework: 2, socialising: 3 } } });
     await page.goto(`/s/${SLUG}/q/outcome_ranking`);

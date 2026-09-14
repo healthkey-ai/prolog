@@ -14,6 +14,7 @@ I18N_FIELDS = {
     "description",
     "min_label",
     "max_label",
+    "not_applicable",
 }
 
 

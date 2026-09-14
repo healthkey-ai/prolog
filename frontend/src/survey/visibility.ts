@@ -47,9 +47,11 @@ export function evaluateCondition(c: Condition, answers: Answers): boolean {
   if (!isAnswered(answer)) return false;
   const a = answer as AnswerValue;
   if (c.op === "answered") return true;
-  if (c.op === "contains") {
+  if (c.op === "contains" || c.op === "not_contains") {
     const items = "options" in a ? a.options : "order" in a ? a.order : [];
-    return items.includes(c.value ?? "");
+    // Both false until answered (above): not_contains means "answered, and
+    // without this option" — a gate that opens on an answer, never on silence.
+    return items.includes(c.value ?? "") === (c.op === "contains");
   }
   const s = scalar(a);
   if (s === null) return false;

@@ -410,3 +410,81 @@ def test_options_source_include_restricts_what_a_dropdown_accepts():
     # Without the restriction the whole source is still accepted.
     del q["config"]["options_source_include"]
     assert validate_answer(q, {"option": "US"}, {}, source_options=source) == {"option": "US"}
+
+
+# --- not_contains, and the row that does not apply ---------------------------
+
+
+def _followup():
+    from prolog_surveys.definitions.schema import read_json
+
+    return read_json(EXAMPLES_DIR / "sample-followup.json")
+
+
+def test_not_contains_is_false_until_the_source_is_answered():
+    """A gate that opened on silence would show a follow-up before the
+    question it follows; "does not contain" means answered, and without."""
+    from prolog_surveys.engine.visibility import evaluate_condition
+
+    cond = {"question": "treatments", "op": "not_contains", "value": "not_started"}
+    assert evaluate_condition(cond, {}) is False
+    assert evaluate_condition(cond, {"treatments": {"skipped": True}}) is False
+    assert evaluate_condition(cond, {"treatments": {"options": ["not_started"]}}) is False
+    assert evaluate_condition(cond, {"treatments": {"options": ["medication"]}}) is True
+    # ranking answers are multi-valued too
+    assert evaluate_condition(cond, {"treatments": {"order": ["medication", "therapy"]}}) is True
+
+
+def test_not_contains_needs_a_multi_valued_question():
+    from prolog_surveys.definitions.validate import validate_semantics
+
+    doc = _followup()
+    doc["sections"][0]["questions"][1]["visible_if"] = [
+        {"question": "treatments", "op": "not_contains", "value": "not_started"}
+    ]
+    assert not [i for i in validate_semantics(doc) if i.level == "error"]
+
+    # a single-valued question cannot "contain" anything
+    doc["sections"][1]["questions"][0]["type"] = "single"
+    doc["sections"][1]["questions"][1]["visible_if"] = [
+        {"question": "symptoms_had", "op": "not_contains", "value": "none"}
+    ]
+    codes = [i.code for i in validate_semantics(doc) if i.level == "error"]
+    assert "condition_op" in codes
+
+    # and the excluded value must be one of its options
+    doc = _followup()
+    doc["sections"][0]["questions"][1]["visible_if"][0]["value"] = "nonsense"
+    codes = [i.code for i in validate_semantics(doc) if i.level == "error"]
+    assert "condition_value" in codes
+
+
+def test_not_applicable_is_a_matrix_column_not_a_scale_answer():
+    from prolog_surveys.definitions.validate import validate_semantics
+
+    doc = _followup()
+    # a plain scale question with the column: refused — it is skipped instead
+    doc["sections"][0]["questions"].append(
+        {
+            "key": "mood",
+            "type": "scale",
+            "text": {"en": "Mood", "es": "Ánimo"},
+            "config": {"scale": {"min": 1, "max": 5, "not_applicable": {"en": "N/A", "es": "N/A"}}},
+        }
+    )
+    codes = [i.code for i in validate_semantics(doc) if i.level == "error"]
+    assert "scale_not_applicable" in codes
+
+
+def test_the_not_applicable_label_is_a_translatable_string():
+    """It is respondent-facing text, so it is localised like a point label and
+    it appears in the translation export — otherwise it would be the one
+    string on the screen nobody reviewed."""
+    from prolog_surveys.definitions.validate import walk_i18n
+    from prolog_surveys.engine.localize import localize
+
+    doc = _followup()
+    paths = [p for p, _ in walk_i18n(doc)]
+    assert "$.sections[0].questions[1].config.scale.not_applicable" in paths
+    es = localize(doc, "es")
+    assert es["sections"][0]["questions"][1]["config"]["scale"]["not_applicable"] == "No aplica"
