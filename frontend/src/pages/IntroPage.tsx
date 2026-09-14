@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
 import {
+  SupersededError,
   useCreateResponse,
   usePatchResponse,
   useResponse,
@@ -282,11 +283,13 @@ export function IntroPage() {
           readable rather than squeezing it to fit. */}
       <main className="relative mx-auto flex min-h-dvh max-w-[var(--p-content-max)] flex-col gap-[clamp(0.65rem,2vh,1.25rem)] px-6 py-[clamp(0.75rem,3vh,2.25rem)] [@media(max-height:800px)]:gap-[clamp(0.5rem,1.6vh,1rem)] [@media(max-height:800px)]:py-[clamp(0.5rem,2vh,1.5rem)]">
         {/* The same control as the wizard header, in the same place: top row,
-            for a first visit and a return alike. For a returning respondent the
-            choice is also the stored response's language, so it is written to
-            the response — the wizard reads it from there — and snaps back if
-            that write fails, so the screen never shows a language the survey
-            would not continue in. */}
+            for a first visit and a return alike. For a returning respondent
+            with an unfinished response the choice is also the response's
+            language, so it is written there — the wizard reads it from there —
+            and snaps back if that write fails, so the screen never shows a
+            language the survey would not continue in. A submitted response is
+            not written to (the server would refuse, and there is nothing to
+            continue): the choice stays on this screen. */}
         <div
           className={`flex items-center gap-3 ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-between"}`}
         >
@@ -295,12 +298,23 @@ export function IntroPage() {
             <LanguageSwitch
               languages={def.languages}
               language={def.language}
+              onPrimary={immersive}
               onLanguage={(l) => {
                 setLanguage(l);
-                if (hasExisting && bound)
+                if (hasExisting && bound && existing.data?.status !== "submitted")
                   patch.mutate(
                     { language: l },
-                    { onError: () => setLanguage(undefined) },
+                    {
+                      onError: (e) => {
+                        // A later switch overtook this one: its choice stands.
+                        if (e instanceof SupersededError) return;
+                        // Refused because the response can no longer be
+                        // written (submitted meanwhile, survey closed): the
+                        // screen can still be read in the chosen language.
+                        if (e instanceof ApiError && (e.status === 409 || e.status === 410)) return;
+                        setLanguage(undefined);
+                      },
+                    },
                   );
               }}
             />
