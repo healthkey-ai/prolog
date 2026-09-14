@@ -8,6 +8,8 @@ export interface RunnerDefinition extends Definition {
   legal_pages?: string[];
   /** Per-language "machine" | "reviewed"; the runner discloses a machine one to the respondent. */
   translation_status?: Record<string, "machine" | "reviewed">;
+  /** The served language is machine-translated and the deployment declared it so: say it on the intro. */
+  machine_notice?: boolean;
 }
 
 export interface ResponseSummary {

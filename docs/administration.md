@@ -289,8 +289,10 @@ most wrong, and "watch and wait" is not a phrase to guess at.
 Three ways past it, and they are not the same:
 
 - `--allow-unreviewed` on activation — **for review only**. It logs loudly and
-  the respondent is told nothing. Use it to look at a staging deployment, never
-  for a live one.
+  the respondent is told nothing: the runner shows the disclosure only when
+  the deployment has declared the language below, not on the strength of the
+  definition's `translation_status` alone. Use it to look at a staging
+  deployment, never for a live one.
 - **`PROLOG_MACHINE_LANGUAGES`** — the deployment states that respondents will
   read a machine translation of those languages and that this is intended. The
   runner then **discloses it on the intro**: the language was translated by a
