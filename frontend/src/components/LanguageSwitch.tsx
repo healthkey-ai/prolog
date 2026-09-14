@@ -33,8 +33,8 @@ export function ghostPill(onPrimary: boolean): string {
   return cn(
     "inline-flex min-h-[44px] items-center gap-2 rounded-full border pr-3 pl-3.5 text-sm font-medium shadow-none transition-[background-color,border-color] outline-none focus-visible:ring-[3px]",
     onPrimary
-      ? "border-on-primary/35 bg-on-primary/[0.06] text-on-primary hover:border-on-primary/60 hover:bg-on-primary/15 focus-visible:border-on-primary focus-visible:ring-on-primary/50 data-[state=open]:border-on-primary/60 data-[state=open]:bg-on-primary/15 [&_svg]:text-on-primary"
-      : "border-primary/25 bg-primary/5 text-primary hover:border-primary/45 hover:bg-primary/10 focus-visible:border-primary focus-visible:ring-primary/40 data-[state=open]:border-primary/45 data-[state=open]:bg-primary/10 [&_svg]:text-primary",
+      ? "border-on-primary/35 bg-on-primary/[0.06] text-on-primary hover:border-on-primary/60 hover:bg-on-primary/15 focus-visible:border-on-primary focus-visible:ring-on-primary/50 data-[state=open]:border-on-primary/60 data-[state=open]:bg-on-primary/15 [&_svg:not([class*='text-'])]:text-on-primary"
+      : "border-primary/25 bg-primary/5 text-primary hover:border-primary/45 hover:bg-primary/10 focus-visible:border-primary focus-visible:ring-primary/40 data-[state=open]:border-primary/45 data-[state=open]:bg-primary/10 [&_svg:not([class*='text-'])]:text-primary",
   );
 }
 
@@ -61,7 +61,10 @@ export function LanguageSwitch({
         aria-label={t("header.language")}
         className={cn(
           ghostPill(onPrimary),
-          "data-[size=default]:h-auto [&>svg:last-child]:opacity-70 [&>svg:last-child]:transition-transform data-[state=open]:[&>svg:last-child]:rotate-180",
+          "data-[size=default]:h-auto [&>svg:last-child]:transition-transform data-[state=open]:[&>svg:last-child]:rotate-180",
+          // On a light header the chevron sits back a little; on the brand
+          // colour it is as white as the word beside it.
+          onPrimary ? "[&>svg:last-child]:opacity-100" : "[&>svg:last-child]:opacity-70",
           className,
         )}
         data-testid="language-switch"
