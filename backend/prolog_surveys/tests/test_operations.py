@@ -1190,3 +1190,94 @@ def test_a_staff_session_alone_cannot_activate_or_archive(staff_without_permissi
 
     version.refresh_from_db()
     assert version.status == LifecycleStatus.DRAFT
+
+
+# --- basic stats -------------------------------------------------------------
+
+
+def test_basic_stats_count_started_and_submitted_and_time_completions(db, example):
+    """Respondents are started responses, completions are submitted ones, and
+    the average is start-to-submit over completions only."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from prolog_surveys.models import ResponseStatus
+    from prolog_surveys.stats import basic_stats, format_duration
+
+    version = loader.load_definition(example, activate=True).version
+    now = timezone.now()
+    for minutes in (10, 20):
+        r = make_response(version, language="en", status=ResponseStatus.SUBMITTED, submitted_at=now)
+        # auto_now_add wins on create; set the start after the fact.
+        type(r).objects.filter(pk=r.pk).update(started_at=now - timedelta(minutes=minutes))
+    make_response(version, language="en")  # started, never finished
+
+    [row] = basic_stats(version.survey)
+
+    assert row.label == "1.0"
+    assert (row.respondents, row.completions) == (3, 2)
+    assert row.completion_rate == pytest.approx(2 / 3)
+    assert row.average_response_time == timedelta(minutes=15)
+    assert format_duration(row.average_response_time) == "15 min 0 s"
+
+
+def test_basic_stats_are_per_version_with_a_total(db, example):
+    import copy
+
+    from prolog_surveys.stats import basic_stats
+
+    first = loader.load_definition(example).version
+    bumped = copy.deepcopy(example)
+    bumped["version"] = "1.1"
+    second = loader.load_definition(bumped).version
+    make_response(first, language="en")
+    make_response(second, language="en")
+    make_response(second, language="en")
+
+    rows = basic_stats(first.survey)
+
+    assert [(r.label, r.respondents, r.completions) for r in rows] == [
+        ("1.1", 2, 0),
+        ("1.0", 1, 0),
+        ("All versions", 3, 0),
+    ]
+    assert rows[-1].average_response_time is None
+    assert rows[-1].completion_rate == 0
+
+
+def test_a_survey_nobody_answered_is_one_row_of_zeros(db, example):
+    from prolog_surveys.stats import basic_stats
+
+    survey = loader.load_definition(example).version.survey
+
+    assert [
+        (r.respondents, r.completions, r.average_response_time) for r in basic_stats(survey)
+    ] == [(0, 0, None)]
+
+
+def test_format_duration_reads_like_a_person_would_say_it():
+    from datetime import timedelta
+
+    from prolog_surveys.stats import format_duration
+
+    assert format_duration(None) == "—"
+    assert format_duration(timedelta(seconds=42.6)) == "43 s"
+    assert format_duration(timedelta(minutes=12, seconds=30)) == "12 min 30 s"
+    assert format_duration(timedelta(hours=1, minutes=5, seconds=59)) == "1 h 5 min"
+
+
+def test_the_survey_page_shows_basic_stats(admin_login, db, example):
+    from prolog_surveys.models import ResponseStatus
+
+    version = loader.load_definition(example).version
+    make_response(version, language="en")
+    make_response(version, language="en", status=ResponseStatus.SUBMITTED)
+
+    body = admin_login.get(
+        f"/admin/prolog_surveys/survey/{version.survey.pk}/change/"
+    ).content.decode()
+
+    assert "Basic stats" in body
+    assert "<th>Respondents</th>" in body
+    assert "<td>2</td><td>1</td><td>50%</td>" in body
