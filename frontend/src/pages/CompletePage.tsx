@@ -21,7 +21,7 @@ export function CompletePage() {
   useDefinitionLanguage(def?.language);
   usePageTitle(def ? t("app.pageTitle", { survey: def.title as string, step: t("complete.title") }) : undefined);
   const layout = useThemeLayout();
-  const logo = useThemeLogo(layout.immersiveIntro);
+  const logo = useThemeLogo(layout.immersiveIntro, "intro");
   const immersive = layout.immersiveIntro;
   const submitted = response.data?.status === "submitted";
 

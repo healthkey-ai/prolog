@@ -104,6 +104,8 @@ Values are CSS colours; use 6-digit hex so the contrast check can run.
 | `content_max_width` | Width of the reading column, default `640px`. |
 | `immersive_intro` | `true`: intro and completion screens use `primary` as a full-bleed ground with the on-primary logo and decorative shapes; `false`: same light surface as question screens. |
 | `logo_placement` | `top-left` (default) or `top-right` on intro/completion screens. |
+| `logo_height` | CSS length (`px`, `rem`, `em`) for the logo in the question-screen header; default `2rem`. A plain symbol reads at the default; a wordmark, or a mark with text inside it, needs more. |
+| `intro_logo_height` | The same for intro and completion screens, which have room a header does not; defaults to `logo_height`. |
 
 ### 2.5 `assets`
 

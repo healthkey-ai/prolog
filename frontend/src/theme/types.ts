@@ -41,7 +41,16 @@ export interface Theme {
     google_fonts?: string[];
   };
   shape?: { radius_card?: string; radius_input?: string; radius_button?: string; radius_sheet?: string; shadow?: string };
-  layout?: { copy_alignment?: "left" | "center"; content_max_width?: string; immersive_intro?: boolean; logo_placement?: "top-left" | "top-right" };
+  layout?: {
+    copy_alignment?: "left" | "center";
+    content_max_width?: string;
+    immersive_intro?: boolean;
+    logo_placement?: "top-left" | "top-right";
+    /** CSS length for the header logo (default 2rem). */
+    logo_height?: string;
+    /** CSS length for the logo on intro and completion screens (default: logo_height). */
+    intro_logo_height?: string;
+  };
   assets?: { logo?: string; logo_on_primary?: string; favicon?: string; decor?: string[] };
   motion?: { enabled?: boolean };
   strings?: Record<string, Record<string, string>>;
