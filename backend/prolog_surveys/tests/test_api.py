@@ -95,6 +95,31 @@ def test_a_resumed_response_keeps_its_own_language_over_the_browser(api_client, 
     assert r.json()["language"] == "fr"
 
 
+def test_the_machine_notice_is_the_deployments_declaration_not_the_status(
+    db, api_client, example, settings
+):
+    """A version previewed under --allow-unreviewed says nothing to the reader;
+    one the deployment declared as machine-served (PROLOG_MACHINE_LANGUAGES)
+    is disclosed. Same definition, same status — the mode decides."""
+    from prolog_surveys.definitions.loader import load_definition
+
+    example["translation_status"]["es"] = "machine"
+    load_definition(example, activate=True, allow_unreviewed=True)
+
+    previewed = api_client.get("/api/run/surveys/sample-wellbeing/?lang=es").json()
+    assert previewed["translation_status"]["es"] == "machine"
+    assert previewed["machine_notice"] is False
+
+    settings.PROLOG_MACHINE_LANGUAGES = ["es"]
+    declared = api_client.get("/api/run/surveys/sample-wellbeing/?lang=es").json()
+    assert declared["machine_notice"] is True
+    # and never for the language a person wrote
+    assert (
+        api_client.get("/api/run/surveys/sample-wellbeing/?lang=en").json()["machine_notice"]
+        is False
+    )
+
+
 def test_definition_localized_with_etag(api_client, active):
     r = api_client.get("/api/run/surveys/sample-wellbeing/?lang=es")
     assert r.status_code == 200

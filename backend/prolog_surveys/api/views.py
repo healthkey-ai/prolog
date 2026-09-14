@@ -274,6 +274,16 @@ class SurveyDefinitionView(RunnerView):
         payload = dict(version.localized(lang))  # shared cache entry: copy before adding keys
         payload["theme_code"] = theme_code
         payload["translation_status"] = definition.get("translation_status", {})
+        # Whether the runner says "a machine wrote these words". Only when the
+        # deployment has *declared* the language as served that way
+        # (PROLOG_MACHINE_LANGUAGES): that is the mode whose condition is the
+        # disclosure. A version previewed under --allow-unreviewed is for the
+        # people reviewing it, and the docs have always said they are told
+        # nothing — the runner just had no way to know which mode it was in.
+        payload["machine_notice"] = (
+            payload["translation_status"].get(lang) == "machine"
+            and lang in conf.machine_languages()
+        )
         # Which legal pages this deployment actually mounted, so the runner can
         # decide whether to render a link. A link to a 404 is worse than no
         # link, and worst on the screen that asks for an email address.

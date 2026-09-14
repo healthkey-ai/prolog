@@ -175,11 +175,13 @@ export function IntroPage() {
   // theme: preferred over an off-site link, because the respondent is deciding
   // whether to trust the survey and should not have to leave it to find out.
   const hasLocalPrivacy = def.legal_pages?.includes("privacy") ?? false;
-  // The language being read is machine-translated and the deployment knows it
-  // (PROLOG_MACHINE_LANGUAGES). Saying so is the condition on serving it: a
-  // respondent judging a clinical question deserves to know a machine wrote
-  // the words, and which language a person did write.
-  const machineTranslated = def.translation_status?.[def.language] === "machine";
+  // The language being read is machine-translated and the deployment has
+  // declared it will serve it that way (PROLOG_MACHINE_LANGUAGES). Saying so
+  // is the condition on serving it: a respondent judging a clinical question
+  // deserves to know a machine wrote the words, and which language a person
+  // did write. The server decides — a version merely previewed for review
+  // (--allow-unreviewed) says nothing, as documented.
+  const machineTranslated = Boolean(def.machine_notice);
 
   if (askLanguageFirst) {
     return (
