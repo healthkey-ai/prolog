@@ -309,10 +309,9 @@ def test_logo_height_is_a_css_length_or_refused(tmp_path):
     """The runner puts the value straight into a style attribute, so only a
     length gets through — never an expression, never a URL."""
     import json
+    from pathlib import Path
 
     from prolog_surveys.themes.registry import validate_theme
-
-    from pathlib import Path
 
     base = json.loads(
         (Path(__file__).resolve().parents[3] / "themes" / "default" / "theme.json").read_text(
