@@ -265,12 +265,32 @@ wrote — the survey's own page, where its versions are.
 4. **Load as draft** appears only when there are no errors. It never activates:
    publishing stays the deliberate step it is on the command line.
 
+### Basic stats
+
+A survey's own page ends with **Basic stats**, the three numbers a survey's
+owner asks for from the first day of fieldwork:
+
+| | Counts |
+| --- | --- |
+| **Respondents** | responses started — everyone who opened the survey, finished or not |
+| **Completions** | responses submitted |
+| **Average response time** | the mean of *submitted − started*, over completions only; an unfinished response has no end to measure to |
+
+One row per version that has responses, and when there is more than one a
+last row for the survey as a whole. Completion rate is completions over
+respondents. The survey list carries the same two counts as
+*submitted/total*, for a glance across every survey.
+
+These are aggregates — the page never shows a response, only how many there
+are. For anything finer, [export](#getting-the-answers-out).
+
 ### What the admin deliberately does not do
 
 - **Questions are not listed.** They are the definition's, and a second view of
   them would be one nobody validated.
 - **Responses are not browsable.** They belong to the API and the exports, whose
-  audience is not an administrator's.
+  audience is not an administrator's. The [basic stats](#basic-stats) are the
+  one exception, and they are counts.
 - **Nothing a respondent's answers are interpreted against is editable** — a
   version's definition, a question's text, an option's key. A survey's effective
   window is; the loader owns the rest and rewrites it on every load.

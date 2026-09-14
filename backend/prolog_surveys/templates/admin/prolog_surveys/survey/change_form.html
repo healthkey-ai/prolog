@@ -1,4 +1,20 @@
 {% extends "admin/change_form.html" %}
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    /* The stats fieldset holds one read-only "field" that is a whole table;
+       Django would still reserve the label column for it. */
+    .prolog-stats .form-row > div > .flex-container > label { display: none; }
+    .prolog-stats .readonly { padding: 0; }
+    .prolog-stats .help { margin-left: 0; padding-left: 0; }
+    .prolog-stats-table { border-collapse: collapse; margin: 0 0 6px; }
+    .prolog-stats-table th, .prolog-stats-table td { padding: 6px 24px 6px 0; text-align: left; }
+    .prolog-stats-table thead th { font-weight: 600; }
+    .prolog-stats-table tbody th { font-weight: 400; }
+    .prolog-stats-table td { font-variant-numeric: tabular-nums; }
+    .prolog-stats-table tbody tr:last-child:not(:first-child) { border-top: 1px solid var(--hairline-color); font-weight: 600; }
+  </style>
+{% endblock %}
 {% block object-tools-items %}
   {% if original %}
     <li>

@@ -4,7 +4,9 @@ The admin manages an instrument's **inputs** — which definition file and which
 theme a survey is built from, whether they are valid, and loading them. It
 deliberately does not browse the instrument's contents or its data: the
 questions are the definition's, and the answers are the API's and the exports'.
-Reading them here would be a second, unvalidated view of both.
+Reading them here would be a second, unvalidated view of both. The one thing
+it says about responses is how many there are (``stats``), which is a count,
+not a view.
 
 Nothing a respondent's answers are interpreted against is editable here. A
 version's definition, a question's text, an option's key: all of them would let
@@ -21,7 +23,7 @@ from django.db.models import Count, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.utils.http import urlencode
 
 from . import conf
@@ -49,6 +51,7 @@ from .models import (
     SurveyInvitation,
     SurveyVersion,
 )
+from .stats import basic_stats, format_duration
 from .themes import registry as theme_registry
 from .themes import validate_theme
 from .themes.registry import _theme_roots, discover_themes, theme_directory
@@ -157,7 +160,54 @@ class SurveyAdmin(admin.ModelAdmin):
     inlines = [VersionInline]
 
     def get_readonly_fields(self, request, obj=None):
-        return self.loader_fields if obj is not None else self.readonly_fields
+        return (*self.loader_fields, "stats") if obj is not None else self.readonly_fields
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is None:
+            return fieldsets
+        # The stats are a section of their own rather than one more field in
+        # the survey's row: they are read, not set, and they are what the
+        # survey's owner comes to this page for once fieldwork has started.
+        fields = [f for f in fieldsets[0][1]["fields"] if f != "stats"]
+        return [
+            (None, {"fields": fields}),
+            ("Basic stats", {"fields": ("stats",), "classes": ("prolog-stats",)}),
+        ]
+
+    @admin.display(description="")
+    def stats(self, obj):
+        """Respondents, completions and average response time, per version.
+
+        Aggregates only. This is the one place the admin looks at responses at
+        all, and it is deliberately the counts and nothing a row could be
+        read from — the answers stay with the exports (see the module
+        docstring).
+        """
+        rows = format_html_join(
+            "",
+            '<tr><th scope="row">{}</th><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>',
+            (
+                (
+                    r.label,
+                    r.respondents,
+                    r.completions,
+                    "—" if r.completion_rate is None else f"{r.completion_rate:.0%}",
+                    format_duration(r.average_response_time),
+                )
+                for r in basic_stats(obj)
+            ),
+        )
+        return format_html(
+            '<table class="prolog-stats-table">'
+            "<thead><tr><th>Version</th><th>Respondents</th><th>Completions</th>"
+            "<th>Completion rate</th><th>Average response time</th></tr></thead>"
+            "<tbody>{}</tbody></table>"
+            '<p class="help">Respondents are responses started; completions are responses '
+            "submitted; the average is the time from starting to submitting, over "
+            "completions only.</p>",
+            rows,
+        )
 
     def get_queryset(self, request):
         return (
