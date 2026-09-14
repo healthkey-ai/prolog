@@ -21,6 +21,23 @@ import { cn } from "@/lib/utils";
  * Never a flag — Spanish and Portuguese each span several countries.
  * Renders nothing for a single-language survey.
  */
+/**
+ * The ghost pill the header controls share — transparent, a translucent
+ * border, a tint on hover and while open — in the two tones a page needs:
+ * the on-primary colour on an immersive intro, the primary colour on a light
+ * header. Exported so "All questions" can be the same pill as the language
+ * control, which is what makes the two read as one set rather than a form
+ * field beside a text link.
+ */
+export function ghostPill(onPrimary: boolean): string {
+  return cn(
+    "inline-flex min-h-[44px] items-center gap-2 rounded-full border pr-3 pl-3.5 text-sm font-medium shadow-none transition-[background-color,border-color] outline-none focus-visible:ring-[3px]",
+    onPrimary
+      ? "border-on-primary/35 bg-on-primary/[0.06] text-on-primary hover:border-on-primary/60 hover:bg-on-primary/15 focus-visible:border-on-primary focus-visible:ring-on-primary/50 data-[state=open]:border-on-primary/60 data-[state=open]:bg-on-primary/15 [&_svg]:text-on-primary"
+      : "border-primary/25 bg-primary/5 text-primary hover:border-primary/45 hover:bg-primary/10 focus-visible:border-primary focus-visible:ring-primary/40 data-[state=open]:border-primary/45 data-[state=open]:bg-primary/10 [&_svg]:text-primary",
+  );
+}
+
 export function LanguageSwitch({
   languages,
   language,
@@ -43,11 +60,8 @@ export function LanguageSwitch({
         id="language-switch"
         aria-label={t("header.language")}
         className={cn(
-          "min-h-[44px] gap-2 rounded-full border pr-3 pl-3.5 text-sm font-medium shadow-none transition-[background-color,border-color] data-[size=default]:h-auto",
-          "[&>svg:last-child]:opacity-70 [&>svg:last-child]:transition-transform data-[state=open]:[&>svg:last-child]:rotate-180",
-          onPrimary
-            ? "border-on-primary/35 bg-on-primary/[0.06] text-on-primary hover:border-on-primary/60 hover:bg-on-primary/15 focus-visible:border-on-primary focus-visible:ring-on-primary/50 data-[state=open]:border-on-primary/60 data-[state=open]:bg-on-primary/15 [&_svg]:text-on-primary"
-            : "border-border bg-transparent text-foreground hover:bg-accent data-[state=open]:bg-accent [&_svg]:text-foreground",
+          ghostPill(onPrimary),
+          "data-[size=default]:h-auto [&>svg:last-child]:opacity-70 [&>svg:last-child]:transition-transform data-[state=open]:[&>svg:last-child]:rotate-180",
           className,
         )}
         data-testid="language-switch"
