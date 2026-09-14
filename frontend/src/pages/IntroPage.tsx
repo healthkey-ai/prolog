@@ -74,7 +74,7 @@ export function IntroPage() {
   const bound = existingId && !noResume && !existing.isError && !fresh && !otherAdministration ? existingId : undefined;
   const definition = useSurveyDefinition(slug, { lang: language ?? requestedLanguage ?? (bound ? existing.data?.language : undefined), invite, responseId: bound, enabled: !existingId || !existing.isPending });
   const layout = useThemeLayout();
-  const logo = useThemeLogo(layout.immersiveIntro);
+  const logo = useThemeLogo(layout.immersiveIntro, "intro");
   useDefinitionLanguage(definition.data?.language);
   usePageTitle(definition.data?.title as string | undefined);
   useEffect(() => {

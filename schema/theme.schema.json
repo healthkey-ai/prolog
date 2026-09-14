@@ -84,7 +84,17 @@
           "description": "true = intro and completion screens use the primary color as a full-bleed ground with decorative shapes; false = same light surface as question screens.",
           "type": "boolean"
         },
-        "logo_placement": { "enum": ["top-left", "top-right"] }
+        "logo_placement": { "enum": ["top-left", "top-right"] },
+        "logo_height": {
+          "description": "CSS length for the logo in the question-screen header (default 2rem). A wordmark or a mark with text inside it needs more than a plain symbol does.",
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(px|rem|em)$"
+        },
+        "intro_logo_height": {
+          "description": "CSS length for the logo on intro and completion screens (default: logo_height). Those screens have room a header does not.",
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(px|rem|em)$"
+        }
       }
     },
     "assets": {
