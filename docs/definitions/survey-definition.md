@@ -288,6 +288,13 @@ offers skips the step either way: that question has already been answered, and
 asking again is asking twice. A resumed response is never asked — it has a
 language already.
 
+"Whatever language the browser asked for" is the `Accept-Language` header,
+read most-preferred-first for the first language the survey offers — a
+region is not a different language for this purpose, so `es-ES` and `pt-BR`
+resolve to `es` and `pt`, and so does `?lang=es-ES`. Precedence is `?lang=`
+on the link, then the response's own language when one is being resumed,
+then the browser, then the default.
+
 ---
 
 ## 7. `consent`

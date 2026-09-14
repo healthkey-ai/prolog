@@ -488,3 +488,20 @@ def test_the_not_applicable_label_is_a_translatable_string():
     assert "$.sections[0].questions[1].config.scale.not_applicable" in paths
     es = localize(doc, "es")
     assert es["sections"][0]["questions"][1]["config"]["scale"]["not_applicable"] == "No aplica"
+
+
+def test_accept_language_is_read_most_preferred_first():
+    from prolog_surveys.engine.localize import language_from_accept_header
+
+    d = {"default_language": "en", "languages": ["en", "es", "fr"]}
+    assert language_from_accept_header(d, "es-ES,es;q=0.9,en;q=0.8") == "es"
+    assert language_from_accept_header(d, "de;q=0.9, fr;q=0.8, en;q=0.7") == "fr"
+    assert language_from_accept_header(d, "en;q=0.5, fr") == "fr", "weight beats position"
+    assert language_from_accept_header(d, "*") is None
+    assert language_from_accept_header(d, "ru-RU,ru;q=0.9") is None
+    assert (
+        language_from_accept_header(d, "") is None and language_from_accept_header(d, None) is None
+    )
+    assert language_from_accept_header(d, "es;q=abc, fr") == "fr", (
+        "a bad weight is a zero, not a crash"
+    )
