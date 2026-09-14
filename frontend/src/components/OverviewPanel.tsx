@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import type { OverviewSection, QuestionStatus } from "@/survey/navigation";
-import { optionLabel, type AnswerValue, type Question, type Section } from "@/survey/types";
+import { NOT_APPLICABLE, optionLabel, type AnswerValue, type Question, type Section } from "@/survey/types";
 import { Eyebrow } from "./Eyebrow";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ function summarize(q: Question, value: AnswerValue | undefined, sourceLabels?: R
   if ("options" in value) return value.options.map((k) => labelOf(k) ?? k).join(", ");
   if ("value" in value) return String(value.value);
   if ("order" in value) return value.order.map((k, i) => `${i + 1}. ${labelOf(k) ?? k}`).join(" ");
-  if ("ratings" in value) return Object.values(value.ratings).join(" · ");
+  if ("ratings" in value) return Object.values(value.ratings).map((r) => (r === NOT_APPLICABLE ? "—" : r)).join(" · ");
   if ("text" in value) return value.text;
   if ("number" in value) return String(value.number);
   if ("date" in value) return value.date;

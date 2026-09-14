@@ -1,0 +1,90 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-followup",
+  "version": "1.0",
+  "status": "draft",
+  "default_language": "en",
+  "languages": ["en", "es"],
+  "translation_status": {"es": "reviewed"},
+  "title": {"en": "Treatment follow-up", "es": "Seguimiento del tratamiento"},
+  "intro": {
+    "en": "A short follow-up about any treatment you have had and how things have been since. Your answers are anonymous.",
+    "es": "Un breve seguimiento sobre cualquier tratamiento que haya recibido y cómo le ha ido desde entonces. Sus respuestas son anónimas."
+  },
+  "completion": {"en": "Thank you. Your answers have been recorded.", "es": "Gracias. Sus respuestas han sido registradas."},
+  "theme": "default",
+  "participation": {"anonymous": true, "resume": "browser_token"},
+  "presentation": {"mode": "question", "overview": true, "section_interstitials": false, "skip_policy": "soft", "progress": "bar"},
+  "sections": [
+    {
+      "key": "treatment",
+      "title": {"en": "Treatment", "es": "Tratamiento"},
+      "questions": [
+        {
+          "key": "treatments",
+          "type": "multi",
+          "text": {"en": "Which treatments have you had? Select all that apply.", "es": "¿Qué tratamientos ha recibido? Seleccione todos los que correspondan."},
+          "options": [
+            {"key": "not_started", "label": {"en": "I have not started treatment", "es": "No he comenzado el tratamiento"}, "exclusive": true},
+            {"key": "medication", "label": {"en": "Medication", "es": "Medicación"}},
+            {"key": "therapy", "label": {"en": "Therapy sessions", "es": "Sesiones de terapia"}},
+            {"key": "other", "label": {"en": "Other", "es": "Otro"}, "free_text": true}
+          ]
+        },
+        {
+          "key": "treatment_change",
+          "type": "matrix",
+          "text": {"en": "Thinking about your most recent treatment, how has it changed each of the following?", "es": "Pensando en su tratamiento más reciente, ¿cómo ha cambiado cada uno de los siguientes aspectos?"},
+          "visible_if": [{"question": "treatments", "op": "not_contains", "value": "not_started"}],
+          "config": {
+            "rows": [
+              {"key": "symptoms", "label": {"en": "Symptoms", "es": "Síntomas"}},
+              {"key": "daily_life", "label": {"en": "Everyday activities", "es": "Actividades cotidianas"}},
+              {"key": "work", "label": {"en": "Ability to work or study", "es": "Capacidad para trabajar o estudiar"}}
+            ],
+            "scale": {
+              "min": 1,
+              "max": 5,
+              "point_labels": [
+                {"en": "Much worse", "es": "Mucho peor"},
+                {"en": "Slightly worse", "es": "Un poco peor"},
+                {"en": "No change", "es": "Sin cambios"},
+                {"en": "Slightly better", "es": "Un poco mejor"},
+                {"en": "Much better", "es": "Mucho mejor"}
+              ],
+              "not_applicable": {"en": "Not applicable", "es": "No aplica"}
+            }
+          }
+        }
+      ]
+    },
+    {
+      "key": "symptoms",
+      "title": {"en": "Symptoms", "es": "Síntomas"},
+      "questions": [
+        {
+          "key": "symptoms_had",
+          "type": "multi",
+          "text": {"en": "Did you experience any of the following? Select all that apply.", "es": "¿Experimentó alguno de los siguientes? Seleccione todos los que correspondan."},
+          "options": [
+            {"key": "fatigue", "label": {"en": "Tiredness", "es": "Cansancio"}},
+            {"key": "pain", "label": {"en": "Pain", "es": "Dolor"}},
+            {"key": "other", "label": {"en": "Other", "es": "Otro"}, "free_text": true},
+            {"key": "none", "label": {"en": "None", "es": "Ninguno"}, "exclusive": true}
+          ]
+        },
+        {
+          "key": "symptom_interference",
+          "type": "matrix",
+          "text": {"en": "How much did each interfere with your daily life?", "es": "¿Cuánto interfirió cada uno en su vida diaria?"},
+          "visible_if": [{"question": "symptoms_had", "op": "not_contains", "value": "none"}],
+          "config": {
+            "rows_from": "symptoms_had",
+            "scale": {"min": 1, "max": 5, "min_label": {"en": "Not at all", "es": "Nada"}, "max_label": {"en": "Extremely", "es": "Extremadamente"}}
+          }
+        }
+      ]
+    }
+  ]
+}

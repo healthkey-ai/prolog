@@ -121,7 +121,7 @@ description) when a participant enters a new section
 | `multi` | Checkbox cards with counter, limits and exclusive options | `{"options": ["k1","k2"], "other_text"?: "…"}` |
 | `scale` | Segmented buttons `min..max` with endpoint or per-point labels | `{"value": 4}` |
 | `ranking` | Sortable list (drag **and** ▲▼ buttons); optional items in an "add" tray | `{"order": ["k1","k2",…], "other_text"?: "…"}` |
-| `matrix` | One card per row, a segmented scale per row, legend once | `{"ratings": {"row": 3, …}}` |
+| `matrix` | One card per row, a segmented scale per row, legend once | `{"ratings": {"row": 3, …}}` — or `"na"` for a row that does not apply, where the scale offers it |
 | `text` | Input or textarea (`multiline`) with a remaining-characters counter | `{"text": "…"}` |
 | `number` | Numeric input | `{"number": 42}` |
 | `date` | Date input | `{"date": "YYYY-MM-DD"}` |
@@ -158,6 +158,7 @@ selected/ranked, and it is limited to 500 characters.
 | `dropdown` | `options_source_priority` | Order these keys first, in this order, with the rest of the source following in its own order (`["GB", "US", "DE"]`) — a long list whose respondents cluster in a few places. **Ordering only:** every other option stays offered and stays accepted, which is what makes it different from `options_source_include`. Keys must exist in the source, and in `options_source_include` where that is set too; the runner separates the pinned group visually so the order does not read as an alphabetical list gone wrong. |
 | `scale` | `scale: {min, max, min_label?, max_label?, point_labels?}` | `min < max` and at most 101 points (`max − min ≤ 100`; the runner draws one control per point); `point_labels` (i18n each) must have exactly `max − min + 1` entries. |
 | `matrix` | `scale` (required) plus **either** `rows_from` (key of an earlier `multi` question — its selected options become the rows; an `exclusive` option never does, so a selection of only exclusive options hides the matrix) **or** `rows: [{key, label}]` (fixed rows) | Dynamic rows are labelled with the source option label, or with the participant's own `other_text` for a `free_text` option. Every current row must be rated. |
+| `matrix` | `scale.not_applicable` (i18n label) | A **non-scored "not applicable" column** after the last point. A row rated with it is stored as `"na"` rather than a number — it counts as answered, and it is *not* a point on the scale: the export writes `NA` (distinct from `SKIPPED` and from blank) and no numeric summary should include it. For a grid where one row may not apply while the others do (someone who does not work, asked how treatment changed their ability to work). Refused on a single `scale` question, which a respondent skips instead. |
 | `ranking` | `optional_items: [keys]` | Items that may be left unranked; they sit in an "Add to ranking" tray. Everything else must be ranked exactly once, so at least one item must not be optional. |
 | `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. The limit is measured on the stored value: leading/trailing ASCII whitespace (space, tab, CR, LF) is stripped by both engines; other Unicode whitespace (e.g. U+00A0, U+FEFF) is kept and counted. Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
@@ -199,10 +200,16 @@ A question or section is shown only when **all** its conditions hold (AND).
 | `eq` / `neq` | `single`, `dropdown`, `scale` | the answer equals / does not equal `value` (scale values as strings: `"4"`) |
 | `in` | `single`, `dropdown`, `scale` | the answer is one of `values` |
 | `contains` | `multi`, `ranking` | `value` is among the selected / ranked keys |
+| `not_contains` | `multi`, `ranking` | the question is answered and `value` is **not** among the selected / ranked keys |
 | `answered` | any answerable type | an answer exists that is not a skip (and not empty) |
 
 **Every operator is false while the referenced question is unanswered or
-skipped.** `value`/`values` must be option keys of the referenced question
+skipped.** That is what makes `not_contains` safe as a gate: it means
+"answered, and without this option", never "not yet answered" — a follow-up
+gated on it opens when the respondent has said something, not before. The
+usual shape is an exclusive "none of these" option: `{"op": "not_contains",
+"value": "none"}` shows the follow-up to everyone who chose at least one real
+item and to nobody who chose *None*. `value`/`values` must be option keys of the referenced question
 (or integers within the scale range); dropdowns with an `options_source`
 accept any value.
 
@@ -436,7 +443,8 @@ the matrix to the remaining rows.
 question in presentation order: `single`/`dropdown`/`scale`/`text`/`number`/
 `date` as a single column; `multi` as one `key.option` column per option
 (`1`/`0`) plus `key.other_text`; `ranking` as one column per item holding the
-position; `matrix` as one `key.row` column per row; `email` as `1`/`0`
-(provided). Skipped questions read `SKIPPED`, hidden questions are blank.
+position; `matrix` as one `key.row` column per row (a row that did not
+apply reads `NA`); `email` as `1`/`0` (provided). Skipped questions read
+`SKIPPED`, hidden questions are blank.
 Free text is neutralised against spreadsheet formula injection. Contacts are
 a separate export and are never joined.

@@ -12,6 +12,7 @@ import csv
 from collections.abc import Iterable, Iterator, Sequence
 from typing import IO, Any
 
+from .engine.answers import NOT_APPLICABLE
 from .engine.visibility import iter_questions, question_by_key, visible_keys
 from .models import SurveyContact, SurveyResponse, SurveyVersion
 
@@ -68,7 +69,11 @@ def _cell(value: dict[str, Any] | None, sub: str | None) -> str:
     if "order" in value:
         return str(value["order"].index(sub) + 1) if sub in value["order"] else ""
     if "ratings" in value:
-        return str(value["ratings"].get(sub, ""))
+        rating = value["ratings"].get(sub, "")
+        # A row that does not apply is a recorded answer, distinct from a
+        # skipped question (SKIPPED) and a row never reached (blank), and it
+        # must never sit in a numeric column as a number.
+        return "NA" if rating == NOT_APPLICABLE else str(rating)
     if "text" in value:
         return safe_cell(str(value["text"]))
     for key in ("option", "value", "number", "date"):

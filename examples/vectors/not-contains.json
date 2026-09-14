@@ -1,0 +1,74 @@
+{
+  "definition": "sample-followup.json",
+  "description": "not_contains as a gate: false until the source is answered (the matrix is hidden on arrival), false when the excluded option is chosen (an exclusive 'not started' / 'none'), true for any other answer. Switching to the excluded option invalidates what was rated. Also the non-scored 'not applicable' rating: accepted where the scale offers it, refused where it does not.",
+  "initial": {
+    "visible": ["treatments", "symptoms_had"]
+  },
+  "steps": [
+    {
+      "answer": {"key": "treatments", "value": {"options": ["not_started"]}},
+      "expect": {"invalidated": [], "visible": ["treatments", "symptoms_had"]}
+    },
+    {
+      "answer": {"key": "treatments", "value": {"options": ["medication", "therapy"]}},
+      "expect": {"invalidated": [], "visible": ["treatments", "treatment_change", "symptoms_had"]}
+    },
+    {
+      "answer": {"key": "treatment_change", "value": {"ratings": {"symptoms": 4, "daily_life": 3, "work": "na"}}},
+      "expect": {
+        "invalidated": [],
+        "answers_subset": {"treatment_change": {"ratings": {"symptoms": 4, "daily_life": 3, "work": "na"}}},
+        "missing": ["symptoms_had"]
+      }
+    },
+    {
+      "answer": {"key": "treatments", "value": {"options": ["not_started"]}},
+      "expect": {
+        "invalidated": ["treatment_change"],
+        "visible": ["treatments", "symptoms_had"],
+        "answers": {"treatments": {"options": ["not_started"]}}
+      }
+    },
+    {
+      "answer": {"key": "symptoms_had", "value": {"options": ["none"]}},
+      "expect": {"invalidated": [], "visible": ["treatments", "symptoms_had"], "missing": []}
+    },
+    {
+      "answer": {"key": "symptoms_had", "value": {"options": ["fatigue", "pain"]}},
+      "expect": {"invalidated": [], "visible": ["treatments", "symptoms_had", "symptom_interference"], "missing": ["symptom_interference"]}
+    },
+    {
+      "answer": {"key": "symptom_interference", "value": {"ratings": {"fatigue": 2, "pain": 5}}},
+      "expect": {"invalidated": [], "missing": []}
+    }
+  ],
+  "final": {"progress": {"answered": 3, "total": 3}},
+  "reject": [
+    {
+      "key": "symptom_interference",
+      "value": {"ratings": {"fatigue": "na", "pain": 5}},
+      "code": "rating_not_integer",
+      "given": {"symptoms_had": {"options": ["fatigue", "pain"]}}
+    },
+    {
+      "key": "treatment_change",
+      "value": {"ratings": {"symptoms": "n/a", "daily_life": 3, "work": 1}},
+      "code": "rating_not_integer",
+      "given": {"treatments": {"options": ["medication"]}}
+    },
+    {
+      "key": "treatment_change",
+      "value": {"ratings": {"symptoms": 1, "daily_life": 3}},
+      "code": "rows_incomplete",
+      "given": {"treatments": {"options": ["medication"]}}
+    }
+  ],
+  "accept": [
+    {
+      "key": "treatment_change",
+      "value": {"ratings": {"work": "na", "symptoms": "na", "daily_life": "na"}},
+      "given": {"treatments": {"options": ["medication"]}},
+      "canonical": {"ratings": {"symptoms": "na", "daily_life": "na", "work": "na"}}
+    }
+  ]
+}
