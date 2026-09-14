@@ -48,15 +48,17 @@ _AGGREGATES = {
 
 
 def basic_stats(survey: Survey) -> list[BasicStats]:
-    """One row per version that has responses, newest version first, and —
-    when there is more than one — a last row for the survey as a whole. A
-    survey nobody has answered yet is one row of zeros."""
+    """One row per version that has responses, the most recently loaded
+    version first, and — when there is more than one — a last row for the
+    survey as a whole. A survey nobody has answered yet is one row of zeros."""
     responses = SurveyResponse.objects.filter(survey_version__survey=survey)
+    # Ordered by when the version was loaded, not by its string: "0.10.0"
+    # sorts before "0.9.0" as text, and the loader stamps created_at anyway.
     rows = [
-        BasicStats(r.pop("survey_version__version"), **r)
-        for r in responses.values("survey_version__version")
+        BasicStats(r["survey_version__version"], **{k: r[k] for k in _AGGREGATES})
+        for r in responses.values("survey_version__version", "survey_version__created_at")
         .annotate(**_AGGREGATES)
-        .order_by("-survey_version__version")
+        .order_by("-survey_version__created_at")
     ]
     if len(rows) != 1:
         rows.append(BasicStats("All versions", **responses.aggregate(**_AGGREGATES)))
