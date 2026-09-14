@@ -275,3 +275,17 @@ export function click(el: HTMLElement | null) {
 }
 
 export const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts);
+
+/** The page's language handler, as the header Select would call it (the wizard's and the intro's alike). */
+export function findOnLanguage(m: Mounted): { onLanguage: (lang: string) => void } {
+  const trigger = m.$<HTMLButtonElement>("language-switch")!;
+  // Radix Select stores the root's onValueChange on its context, not the DOM; walk React's fiber
+  // from the trigger up to the Select root to find the prop the page passed in.
+  let fiber = Object.entries(trigger).find(([k]) => k.startsWith("__reactFiber"))?.[1] as { return?: unknown; memoizedProps?: Record<string, unknown> } | undefined;
+  while (fiber) {
+    const onValueChange = fiber.memoizedProps?.onValueChange;
+    if (typeof onValueChange === "function") return { onLanguage: (lang) => act(() => (onValueChange as (l: string) => void)(lang)) };
+    fiber = fiber.return as typeof fiber;
+  }
+  throw new Error("Select root not found");
+}
