@@ -25,7 +25,7 @@ from .. import conf, legal
 from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade, retained_when_hidden
 from ..engine.completion import missing_keys, progress
-from ..engine.localize import pick, resolve_language
+from ..engine.localize import language_from_accept_header, pick, resolve_language
 from ..engine.visibility import VisibleQuestion, question_by_key, visible_questions
 from ..identity import (
     IdentityRequest,
@@ -142,7 +142,19 @@ def _owns(request, response: SurveyResponse) -> None:
 
 
 def _language(request, definition: dict, fallback: str | None = None) -> str:
-    return resolve_language(definition, request.query_params.get("lang") or fallback)
+    """The language to serve: ``?lang=``, else the response's own, else the browser's.
+
+    A fresh visitor has said nothing but what their browser sends in
+    Accept-Language, and that is what the intro should be read in — a Spanish
+    respondent should not meet an English intro and a picker. The response's
+    recorded language outranks it: a resumed response is read in the language
+    it was started in, wherever it is resumed from.
+    """
+    explicit = request.query_params.get("lang") or fallback
+    if explicit:
+        return resolve_language(definition, explicit)
+    preferred = language_from_accept_header(definition, request.META.get("HTTP_ACCEPT_LANGUAGE"))
+    return resolve_language(definition, preferred)
 
 
 def _etag(version, lang: str, theme_code: str) -> str:
@@ -266,7 +278,18 @@ class SurveyDefinitionView(RunnerView):
         # decide whether to render a link. A link to a 404 is worse than no
         # link, and worst on the screen that asks for an email address.
         payload["legal_pages"] = sorted(legal.available())
-        return Response(payload, headers={"ETag": etag, "Cache-Control": "private, max-age=60"})
+        # The body depends on Accept-Language when no ?lang= was given: say so,
+        # so nothing between the browser and this process serves one visitor's
+        # language to the next. (private already keeps it out of shared caches;
+        # Vary keeps the browser's own cache honest across a language change.)
+        return Response(
+            payload,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "private, max-age=60",
+                "Vary": "Accept-Language",
+            },
+        )
 
 
 # BCP 47-ish language tag: language, optional script or region subtag.
