@@ -1,6 +1,5 @@
-import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RESPONSE_ID, SLUG, blur, click, deferred, definition, installDom, mount, response, runnerServer, t, type, type Mounted } from "./testHarness";
+import { RESPONSE_ID, SLUG, blur, click, deferred, definition, findOnLanguage, installDom, mount, response, runnerServer, t, type, type Mounted } from "./testHarness";
 
 const ANSWERS = `/responses/${RESPONSE_ID}/answers/`;
 const TEXT = (m: Mounted) => m.$<HTMLInputElement>("text-input")!;
@@ -265,16 +264,3 @@ describe("WizardPage", () => {
   });
 });
 
-/** The wizard's language handler, as the header Select would call it. */
-function findOnLanguage(m: Mounted): { onLanguage: (lang: string) => void } {
-  const trigger = m.$<HTMLButtonElement>("language-switch")!;
-  // Radix Select stores the root's onValueChange on its context, not the DOM; walk React's fiber
-  // from the trigger up to the Select root to find the prop the page passed in.
-  let fiber = Object.entries(trigger).find(([k]) => k.startsWith("__reactFiber"))?.[1] as { return?: unknown; memoizedProps?: Record<string, unknown> } | undefined;
-  while (fiber) {
-    const onValueChange = fiber.memoizedProps?.onValueChange;
-    if (typeof onValueChange === "function") return { onLanguage: (lang) => act(() => (onValueChange as (l: string) => void)(lang)) };
-    fiber = fiber.return as typeof fiber;
-  }
-  throw new Error("Select root not found");
-}

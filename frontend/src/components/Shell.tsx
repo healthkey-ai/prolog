@@ -2,9 +2,8 @@ import type { ReactNode } from "react";
 import { ListIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Eyebrow } from "./Eyebrow";
-import { languageName } from "@/i18n/languageName";
+import { LanguageSwitch } from "./LanguageSwitch";
 import { cn } from "@/lib/utils";
 
 export type SaveState = "idle" | "saving" | "saved" | "error" | "closed";
@@ -54,23 +53,7 @@ export function Shell(p: ShellProps) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-            {p.languages.length > 1 && (
-              <Select value={p.language} onValueChange={p.onLanguage}>
-                <SelectTrigger id="language-switch" aria-label={t("header.language")} className="min-h-[44px] bg-card px-2 sm:px-3" data-testid="language-switch">
-                  <SelectValue>
-                    <span className="sm:hidden">{p.language.toUpperCase()}</span>
-                    <span className="hidden sm:inline">{languageName(p.language)}</span>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {p.languages.map((l) => (
-                    <SelectItem key={l} value={l} className="min-h-[44px]" data-testid={`language-${l}`}>
-                      {languageName(l)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <LanguageSwitch languages={p.languages} language={p.language} onLanguage={p.onLanguage} />
             {p.onOverview && (
               <Button variant="text" size="runner-sm" onClick={p.onOverview} aria-label={t("header.overview")} className="px-2 sm:px-4">
                 <ListIcon className="size-5 sm:hidden" />

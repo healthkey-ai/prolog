@@ -78,7 +78,9 @@ test.describe("runner core", () => {
     await page.goto(`/s/${SLUG}`);
     await page.evaluate(() => localStorage.clear());
     await page.reload();
-    await page.getByTestId("lang-es").click();
+    // The same control as the wizard header, in the intro's top row.
+    await page.getByTestId("language-switch").click();
+    await page.getByRole("option", { name: "Español" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Chequeo de bienestar");
     await page.getByTestId("start").click();
     await page.getByTestId("next").click();
