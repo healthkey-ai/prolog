@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { fakeServer, installDom, mount, SLUG, definition, themedRoutes } from "@/pages/testHarness";
+import { deferred, fakeServer, installDom, mount, SLUG, definition, themedRoutes } from "@/pages/testHarness";
 
 describe("ThemeProvider decides when the pages appear", () => {
   beforeEach(() => {
@@ -25,12 +25,16 @@ describe("ThemeProvider decides when the pages appear", () => {
   it("waits for the theme before rendering, so nothing flashes unthemed", async () => {
     const server = fakeServer();
     server.on("GET", `/surveys/${SLUG}/`, { body: definition() });
-    server.on("GET", "/themes/default/", { body: { code: "default", colors: { light: {} } } });
+    // The theme is held back by hand rather than by timing, so "nothing yet"
+    // is a fact about the provider and not about how fast this machine is.
+    const theme = deferred();
+    server.on("GET", "/themes/default/", () => theme.promise);
 
     const m = mount(`/s/${SLUG}`, themedRoutes());
-    await m.flush(1);
+    await m.flush(6);
     expect(m.text()).toBe("");
 
+    theme.resolve({ body: { code: "default", colors: { light: {} } } });
     await m.flush(12);
     expect(m.text()).toContain("Example instrument");
     expect(server.of("GET", "/surveys/").length).toBeLessThanOrEqual(3);

@@ -32,7 +32,13 @@ export interface ScaleConfig {
   min_label?: Text;
   max_label?: Text;
   point_labels?: Text[];
+  /** matrix only: a non-scored "not applicable" column; a row rated `"na"` counts as answered. */
+  not_applicable?: Text;
 }
+
+/** The matrix rating that means "this row does not apply" (config.scale.not_applicable). */
+export const NOT_APPLICABLE = "na";
+export type Rating = number | typeof NOT_APPLICABLE;
 
 export interface QuestionConfig {
   max_selections?: number;
@@ -57,7 +63,7 @@ export interface QuestionConfig {
   link_identity?: boolean;
 }
 
-export type ConditionOp = "eq" | "neq" | "in" | "contains" | "answered";
+export type ConditionOp = "eq" | "neq" | "in" | "contains" | "not_contains" | "answered";
 
 export interface Condition {
   question: string;
@@ -131,7 +137,7 @@ export type OptionValue = { option: string; other_text?: string };
 export type OptionsValue = { options: string[]; other_text?: string };
 export type ScaleValue = { value: number };
 export type RankingValue = { order: string[]; other_text?: string };
-export type MatrixValue = { ratings: Record<string, number> };
+export type MatrixValue = { ratings: Record<string, Rating> };
 export type TextValue = { text: string };
 export type NumberValue = { number: number };
 export type DateValue = { date: string };

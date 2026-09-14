@@ -73,9 +73,11 @@ def evaluate_condition(condition: dict[str, Any], answers: Answers) -> bool:
     op = condition["op"]
     if op == "answered":
         return True
-    if op == "contains":
+    if op in ("contains", "not_contains"):
         items = answer.get("options") or answer.get("order") or []
-        return condition["value"] in items
+        # Both false until answered (above): not_contains means "answered, and
+        # without this option" — a gate that opens on an answer, never on silence.
+        return (condition["value"] in items) == (op == "contains")
     scalar = _scalar(answer)
     if scalar is None:
         return False

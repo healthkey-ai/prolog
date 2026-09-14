@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ScaleControl } from "./Scale";
 import type { RendererProps } from "./types";
-import { optionLabel, type AnswerValue, type MatrixValue, type Question } from "@/survey/types";
+import { optionLabel, type AnswerValue, type MatrixValue, type Question, type Rating } from "@/survey/types";
 import { matrixRows } from "@/survey/visibility";
 
 interface Props extends RendererProps<MatrixValue> {
@@ -32,21 +32,23 @@ export function Matrix({ question, value, onChange, answers, questions }: Props)
   // looks complete. Rows order is the server's canonical shape (and the one
   // survey/answers.ts produces), so a matrix rated out of order still compares
   // equal to the stored answer and Next does not re-save it.
-  const inRowOrder = (src: Record<string, number>): Record<string, number> => Object.fromEntries(rows.filter((r) => r in src).map((r) => [r, src[r]]));
+  const inRowOrder = (src: Record<string, Rating>): Record<string, Rating> => Object.fromEntries(rows.filter((r) => r in src).map((r) => [r, src[r]]));
   const ratings = inRowOrder(value?.ratings ?? {});
-  const rate = (row: string, v: number) => {
+  const rate = (row: string, v: Rating) => {
     const next = inRowOrder({ ...ratings, [row]: v });
     const complete = rows.every((r) => r in next);
     onChange({ ratings: next }, { commit: complete });
   };
   const points = Array.from({ length: scale.max - scale.min + 1 }, (_, i) => scale.min + i);
   const labels = scale.point_labels as string[] | undefined;
+  const notApplicable = scale.not_applicable as string | undefined;
+  const legend = labels ? points.map((p, i) => `${p} ${labels[i]}`).join(" · ") : `${scale.min} ${scale.min_label ?? ""} → ${scale.max} ${scale.max_label ?? ""}`;
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-soft" data-testid="matrix-legend">
         <span className="sr-only">{t("matrix.legend")}: </span>
-        {labels ? points.map((p, i) => `${p} ${labels[i]}`).join(" · ") : `${scale.min} ${scale.min_label ?? ""} → ${scale.max} ${scale.max_label ?? ""}`}
+        {notApplicable ? `${legend} · ${notApplicable}` : legend}
       </p>
       {rows.map((row) => (
         <div key={row} className="rounded-[var(--p-radius-card)] border border-border bg-card p-4" data-testid={`matrix-row-${row}`}>
@@ -59,6 +61,7 @@ export function Matrix({ question, value, onChange, answers, questions }: Props)
             value={ratings[row]}
             onSelect={(v) => rate(row, v)}
             name={`${question.key}-${row}`}
+            notApplicable={notApplicable}
             labelledBy={`${question.key}-${row}-label`}
             ariaLabel={labelOf(row)}
           />

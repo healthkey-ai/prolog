@@ -86,6 +86,7 @@ def walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
             if scale := cfg.get("scale"):
                 add(f"{qp}.config.scale.min_label", scale.get("min_label"))
                 add(f"{qp}.config.scale.max_label", scale.get("max_label"))
+                add(f"{qp}.config.scale.not_applicable", scale.get("not_applicable"))
                 for pi, p in enumerate(scale.get("point_labels", [])):
                     add(f"{qp}.config.scale.point_labels[{pi}]", p)
             for ri, r in enumerate(cfg.get("rows", [])):
@@ -362,6 +363,15 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                     f"{qp}.config.scale.point_labels",
                     "one label per scale point is required",
                 )
+            if scale.get("not_applicable") is not None and t != "matrix":
+                # A single scale question that does not apply is skipped; the
+                # column exists for a grid, where one row may not apply while
+                # the others do.
+                err(
+                    "scale_not_applicable",
+                    f"{qp}.config.scale.not_applicable",
+                    "not_applicable is a matrix column; a scale question is skipped instead",
+                )
         if t == "matrix":
             rows = cfg.get("rows") or []
             seen_rows: set[str] = set()
@@ -444,15 +454,19 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
         if t in ("text", "number", "date", "email", "info", "matrix"):
             err("condition_op", path, f"only 'answered' can test a '{t}' question")
             return
-        if op == "contains" and t not in MULTI_VALUED:
+        if op in ("contains", "not_contains") and t not in MULTI_VALUED:
             err(
                 "condition_op",
                 path,
-                f"'contains' requires a multi-valued question, '{target.key}' is {t}",
+                f"'{op}' requires a multi-valued question, '{target.key}' is {t}",
             )
             return
         if op in ("eq", "neq", "in") and t in MULTI_VALUED:
-            err("condition_op", path, f"use 'contains' for multi-valued question '{target.key}'")
+            err(
+                "condition_op",
+                path,
+                f"use 'contains' or 'not_contains' for multi-valued question '{target.key}'",
+            )
             return
         values = [cond["value"]] if "value" in cond else cond.get("values", [])
         if t == "scale":

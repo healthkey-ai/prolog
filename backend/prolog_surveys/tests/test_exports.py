@@ -446,3 +446,43 @@ def test_export_translations_from_a_file_still_checks_the_languages(db, example,
 
     with pytest.raises(CommandError, match="does not offer 'de'"):
         call_command("export_translations", "--file", str(source), "--language", "de")
+
+
+# --- a row that does not apply -------------------------------------------------
+
+
+def test_a_not_applicable_row_exports_as_NA_never_as_a_number(db, api_client):
+    """`NA` is distinct from SKIPPED (the whole question) and from blank (never
+    reached), and it must never sit in a numeric column as a number — an
+    analyst averaging the column would otherwise count "does not apply" as
+    better than "much better"."""
+    from pathlib import Path
+
+    from prolog_surveys.definitions.schema import read_json
+    from prolog_surveys.exports import write_responses
+
+    doc = read_json(Path(__file__).resolve().parents[3] / "examples" / "sample-followup.json")
+    version = load_definition(doc, activate=True).version
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-followup", "language": "en"}, format="json"
+    ).json()["id"]
+    fill(
+        api_client,
+        rid,
+        {
+            "treatments": {"options": ["medication"]},
+            "treatment_change": {"ratings": {"symptoms": 4, "daily_life": 3, "work": "na"}},
+            "symptoms_had": {"options": ["none"]},
+        },
+    )
+    assert api_client.post(f"/api/run/responses/{rid}/submit/", format="json").status_code == 200
+
+    out = io.StringIO()
+    assert write_responses(version, out) == 1
+    rows = list(csv.reader(io.StringIO(out.getvalue())))
+    header, row = rows[0], rows[1]
+    cell = dict(zip(header, row, strict=True))
+
+    assert cell["treatment_change.symptoms"] == "4"
+    assert cell["treatment_change.work"] == "NA"
+    assert cell["symptom_interference.fatigue"] == "", "hidden: blank, not NA"
