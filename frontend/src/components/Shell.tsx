@@ -3,7 +3,7 @@ import { ListIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Eyebrow } from "./Eyebrow";
-import { LanguageSwitch } from "./LanguageSwitch";
+import { LanguageSwitch, ghostPill } from "./LanguageSwitch";
 import { cn } from "@/lib/utils";
 
 export type SaveState = "idle" | "saving" | "saved" | "error" | "closed";
@@ -55,10 +55,12 @@ export function Shell(p: ShellProps) {
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <LanguageSwitch languages={p.languages} language={p.language} onLanguage={p.onLanguage} />
             {p.onOverview && (
-              <Button variant="text" size="runner-sm" onClick={p.onOverview} aria-label={t("header.overview")} className="px-2 sm:px-4">
-                <ListIcon className="size-5 sm:hidden" />
+              // The same pill as the language control beside it: on a phone
+              // it is the icon alone, a round target rather than a bare glyph.
+              <button type="button" onClick={p.onOverview} aria-label={t("header.overview")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 sm:px-3.5")} data-testid="overview">
+                <ListIcon className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">{t("header.overview")}</span>
-              </Button>
+              </button>
             )}
           </div>
         </div>

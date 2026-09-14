@@ -303,3 +303,31 @@ def test_the_definition_says_which_pages_exist(db, api_client, example, legal_di
     body = api_client.get(f"/api/run/surveys/{version.survey.slug}/").json()
 
     assert body["legal_pages"] == ["privacy"]
+
+
+def test_logo_height_is_a_css_length_or_refused(tmp_path):
+    """The runner puts the value straight into a style attribute, so only a
+    length gets through — never an expression, never a URL."""
+    import json
+    from pathlib import Path
+
+    from prolog_surveys.themes.registry import validate_theme
+
+    base = json.loads(
+        (Path(__file__).resolve().parents[3] / "themes" / "default" / "theme.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    def theme(layout):
+        d = tmp_path / "t"
+        d.mkdir(exist_ok=True)
+        doc = {**base, "layout": {**base.get("layout", {}), **layout}}
+        (d / "theme.json").write_text(json.dumps(doc), encoding="utf-8")
+        _, issues = validate_theme(d)
+        return [i for i in issues if i.level == "error" and i.code != "asset"]
+
+    assert theme({"logo_height": "56px", "intro_logo_height": "6rem"}) == []
+    assert theme({"logo_height": "calc(100% - 1px)"})
+    assert theme({"intro_logo_height": "url(x)"})
+    assert theme({"logo_height": "56"})

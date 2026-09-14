@@ -125,6 +125,38 @@ describe("IntroPage", () => {
       expect(server.of("GET", "/surveys/").some((c) => c.path.includes("lang=es"))).toBe(true);
     });
 
+    it("changes the language of a submitted response's intro without writing to it", async () => {
+      // The server refuses a PATCH on a submitted response (409): the choice
+      // stays local, and the intro is read in the new language all the same.
+      const server = runnerServer(multilingual(), response({ language: "en", status: "submitted" }));
+      server.on("GET", `/surveys/${SLUG}/`, (call) => ({ body: { ...multilingual(), language: call.path.includes("lang=es") ? "es" : "en" } }));
+      server.on("PATCH", `/responses/${RESPONSE_ID}/`, { status: 409, body: { detail: "submitted" } });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.$("resume-card")).not.toBeNull();
+
+      findOnLanguage(m).onLanguage("es");
+      await m.flush();
+
+      expect(server.of("PATCH", `/responses/${RESPONSE_ID}/`)).toEqual([]);
+      const gets = server.of("GET", "/surveys/").map((c) => c.path);
+      expect(gets.at(-1)).toContain("lang=es");
+    });
+
+    it("keeps the later of two quick switches when the first is superseded", async () => {
+      const server = runnerServer(multilingual(), response({ language: "en" }));
+      server.on("GET", `/surveys/${SLUG}/`, (call) => ({ body: { ...multilingual(), language: call.path.match(/lang=(\w+)/)?.[1] ?? "en" } }));
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      findOnLanguage(m).onLanguage("es");
+      findOnLanguage(m).onLanguage("pt");
+      await m.flush();
+
+      const gets = server.of("GET", "/surveys/").map((c) => c.path);
+      expect(gets.at(-1)).toContain("lang=pt");
+    });
+
     it("asks before the intro when the definition says first", async () => {
       runnerServer(multilingual("first"));
       localStorage.clear();
@@ -183,13 +215,17 @@ describe("IntroPage", () => {
 
 
   describe("machine translation disclosure", () => {
-    it("tells a respondent when the language they are reading was machine-translated", async () => {
+    it("tells a respondent when the deployment serves them a machine translation", async () => {
+      // The server says so (machine_notice), which it does only when the
+      // deployment declared the language as machine-served — not for a
+      // version somebody is previewing under --allow-unreviewed.
       runnerServer(
         definition({
           language: "es",
           languages: ["en", "es"],
           default_language: "en",
           translation_status: { es: "machine" },
+          machine_notice: true,
         }),
       );
       localStorage.clear();
@@ -223,6 +259,24 @@ describe("IntroPage", () => {
       runnerServer(
         definition({
           language: "en",
+          languages: ["en", "es"],
+          default_language: "en",
+          translation_status: { es: "machine" },
+        }),
+      );
+      localStorage.clear();
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+
+      expect(m.$("machine-translation")).toBeNull();
+    });
+
+    it("says nothing about a machine translation the deployment is only previewing", async () => {
+      // translation_status alone is not the trigger: a reviewer on staging
+      // reads machine text under --allow-unreviewed and is told nothing.
+      runnerServer(
+        definition({
+          language: "es",
           languages: ["en", "es"],
           default_language: "en",
           translation_status: { es: "machine" },
