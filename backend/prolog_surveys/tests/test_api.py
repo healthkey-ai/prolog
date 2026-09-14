@@ -46,6 +46,55 @@ def put_answer(api_client, response_id, key, value):
 # --- definition ---------------------------------------------------------------
 
 
+def test_a_fresh_visitor_is_served_the_language_their_browser_asks_for(api_client, active):
+    """No ?lang= and no response yet: the only thing said about the language is
+    Accept-Language, and a Spanish respondent should not meet an English intro."""
+    r = api_client.get(
+        "/api/run/surveys/sample-wellbeing/", HTTP_ACCEPT_LANGUAGE="es-ES,es;q=0.9,en;q=0.8"
+    )
+    assert r.json()["language"] == "es"
+    assert r.json()["title"] == "Chequeo de bienestar"
+    assert "Accept-Language" in r.headers["Vary"]
+
+    # a language the survey does not offer falls through to one it does
+    r = api_client.get(
+        "/api/run/surveys/sample-wellbeing/", HTTP_ACCEPT_LANGUAGE="ru-RU,ru;q=0.9,fr-CA;q=0.7"
+    )
+    assert r.json()["language"] == "fr"
+
+    # nothing offered at all: the default
+    r = api_client.get("/api/run/surveys/sample-wellbeing/", HTTP_ACCEPT_LANGUAGE="ru-RU,ru;q=0.9")
+    assert r.json()["language"] == "en"
+
+    # ?lang= outranks the browser
+    r = api_client.get("/api/run/surveys/sample-wellbeing/?lang=fr", HTTP_ACCEPT_LANGUAGE="es-ES")
+    assert r.json()["language"] == "fr"
+
+
+def test_a_regional_tag_resolves_to_the_language_the_survey_offers(api_client, active):
+    """es-ES and pt-BR are what real browsers send; the survey offers es and pt."""
+    assert (
+        api_client.get("/api/run/surveys/sample-wellbeing/?lang=es-ES").json()["language"] == "es"
+    )
+    assert (
+        api_client.get("/api/run/surveys/sample-wellbeing/?lang=es-419").json()["language"] == "es"
+    )
+    assert (
+        api_client.get("/api/run/surveys/sample-wellbeing/?lang=de-DE").json()["language"] == "en"
+    )
+
+
+def test_a_resumed_response_keeps_its_own_language_over_the_browser(api_client, active):
+    """Started in French, resumed from a Spanish browser: still French."""
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "fr"}, format="json"
+    ).json()["id"]
+    r = api_client.get(
+        f"/api/run/surveys/sample-wellbeing/?response={rid}", HTTP_ACCEPT_LANGUAGE="es-ES"
+    )
+    assert r.json()["language"] == "fr"
+
+
 def test_definition_localized_with_etag(api_client, active):
     r = api_client.get("/api/run/surveys/sample-wellbeing/?lang=es")
     assert r.status_code == 200
