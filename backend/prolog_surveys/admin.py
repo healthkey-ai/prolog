@@ -49,6 +49,7 @@ from .models import (
     SurveyConsent,
     SurveyContact,
     SurveyInvitation,
+    SurveyLinkedContact,
     SurveyVersion,
 )
 from .stats import basic_stats, format_duration
@@ -895,8 +896,26 @@ class SurveyAdmin(admin.ModelAdmin):
 
 @admin.register(SurveyContact)
 class ContactAdmin(ReadOnlyMixin, admin.ModelAdmin):
-    list_display = ("id", "survey_version", "language", "captured_on")
+    list_display = ("id", "survey_version", "language", "captured_on", "permissions")
     # The address is intentionally not shown in list views.
+
+    @admin.display(description="consents")
+    def permissions(self, obj: SurveyContact) -> str:
+        """What the address may be used for, at a glance: given, or withdrawn and when."""
+        return ", ".join(
+            f"{c['key']} (withdrawn {c['withdrawn_on']})" if c.get("withdrawn_on") else c["key"]
+            for c in obj.consents
+        )
+
+
+@admin.register(SurveyLinkedContact)
+class LinkedContactAdmin(ReadOnlyMixin, admin.ModelAdmin):
+    list_display = ("response", "language", "captured_at", "permissions")
+    # The address is intentionally not shown in list views.
+
+    @admin.display(description="consents")
+    def permissions(self, obj: SurveyLinkedContact) -> str:
+        return ContactAdmin.permissions(self, obj)  # type: ignore[arg-type]
 
 
 @admin.register(SurveyConsent)

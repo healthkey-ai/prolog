@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
-import { SupersededError, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
+import { SupersededError, capturedValue, useContact, useIdentity, useRemoveContact, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
 import { DefinitionError } from "@/components/DefinitionError";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { issueMessages } from "@/i18n/issues";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
-import { AnswerError, implicitAnswer, validateAnswer } from "@/survey/answers";
+import { AnswerError, implicitAnswer, sameAnswer, validateAnswer } from "@/survey/answers";
 import { missingKeys } from "@/survey/completion";
 import { firstOpenKey, hasStoredAnswer, overview, position, progressFraction, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue, type Question } from "@/survey/types";
@@ -52,7 +52,7 @@ export function WizardPage() {
   const submit = useSubmitResponse(id ?? "");
   const contact = useContact(id ?? "");
   const identity = useIdentity(id ?? "");
-  const logo = useThemeLogo();
+  const removeContact = useRemoveContact(id ?? "");  const logo = useThemeLogo();
 
   const [draft, setDraft] = useState<AnswerValue | undefined>(undefined);
   const [draftKey, setDraftKey] = useState<string | null>(null);
@@ -265,7 +265,7 @@ export function WizardPage() {
     if (!opts?.commit) return;
     if (value !== undefined) {
       // Blur on an unchanged text/number/date field must not PUT the same value again.
-      const unchanged = JSON.stringify(value) === JSON.stringify(answers[key]);
+      const unchanged = sameAnswer(value, answers[key]);
       void (unchanged ? Promise.resolve<SaveOutcome>("saved") : commit(value)).then((outcome) => {
         if (outcome === "saved" && opts.advance) void advance(after(value));
       });
@@ -374,7 +374,7 @@ export function WizardPage() {
     }
     const stored = cleared ? undefined : answers[key];
     if (hasDraft && draftValue !== undefined) {
-      if (JSON.stringify(stored) !== JSON.stringify(draftValue)) {
+      if (!sameAnswer(stored, draftValue)) {
         if ((await commit(draftValue)) !== "saved") return;
       } else {
         // Stored, possibly only optimistically: its PUT must land before a
@@ -487,11 +487,19 @@ export function WizardPage() {
             questionTotal={pos.questionTotal}
             answers={answers}
             questions={questions}
-            onSubmitEmail={async (email) => {
-              // Identity capture goes to the host's identity service; contact capture is stored unlinked.
-              await (question.config?.link_identity ? identity.mutateAsync({ email, key }) : contact.mutateAsync({ email, key }));
+            onSubmitEmail={async (email, consents, receipt) => {
+              // Identity capture goes to the host's identity service; contact capture (unlinked or linked) to the contact endpoint.
+              const input = { email, consents, key, receipt };
+              const result = question.config?.link_identity ? await identity.mutateAsync(input) : await contact.mutateAsync(input);
               setDraftKey(key);
-              setDraft({ provided: true });
+              setDraft(capturedValue(consents));
+              flashSaved();
+              return result?.receipt;
+            }}
+            onRemoveEmail={async (receipt) => {
+              await removeContact.mutateAsync({ receipt, key });
+              setDraftKey(key);
+              setDraft({ provided: false });
               flashSaved();
             }}
           />

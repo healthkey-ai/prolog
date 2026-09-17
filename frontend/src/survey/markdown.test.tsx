@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { renderMarkdown } from "./markdown";
+import { MemoryRouter } from "react-router";
+import { renderInline, renderMarkdown } from "./markdown";
 
 const html = (source: string) => renderToStaticMarkup(<>{renderMarkdown(source)}</>);
 
@@ -79,4 +80,38 @@ describe("renderMarkdown", () => {
     expect(out).toContain("one | two");
   });
 
+});
+
+describe("footnotes", () => {
+  it("links a citation to its note and the note back to the citation", () => {
+    const out = html("Data minimisation[^1] applies.\n\n## Notes\n\n[^1]: Personal data should be limited to what is necessary.\n");
+    expect(out).toContain('<sup class="ml-0.5 text-[0.75em] leading-none"><a href="#fn-1" id="fnref-1"');
+    expect(out).toContain('>1</a></sup>');
+    expect(out).toContain('<li id="fn-1"');
+    expect(out).toContain("limited to what is necessary");
+    expect(out).toContain('href="#fnref-1"');
+    expect(out).toContain('aria-label="Back to note 1"');
+  });
+
+  it("cites a note twice without duplicating its id, and joins a wrapped note", () => {
+    const out = html("First[^a] and again[^a].\n\n[^a]: A long note that\nwraps onto a second line.\n");
+    expect(out.match(/data-testid="footnote-ref-a"/g)?.length).toBe(2);
+    expect(out.match(/id="fnref-a"/g)?.length).toBe(1);
+    expect(out).toContain("A long note that wraps onto a second line.");
+  });
+
+  it("leaves a lone caret bracket as text", () => {
+    expect(html("Not a note [^] here.\n")).toContain("Not a note [^] here.");
+  });
+});
+
+describe("legal page links", () => {
+  it("links to a mounted legal page by key, and leaves an unmounted key as text", () => {
+    const opts = { legalPages: { keys: ["privacy"], href: (k: string) => `/s/x/${k}` } };
+    const out = renderToStaticMarkup(<MemoryRouter>{renderInline("Read [the notice](privacy) and [terms](terms).", "c", opts)}</MemoryRouter>);
+    expect(out).toContain('href="/s/x/privacy"');
+    expect(out).toContain(">the notice</a>");
+    expect(out).not.toContain("/s/x/terms");
+    expect(out).toContain("terms");
+  });
 });

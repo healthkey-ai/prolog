@@ -230,7 +230,25 @@
             "es": "Deje su correo electrónico si lo desea. Se guarda por separado de sus respuestas y nunca se vincula a ellas.",
             "fr": "Laissez votre e-mail si vous le souhaitez. Il est conservé séparément de vos réponses et n'y est jamais associé."
           },
-          "config": { "store_separately": true }
+          "config": {
+            "store_separately": true,
+            "consents": [
+              {
+                "key": "contact",
+                "text": { "en": "You may contact me about future surveys.", "es": "Pueden contactarme sobre futuras encuestas.", "fr": "Vous pouvez me contacter au sujet de prochains questionnaires." }
+              },
+              {
+                "key": "reuse",
+                "text": { "en": "You may use my answers in future research.", "es": "Pueden usar mis respuestas en investigaciones futuras.", "fr": "Vous pouvez utiliser mes réponses dans de futures recherches." }
+              }
+            ],
+            "consents_label": { "en": "Please tick any boxes you agree to:", "es": "Marque las casillas con las que esté de acuerdo:", "fr": "Cochez les cases avec lesquelles vous êtes d'accord :" },
+            "consents_note": {
+              "en": "You can withdraw either consent at any time. See the [privacy notice](privacy) for details.",
+              "es": "Puede retirar cualquiera de los consentimientos en cualquier momento. Consulte el [aviso de privacidad](privacy) para más información.",
+              "fr": "Vous pouvez retirer l'un ou l'autre de ces consentements à tout moment. Consultez l'[avis de confidentialité](privacy) pour plus d'informations."
+            }
+          }
         }
       ]
     }

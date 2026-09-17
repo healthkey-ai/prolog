@@ -14,9 +14,11 @@ from typing import IO, Any
 
 from .engine.answers import NOT_APPLICABLE
 from .engine.visibility import iter_questions, question_by_key, visible_keys
-from .models import SurveyContact, SurveyResponse, SurveyVersion
+from .models import SurveyContact, SurveyLinkedContact, SurveyResponse, SurveyVersion
 
 SKIPPED = "SKIPPED"
+# A consent given and later withdrawn (withdraw_consent): distinct from never given.
+WITHDRAWN = "WITHDRAWN"
 HIDDEN = ""
 
 
@@ -43,6 +45,12 @@ def _columns(definition: dict[str, Any]) -> list[tuple[str, str, str | None]]:
             cols.append((k, k, None))
             if any(o.get("free_text") for o in q.get("options", [])):
                 cols.append((f"{k}.other_text", k, "other_text"))
+        elif t == "email":
+            cols.append((k, k, None))
+            # One column per consent offered: what was ticked with the address
+            # is the record a controller acts on, so it travels with the answers.
+            for c in cfg.get("consents", []):
+                cols.append((f"{k}.consent.{c['key']}", k, f"consent:{c['key']}"))
         else:
             cols.append((k, k, None))
     return cols
@@ -57,7 +65,9 @@ def safe_cell(text: str) -> str:
     return text
 
 
-def _cell(value: dict[str, Any] | None, sub: str | None) -> str:
+def _cell(
+    value: dict[str, Any] | None, sub: str | None, withdrawn: frozenset[str] = frozenset()
+) -> str:
     if value is None:
         return HIDDEN
     if value.get("skipped"):
@@ -80,6 +90,13 @@ def _cell(value: dict[str, Any] | None, sub: str | None) -> str:
         if key in value:
             return str(value[key])
     if "provided" in value:
+        if sub and sub.startswith("consent:"):
+            key = sub[len("consent:") :]
+            # Given, given then withdrawn, or never given: a controller needs
+            # all three, so a withdrawal is not exported as a plain 0.
+            if key in withdrawn:
+                return WITHDRAWN
+            return "1" if key in value.get("consents", []) else "0"
         return "1" if value["provided"] else "0"
     return ""
 
@@ -108,6 +125,8 @@ def response_rows(
         # capture marker is kept so the address is never captured twice);
         # the export reports the participant's visible path only.
         visible = set(visible_keys(definition, answers))
+        # Identity capture keeps each consent as a row; a withdrawn one shows as such.
+        withdrawn = frozenset(c.key for c in r.capture_consents.all() if c.withdrawn_at)
         yield [
             str(r.id),
             version.survey.slug,
@@ -116,11 +135,13 @@ def response_rows(
             r.status,
             r.started_at.isoformat(),
             r.submitted_at.isoformat() if r.submitted_at else "",
-        ] + [_cell(answers.get(qk) if qk in visible else None, sub) for _, qk, sub in cols]
+        ] + [
+            _cell(answers.get(qk) if qk in visible else None, sub, withdrawn) for _, qk, sub in cols
+        ]
 
 
 def write_responses(version: SurveyVersion, out: IO[str], *, submitted_only: bool = True) -> int:
-    qs = version.responses.prefetch_related("answers").order_by("started_at")
+    qs = version.responses.prefetch_related("answers", "capture_consents").order_by("started_at")
     if submitted_only:
         qs = qs.filter(status="submitted")
     writer = csv.writer(out)
@@ -132,26 +153,63 @@ def write_responses(version: SurveyVersion, out: IO[str], *, submitted_only: boo
     return n
 
 
+def _email_config(definition: dict[str, Any]) -> dict[str, Any]:
+    for _, _, q in iter_questions(definition):
+        if q["type"] == "email":
+            return q.get("config") or {}
+    return {}
+
+
+def _consent_keys(definition: dict[str, Any]) -> list[str]:
+    return [c["key"] for c in _email_config(definition).get("consents", [])]
+
+
+def _consent_cells(consents: list[dict[str, Any]] | None, keys: list[str]) -> list[str]:
+    ticked = {c["key"]: c.get("withdrawn_on") for c in consents or []}
+    return [(WITHDRAWN if ticked[k] else "1") if k in ticked else "0" for k in keys]
+
+
 def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
+    """The addresses of a version. Unlinked contact capture: one row per
+    address, nothing that reaches a response. Linked contact capture: one row
+    per response that gave one, keyed by ``response_id`` — the join to the
+    response export is deliberate, and the only place it exists."""
+    consent_keys = _consent_keys(version.definition)
+    linked = bool(_email_config(version.definition).get("link_response"))
     writer = csv.writer(out)
-    writer.writerow(["survey", "version", "email", "language", "captured_on"])
-    n = 0
-    contacts = (
-        SurveyContact.objects.filter(survey_version=version)
-        .order_by("captured_on", "email")
-        .values_list("email", "language", "captured_on")
+    writer.writerow(
+        ["survey", "version"]
+        + (["response_id"] if linked else [])
+        + ["email", "language", "captured_at" if linked else "captured_on"]
+        + [f"consent.{k}" for k in consent_keys]
     )
+    n = 0
     # Streamed like the responses: a long-running instrument holds as many
     # contacts as submitted responses.
-    for email, language, captured_on in contacts.iterator(chunk_size=1000):
+    if linked:
+        rows = (
+            SurveyLinkedContact.objects.filter(response__survey_version=version)
+            .order_by("captured_at", "response_id")
+            .values_list("response_id", "email", "language", "captured_at", "consents")
+        )
+        for rid, email, language, captured_at, consents in rows.iterator(chunk_size=1000):
+            writer.writerow(
+                [version.survey.slug, version.version, str(rid), safe_cell(email), language]
+                + [captured_at.isoformat()]
+                + _consent_cells(consents, consent_keys)
+            )
+            n += 1
+        return n
+    rows = (
+        SurveyContact.objects.filter(survey_version=version)
+        .order_by("captured_on", "email")
+        .values_list("email", "language", "captured_on", "consents")
+    )
+    for email, language, captured_on, consents in rows.iterator(chunk_size=1000):
         writer.writerow(
-            [
-                version.survey.slug,
-                version.version,
-                safe_cell(email),
-                language,
-                captured_on.isoformat(),
-            ]
+            [version.survey.slug, version.version, safe_cell(email), language]
+            + [captured_on.isoformat()]
+            + _consent_cells(consents, consent_keys)
         )
         n += 1
     return n

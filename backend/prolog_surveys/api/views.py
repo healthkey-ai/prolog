@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import secrets
 import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -44,8 +45,10 @@ from ..models import (
     Survey,
     SurveyAdministration,
     SurveyAnswer,
+    SurveyCaptureConsent,
     SurveyConsent,
     SurveyContact,
+    SurveyLinkedContact,
     SurveyResponse,
     SurveyVersion,
 )
@@ -56,6 +59,7 @@ from .serializers import (
     ContactSerializer,
     CreateResponseSerializer,
     PatchResponseSerializer,
+    ReceiptSerializer,
     ResponseSerializer,
 )
 from .throttles import (
@@ -650,26 +654,52 @@ class SubmitView(ResponseMixin, RunnerView):
         return Response(_response_payload(response, answers=answers, state=state))
 
 
-_CAPTURE_KINDS = {"store_separately": "contact", "link_identity": "identity"}
+_CAPTURE_KINDS = {
+    "store_separately": "contact",
+    "link_response": "contact",
+    "link_identity": "identity",
+}
 
 
-def _capture_question(definition: dict, flag: str) -> dict:
-    """The email question configured for the capture ``flag`` (CON-3/4), else 404."""
+def _capture_question(definition: dict, *flags: str) -> tuple[dict, str]:
+    """The email question configured for one of the capture ``flags`` (CON-3/4/10),
+    and which flag it is; 404 when the survey has no such capture."""
     for q in question_by_key(definition).values():
         if q["type"] == "email":
-            if q["config"].get(flag):
-                return q
+            for flag in flags:
+                if q["config"].get(flag):
+                    return q, flag
             break
-    raise NotFound(f"this survey has no {_CAPTURE_KINDS[flag]} capture")
+    raise NotFound(f"this survey has no {_CAPTURE_KINDS[flags[0]]} capture")
 
 
-def _mark_provided(response: SurveyResponse, key: str) -> None:
-    """Record a completed capture; the marker is all the response ever holds."""
+def _mark_provided(response: SurveyResponse, key: str, consents: list[str]) -> None:
+    """Record a completed capture; the marker — and which consents were
+    ticked, by key — is all the response ever holds."""
+    value: dict = {"provided": True}
+    if consents:
+        value["consents"] = consents
     SurveyAnswer.objects.update_or_create(
         response=response,
         question_key=key,
-        defaults={"value": {"provided": True}, "option_keys": []},
+        defaults={"value": value, "option_keys": []},
     )
+
+
+def _ticked_consents(question: dict, ticked: list[str], response: SurveyResponse) -> list[dict]:
+    """The consents ticked, as shown: validated against the question's own
+    list, deduplicated, in the question's order, with the wording in the
+    response's language. Fewer than ``consents_min`` is a refusal."""
+    cfg = question.get("config") or {}
+    offered = {c["key"]: c for c in cfg.get("consents", [])}
+    unknown = sorted(set(ticked) - set(offered))
+    if unknown:
+        raise ValidationError({"consents": [f"unknown consent(s): {', '.join(unknown)}"]})
+    chosen = [offered[k] for k in offered if k in set(ticked)]
+    if len(chosen) < (cfg.get("consents_min") or 0):
+        raise ValidationError({"consents": ["consents_required"]})
+    default = response.definition["default_language"]
+    return [{"key": c["key"], "text": pick(c["text"], response.language, default)} for c in chosen]
 
 
 # The runner sends JSON, which only ever exists in ``request.data`` and frame
@@ -696,25 +726,49 @@ class ContactView(ResponseMixin, RunnerView):
         ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         definition = response.definition
-        question = _capture_question(definition, "store_separately")
+        question, mode = _capture_question(definition, "store_separately", "link_response")
         answers = response.answer_map()
         if question["key"] not in _visible_set(definition, answers):
             raise ValidationError({"email": ["contact capture is not currently shown"]})
-        if (answers.get(question["key"]) or {}).get("provided") is True:
-            return Response(status=status.HTTP_204_NO_CONTENT)  # retry after a lost 204
+        receipt = ser.validated_data.get("receipt") or ""
+        if (answers.get(question["key"]) or {}).get("provided") is True and not receipt:
+            return Response(status=status.HTTP_204_NO_CONTENT)  # retry after a lost reply
+        consents = _ticked_consents(question, ser.validated_data["consents"], response)
         notice = pick(
             question.get("help", {}) or question["text"],
             response.language,
             definition["default_language"],
         )
+        fields = {
+            "email": ser.validated_data["email"],
+            "language": response.language,
+            "consent_text": notice,
+            "consents": consents,
+            "receipt": secrets.token_urlsafe(32),
+        }
         try:
-            SurveyContact.objects.create(
-                survey_version=response.survey_version,
-                email=ser.validated_data["email"],
-                language=response.language,
-                consent_text=notice,
-            )
-            _mark_provided(response, question["key"])
+            if mode == "link_response":
+                # Linked: the response is the key, so a correction is simply the
+                # row again. The receipt is kept for the runner's sake (one
+                # contract for both contact modes) and for removal.
+                SurveyLinkedContact.objects.update_or_create(
+                    response=response, defaults={**fields, "captured_at": timezone.now()}
+                )
+            else:
+                # Unlinked: a correction rewrites the row the receipt opens — the
+                # address it held is the one being corrected, so nothing of it
+                # should remain — under a fresh receipt. A receipt that opens
+                # nothing (the row purged, a stale tab) captures anew.
+                replaced = (
+                    SurveyContact.objects.filter(
+                        survey_version=response.survey_version, receipt=receipt
+                    ).update(**fields, captured_on=timezone.localdate())
+                    if receipt
+                    else 0
+                )
+                if not replaced:
+                    SurveyContact.objects.create(survey_version=response.survey_version, **fields)
+            _mark_provided(response, question["key"], [c["key"] for c in consents])
         except Exception as exc:
             # An unhandled exception would carry the request body — the address —
             # into error reporting. Log the class only; the transaction rolls back.
@@ -722,6 +776,33 @@ class ContactView(ResponseMixin, RunnerView):
                 "contact capture failed with %s for response %s", type(exc).__name__, response.id
             )
             raise APIException("contact capture failed") from None
+        # The receipt goes to the browser and nowhere else; for unlinked capture
+        # that is what keeps the database unable to join an address to answers.
+        return Response({"receipt": fields["receipt"]})
+
+    @sensitive_variables()
+    @transaction.atomic
+    def delete(self, request, response_id):
+        """A change of mind: the row the receipt opens goes, and the question
+        stands as declined — the same state as never having given an address,
+        which is what the participant asked for."""
+        response = self.writable(response_id)
+        ser = ReceiptSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        question, mode = _capture_question(response.definition, "store_separately", "link_response")
+        if mode == "link_response":
+            SurveyLinkedContact.objects.filter(
+                response=response, receipt=ser.validated_data["receipt"]
+            ).delete()
+        else:
+            SurveyContact.objects.filter(
+                survey_version=response.survey_version, receipt=ser.validated_data["receipt"]
+            ).delete()
+        SurveyAnswer.objects.update_or_create(
+            response=response,
+            question_key=question["key"],
+            defaults={"value": {"provided": False}, "option_keys": []},
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -736,7 +817,7 @@ class IdentityView(ResponseMixin, RunnerView):
     @sensitive_variables()
     def post(self, request, response_id):
         # The checks and the host's service call run outside any transaction:
-        # ``create_or_link`` is an out-of-process call of unknown latency, and
+        # ``attach_account`` is an out-of-process call of unknown latency, and
         # holding the response row lock (and the connection) across it would
         # queue every concurrent autosave for the response behind it. The
         # locked write below re-checks what it depends on; the idempotency key
@@ -747,9 +828,10 @@ class IdentityView(ResponseMixin, RunnerView):
         ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         definition = response.definition
-        question = _capture_question(definition, "link_identity")
+        question, _ = _capture_question(definition, "link_identity")
         if question["key"] not in _visible_set(definition, response.answer_map()):
             raise ValidationError({"email": ["identity capture is not currently shown"]})
+        consents = _ticked_consents(question, ser.validated_data["consents"], response)
         service = get_identity_service()
         if service is None:
             raise NotFound("no identity service is configured")
@@ -810,5 +892,17 @@ class IdentityView(ResponseMixin, RunnerView):
             # Either way the participant answered the question, and either way
             # they may submit (CON-7). They are told nothing about the conflict:
             # saying an address is already registered would leak that it is.
-            _mark_provided(response, question["key"])
+            _mark_provided(response, question["key"], [c["key"] for c in consents])
+            # The ticks, as an exact record on the (now identified) response:
+            # wording, language, moment. A repeat of the request changes nothing.
+            for c in consents:
+                SurveyCaptureConsent.objects.get_or_create(
+                    response=response,
+                    key=c["key"],
+                    defaults={
+                        "text": c["text"],
+                        "text_hash": hashlib.sha256(c["text"].encode()).hexdigest(),
+                        "language": response.language,
+                    },
+                )
         return Response(status=status.HTTP_204_NO_CONTENT)

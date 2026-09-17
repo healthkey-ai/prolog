@@ -335,7 +335,9 @@ def validate_answer(
         return {"date": value}
 
     if t == "email":
-        # The address itself never travels through the answer endpoint (CON-3/4).
+        # The address itself never travels through the answer endpoint (CON-3/4);
+        # a completed capture's marker — provided, and which consents were
+        # ticked — is written by the capture endpoint, never by this one.
         if raw.get("provided") is False and len(raw) == 1:
             return {"provided": False}
         _fail("email_via_endpoint")

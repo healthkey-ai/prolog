@@ -214,9 +214,9 @@ def validate() -> None:
                 raise ImproperlyConfigured(
                     f"PROLOG_IDENTITY_SERVICE could not be resolved: {exc}"
                 ) from exc
-            if not callable(getattr(service, "create_or_link", None)):
+            if not callable(getattr(service, "attach_account", None)):
                 raise ImproperlyConfigured(
-                    "PROLOG_IDENTITY_SERVICE must resolve to an object with create_or_link()"
+                    "PROLOG_IDENTITY_SERVICE must resolve to an object with attach_account()"
                 )
         for name, expected in _CSRF_DEFAULTS.items():
             actual = getattr(settings, name, expected)

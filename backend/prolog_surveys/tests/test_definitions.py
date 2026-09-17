@@ -80,8 +80,18 @@ def test_schema_error_reported_with_path(example):
     assert "type" in issues[0].path
 
 
-def test_schema_rejects_both_email_modes(example):
-    question(example, "contact_email")["config"]["link_identity"] = True
+@pytest.mark.parametrize("second", ["link_identity", "link_response"])
+def test_schema_rejects_two_email_modes(example, second):
+    """Exactly one capture mode: each pair is rejected by the schema, and a
+    linked capture on its own is accepted in any profile."""
+    question(example, "contact_email")["config"][second] = True
+    assert has_errors(validate_definition(example))
+    cfg = question(example, "contact_email")["config"]
+    del cfg["store_separately"]
+    cfg["link_response"] = True
+    cfg.pop("link_identity", None)
+    assert not has_errors(validate_definition(example, profile="standalone"))
+    cfg["link_identity"] = True
     assert has_errors(validate_definition(example))
 
 
@@ -226,6 +236,19 @@ def _repeat(**overrides):
         (
             lambda d: question(d, "contact_email").update(config={"link_identity": True}),
             "link_identity",
+        ),
+        (
+            lambda d: question(d, "contact_email")["config"]["consents"].append(
+                {"key": "contact", "text": {"en": "again"}}
+            ),
+            "consent_keys",
+        ),
+        (lambda d: question(d, "contact_email")["config"].update(consents_min=3), "consents_min"),
+        (
+            lambda d: question(d, "contact_email").update(
+                config={"store_separately": True, "consents_min": 1}
+            ),
+            "consents_missing",
         ),
         (lambda d: d["translation_status"].pop("fr"), "translation_status"),
         (lambda d: d["translation_status"].update(de="reviewed"), "translation_status"),

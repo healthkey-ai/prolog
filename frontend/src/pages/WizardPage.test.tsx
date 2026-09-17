@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { forgetAll } from "@/survey/scratch";
 import { RESPONSE_ID, SLUG, blur, click, deferred, definition, findOnLanguage, installDom, mount, response, runnerServer, t, type, type Mounted } from "./testHarness";
 
 const ANSWERS = `/responses/${RESPONSE_ID}/answers/`;
@@ -16,6 +17,7 @@ describe("WizardPage", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     localStorage.clear();
+    forgetAll();
   });
 
   it("shows the definition error with a retry when the definition GET fails but the response loaded", async () => {
@@ -213,6 +215,143 @@ describe("WizardPage", () => {
     await m.flush();
     expect(server.of("PUT", ANSWERS).map((c) => c.body)).toEqual([{ value: { skipped: true } }]);
     expect(m.$("option-a")!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("sends the consents ticked with the address, in the question's order, and drafts the marker the server stores", async () => {
+    const withEmail = definition({ legal_pages: ["privacy"] });
+    withEmail.sections[1].questions = [
+      {
+        key: "q3",
+        type: "email",
+        text: "Stay in touch?",
+        required: false,
+        config: {
+          store_separately: true,
+          consents: [
+            { key: "contact", text: "You may contact me." },
+            { key: "reuse", text: "You may reuse my answers." },
+          ],
+          consents_label: "Tick what you agree to:",
+          consents_note: "Withdraw any time — see the [notice](privacy).",
+        },
+      },
+    ];
+    const server = runnerServer(withEmail, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q3", missing: ["q3"] }));
+    server.on("POST", `/responses/${RESPONSE_ID}/contact/`, { status: 204 });
+    m = mount(`/s/${SLUG}/q/q3`);
+    const reuse = await m.until<HTMLButtonElement>("email-consent-reuse");
+    // none pre-ticked; the note's legal link goes to the survey's own page
+    expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("false");
+    expect(reuse.getAttribute("aria-checked")).toBe("false");
+    expect(m.$("legal-link-privacy")!.getAttribute("href")).toBe(`/s/${SLUG}/privacy`);
+    expect(m.$("email-consents-label")!.textContent).toBe("Tick what you agree to:");
+    expect(m.$("email-privacy-link")).toBeNull(); // the note already links the notice
+    click(reuse);
+    click(m.$("email-consent-contact"));
+    type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");
+    // Once captured, the server hands the marker back with its keys in the
+    // database's order; Next must see the same answer and just advance.
+    server.on("GET", `/responses/${RESPONSE_ID}/`, { body: response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { consents: ["contact", "reuse"], provided: true } }, last_question_key: "q3", missing: [] }) });
+    server.on("POST", `/responses/${RESPONSE_ID}/submit/`, { body: { status: "submitted" } });
+    click(m.$("email-save"));
+    await m.flush(3);
+    expect(server.of("POST", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([{ email: "someone@example.org", consents: ["contact", "reuse"] }]);
+    expect(m.text()).toContain(t("email.saved"));
+    click(NEXT(m));
+    await m.flush(3);
+    expect(server.of("PUT", ANSWERS)).toEqual([]);
+    expect(server.of("POST", `/responses/${RESPONSE_ID}/submit/`)).toHaveLength(1);
+  });
+
+  it("keeps what was typed and ticked across a detour to the notice, whose Back returns to the question", async () => {
+    const withEmail = definition({ legal_pages: ["privacy"] });
+    withEmail.sections[1].questions = [
+      { key: "q3", type: "email", text: "Stay in touch?", required: false, config: { store_separately: true, consents: [{ key: "contact", text: "You may contact me." }], consents_note: "See the [notice](privacy)." } },
+    ];
+    const server = runnerServer(withEmail, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q3", missing: ["q3"] }));
+    server.on("GET", `/surveys/${SLUG}/legal/privacy/`, { body: { page: "privacy", language: "en", markdown: "# Notice" } });
+    m = mount(`/s/${SLUG}/q/q3`);
+    await m.until("email-consent-contact");
+    type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");
+    click(m.$("email-consent-contact"));
+    click(m.$("legal-link-privacy"));
+    await m.until("legal-back");
+    expect(m.pathname()).toBe(`/s/${SLUG}/privacy`);
+    click(m.$("legal-back"));
+    await m.until("email-consent-contact");
+    expect(m.pathname()).toBe(`/s/${SLUG}/q/q3`);
+    expect(m.$<HTMLInputElement>("email-input")!.value).toBe("someone@example.org");
+    expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("shows the saved address and lets the participant correct it — the box and the ticks again, then the receipt goes back", async () => {
+    const withEmail = definition();
+    withEmail.sections[1].questions = [
+      { key: "q3", type: "email", text: "Stay in touch?", required: false, config: { store_separately: true, consents: [{ key: "contact", text: "You may contact me." }, { key: "reuse", text: "You may reuse my answers." }] } },
+    ];
+    const server = runnerServer(withEmail, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q3", missing: ["q3"] }));
+    server.on("POST", `/responses/${RESPONSE_ID}/contact/`, (_call, n) => ({ body: { receipt: `r${n}` } }));
+    m = mount(`/s/${SLUG}/q/q3`);
+    await m.until("email-consent-contact");
+    type(m.$<HTMLInputElement>("email-input")!, "typo@example.org");
+    click(m.$("email-consent-contact"));
+    click(m.$("email-save"));
+    await m.flush(3);
+    expect(m.$("email-captured")!.textContent).toContain("typo@example.org");
+    click(m.$("email-change"));
+    await m.flush();
+    // the form again, as it was saved
+    expect(m.$<HTMLInputElement>("email-input")!.value).toBe("typo@example.org");
+    expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("true");
+    expect(m.$("email-skip")).toBeNull(); // No thanks is not a way out of a correction; Remove is
+    expect(m.$("email-remove")).not.toBeNull();
+    click(m.$("email-cancel"));
+    await m.flush();
+    expect(m.$("email-captured")!.textContent).toContain("typo@example.org");
+    click(m.$("email-change"));
+    await m.flush();
+    type(m.$<HTMLInputElement>("email-input")!, "right@example.org");
+    click(m.$("email-consent-contact"));
+    click(m.$("email-consent-reuse"));
+    click(m.$("email-save"));
+    await m.flush(3);
+    expect(server.of("POST", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([
+      { email: "typo@example.org", consents: ["contact"] },
+      { email: "right@example.org", consents: ["reuse"], receipt: "r1" },
+    ]);
+    expect(m.$("email-captured")!.textContent).toContain("right@example.org");
+    // a change of mind: the receipt's row goes, and the question is declined, open for a new address
+    server.on("DELETE", `/responses/${RESPONSE_ID}/contact/`, { status: 204 });
+    click(m.$("email-remove"));
+    await m.flush(3);
+    expect(server.of("DELETE", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([{ receipt: "r2" }]);
+    expect(m.$("email-captured")).toBeNull();
+    expect(m.$<HTMLInputElement>("email-input")!.value).toBe("");
+    expect(m.$("email-consent-reuse")!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("refuses to save an address with too few consents ticked, before anything is sent", async () => {
+    const withEmail = definition();
+    withEmail.sections[1].questions = [
+      { key: "q3", type: "email", text: "Stay in touch?", required: false, config: { store_separately: true, consents: [{ key: "contact", text: "You may contact me." }], consents_min: 1 } },
+    ];
+    const server = runnerServer(withEmail, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q3", missing: ["q3"] }));
+    server.on("POST", `/responses/${RESPONSE_ID}/contact/`, { status: 204 });
+    m = mount(`/s/${SLUG}/q/q3`);
+    await m.until("email-consent-contact");
+    expect(m.$("email-consents-hint")).toBeNull(); // nothing typed yet: no nagging
+    type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");
+    expect(m.$<HTMLButtonElement>("email-save")!.disabled).toBe(true);
+    expect(m.$("email-consents-hint")!.textContent).toBe(t("email.consentsRequired"));
+    click(m.$("email-save"));
+    await m.flush();
+    expect(server.of("POST")).toEqual([]);
+    click(m.$("email-consent-contact"));
+    expect(m.$("email-consents-hint")).toBeNull();
+    expect(m.$<HTMLButtonElement>("email-save")!.disabled).toBe(false);
+    click(m.$("email-save"));
+    await m.flush();
+    expect(server.of("POST", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([{ email: "someone@example.org", consents: ["contact"] }]);
   });
 
   it("says so, with a retry, when the definition in the new language cannot be fetched after a language switch", async () => {

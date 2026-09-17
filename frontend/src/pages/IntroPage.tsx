@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
 import {
   SupersededError,
@@ -27,6 +27,8 @@ import { RadioGroup } from "@/components/ui/radio-group";
 import { Eyebrow } from "@/components/Eyebrow";
 import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { languageName } from "@/i18n/languageName";
+import { renderInline } from "@/survey/markdown";
+import { forget, recall, remember } from "@/survey/scratch";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { needsLanguageStep } from "@/survey/languageStep";
@@ -39,6 +41,7 @@ import { usePageTitle } from "./usePageTitle";
 
 export function IntroPage() {
   const { slug = "" } = useParams();
+  const location = useLocation();
   const [search] = useSearchParams();
   const invite = search.get("invite") ?? undefined;
   // A link may name the language, which answers the question before it is asked.
@@ -50,7 +53,12 @@ export function IntroPage() {
   const existing = useResponse(existingId);
   const create = useCreateResponse();
   const patch = usePatchResponse(existingId ?? "");
-  const [agreed, setAgreed] = useState(false);
+  // The tick survives a detour to the notice (memory only; see scratch.ts).
+  const [agreed, setAgreedState] = useState(() => recall<boolean>(`consent:${slug}`) ?? false);
+  const setAgreed = (on: boolean) => {
+    setAgreedState(on);
+    remember(`consent:${slug}`, on);
+  };
   const [consentError, setConsentError] = useState(false);
   // "Start a new response" / "Start again": show the start form (with the
   // consent notice) instead of the resume card; the old id is only replaced
@@ -98,6 +106,31 @@ export function IntroPage() {
   });
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
+  // A top-right logo floats above the column rather than sitting in the top
+  // row: the row is then only as tall as the language control, and the title
+  // moves up beside the mark — the intro fits a screen it otherwise would
+  // not. The control keeps clear of the mark by the mark's measured width,
+  // and sits level with its middle — shifted, not spaced, so the row stays
+  // as short as the control and the words keep the room they gained.
+  const floatingLogo = layout.logoPlacement === "top-right" && logo !== null;
+  const logoBox = useRef<HTMLDivElement>(null);
+  const topRow = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState({ width: 0, shift: 0 });
+  useEffect(() => {
+    const el = logoBox.current;
+    const row = topRow.current;
+    if (!el || !row || typeof ResizeObserver === "undefined") return;
+    // offsetTop is layout position, untouched by the row's own transform.
+    const measure = () =>
+      setFit({
+        width: el.offsetWidth,
+        shift: el.offsetTop + el.offsetHeight / 2 - (row.offsetTop + row.offsetHeight / 2),
+      });
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [floatingLogo]);
   useDefinitionLanguage(definition.data?.language);
   usePageTitle(definition.data?.title as string | undefined);
   useEffect(() => {
@@ -165,6 +198,7 @@ export function IntroPage() {
       return; // create.isError renders the message (below both the resume card and the start form)
     }
     storeResponseId(slug, response.id, resumable);
+    forget(`consent:${slug}`);
     const key = firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
   };
@@ -290,8 +324,23 @@ export function IntroPage() {
             language the survey would not continue in. A submitted response is
             not written to (the server would refuse, and there is nothing to
             continue): the choice stays on this screen. */}
+        {floatingLogo && (
+          <div
+            ref={logoBox}
+            className="absolute right-6 top-[clamp(0.4rem,1.5vh,1.1rem)] [@media(max-height:800px)]:top-[clamp(0.3rem,1vh,0.75rem)]"
+            data-testid="intro-logo"
+          >
+            {logo}
+          </div>
+        )}
         <div
+          ref={topRow}
           className={`flex items-center gap-3 ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-between"}`}
+          style={
+            floatingLogo
+              ? { paddingRight: fit.width ? fit.width + 12 : undefined, transform: fit.shift ? `translateY(${fit.shift}px)` : undefined }
+              : undefined
+          }
         >
           {layout.logoPlacement !== "top-right" && logo}
           {def.presentation?.language_step !== "first" && (
@@ -319,7 +368,6 @@ export function IntroPage() {
               }}
             />
           )}
-          {layout.logoPlacement === "top-right" && logo}
         </div>
         {/* Auto margins, not justify-center: they centre the block when there is
             room and resolve to nothing when there is not, so a tall intro on a
@@ -443,7 +491,14 @@ export function IntroPage() {
               )}
               {consent && (
                 <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink">
-                  <p className="text-[0.95rem]">{consent.text as string}</p>
+                  {/* Inline links in the notice text: `[…](privacy)` reaches the
+                      survey's own privacy page, which is what a consent sentence
+                      usually needs to point at. */}
+                  <p className="text-[0.95rem]">
+                    {renderInline(consent.text as string, "consent", {
+                      legalPages: { keys: def.legal_pages ?? [], href: (page) => `/s/${slug}/${page}`, from: location.pathname + location.search },
+                    })}
+                  </p>
                   {!hasLocalPrivacy && privacyUrl && (
                     <a
                       href={privacyUrl}
