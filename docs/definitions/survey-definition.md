@@ -385,8 +385,10 @@ capture mode, and follows the same line as the address itself:
   consent was given, and until when, is what a controller has to show.
 
 Exports carry one column per consent offered: `<key>.consent.<consent>` on
-the response export (`1`/`0`, empty where no address was given) and
-`consent.<consent>` on the contact export.
+the response export (`1`/`0`/`WITHDRAWN`, empty where no address was given)
+and `consent.<consent>` on the contact export. Withdrawal is an operator's
+act — `manage.py withdraw_consent` — dated on the record, never erased; see
+[administration.md](../administration.md#when-someone-withdraws-a-consent).
 
 ---
 

@@ -17,6 +17,8 @@ from .engine.visibility import iter_questions, question_by_key, visible_keys
 from .models import SurveyContact, SurveyResponse, SurveyVersion
 
 SKIPPED = "SKIPPED"
+# A consent given and later withdrawn (withdraw_consent): distinct from never given.
+WITHDRAWN = "WITHDRAWN"
 HIDDEN = ""
 
 
@@ -63,7 +65,9 @@ def safe_cell(text: str) -> str:
     return text
 
 
-def _cell(value: dict[str, Any] | None, sub: str | None) -> str:
+def _cell(
+    value: dict[str, Any] | None, sub: str | None, withdrawn: frozenset[str] = frozenset()
+) -> str:
     if value is None:
         return HIDDEN
     if value.get("skipped"):
@@ -87,7 +91,12 @@ def _cell(value: dict[str, Any] | None, sub: str | None) -> str:
             return str(value[key])
     if "provided" in value:
         if sub and sub.startswith("consent:"):
-            return "1" if sub[len("consent:") :] in value.get("consents", []) else "0"
+            key = sub[len("consent:") :]
+            # Given, given then withdrawn, or never given: a controller needs
+            # all three, so a withdrawal is not exported as a plain 0.
+            if key in withdrawn:
+                return WITHDRAWN
+            return "1" if key in value.get("consents", []) else "0"
         return "1" if value["provided"] else "0"
     return ""
 
@@ -116,6 +125,8 @@ def response_rows(
         # capture marker is kept so the address is never captured twice);
         # the export reports the participant's visible path only.
         visible = set(visible_keys(definition, answers))
+        # Identity capture keeps each consent as a row; a withdrawn one shows as such.
+        withdrawn = frozenset(c.key for c in r.capture_consents.all() if c.withdrawn_at)
         yield [
             str(r.id),
             version.survey.slug,
@@ -124,11 +135,13 @@ def response_rows(
             r.status,
             r.started_at.isoformat(),
             r.submitted_at.isoformat() if r.submitted_at else "",
-        ] + [_cell(answers.get(qk) if qk in visible else None, sub) for _, qk, sub in cols]
+        ] + [
+            _cell(answers.get(qk) if qk in visible else None, sub, withdrawn) for _, qk, sub in cols
+        ]
 
 
 def write_responses(version: SurveyVersion, out: IO[str], *, submitted_only: bool = True) -> int:
-    qs = version.responses.prefetch_related("answers").order_by("started_at")
+    qs = version.responses.prefetch_related("answers", "capture_consents").order_by("started_at")
     if submitted_only:
         qs = qs.filter(status="submitted")
     writer = csv.writer(out)
@@ -163,7 +176,7 @@ def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
     # Streamed like the responses: a long-running instrument holds as many
     # contacts as submitted responses.
     for email, language, captured_on, consents in contacts.iterator(chunk_size=1000):
-        ticked = {c["key"] for c in consents or []}
+        ticked = {c["key"]: c.get("withdrawn_on") for c in consents or []}
         writer.writerow(
             [
                 version.survey.slug,
@@ -172,7 +185,7 @@ def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
                 language,
                 captured_on.isoformat(),
             ]
-            + ["1" if k in ticked else "0" for k in consent_keys]
+            + [(WITHDRAWN if ticked[k] else "1") if k in ticked else "0" for k in consent_keys]
         )
         n += 1
     return n

@@ -447,6 +447,36 @@ thing it was ticked for is.
 
 ---
 
+## When someone withdraws a consent
+
+A consent given with an address can be withdrawn on its own, and withdrawal
+is *recorded*, not erased: that it was given, and until when, is what you
+have to be able to show. The address itself can be erased when the person
+wants off the list altogether.
+
+```sh
+manage.py withdraw_consent <slug> --email someone@example.org --consent reuse   # one consent
+manage.py withdraw_consent <slug> --email someone@example.org                   # every consent given
+manage.py withdraw_consent <slug> --email someone@example.org --erase           # the address goes
+manage.py withdraw_consent <slug> --participant <pk> --consent contact          # identity capture
+```
+
+Which form applies depends on how the address was captured. With contact
+capture the address is on the contact row, so `--email` finds it (any
+version of the survey, case-insensitive). With identity capture the address
+is the account's, held by the host: resolve it to the participant there and
+pass `--participant`; the consents are rows against that participant's
+responses, each dated when withdrawn. `--dry-run` says what would change.
+
+Both exports show the difference: a consent column reads `1` (given), `0`
+(never given) or `WITHDRAWN` (given, then withdrawn). The admin's contact
+list shows the same at a glance.
+
+Nothing here is a request the runner receives. A withdrawal arrives as an
+email to the controller, and this is what the operator does with it.
+
+---
+
 ## Housekeeping
 
 **Abandoned responses.** People start surveys and wander off. Nothing deletes

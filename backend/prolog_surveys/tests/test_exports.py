@@ -129,6 +129,45 @@ def test_export_responses_consent_columns(version, submitted):
     )
 
 
+def test_withdraw_consent_on_a_contact_row(version, submitted, capsys):
+    """A withdrawal is dated on the contact row and exported as such — given
+    then withdrawn is not the same as never given; --erase removes the address."""
+    with pytest.raises(CommandError, match="no contact row"):
+        call_command("withdraw_consent", "sample-wellbeing", "--email", "nobody@example.org")
+    call_command(
+        "withdraw_consent",
+        "sample-wellbeing",
+        "--email",
+        "SOMEONE@example.org",
+        "--consent",
+        "contact",
+    )
+    assert "withdrew 0 consent(s) (contact)" in capsys.readouterr().out  # never given
+    call_command(
+        "withdraw_consent", "sample-wellbeing", "--email", "someone@example.org", "--dry-run"
+    )
+    assert "would withdraw 1 consent(s) (every consent)" in capsys.readouterr().out
+    assert "withdrawn_on" not in json.dumps(SurveyContact.objects.get().consents)
+    call_command("withdraw_consent", "sample-wellbeing", "--email", "someone@example.org")
+    consents = SurveyContact.objects.get().consents
+    assert consents[0]["key"] == "reuse" and consents[0]["withdrawn_on"] == str(
+        timezone.localdate()
+    )
+    out = io.StringIO()
+    write_contacts(version, out)
+    header, row = list(csv.reader(io.StringIO(out.getvalue())))
+    assert row[-2:] == ["0", "WITHDRAWN"]
+    # a second withdrawal changes nothing; the date of the first stands
+    call_command("withdraw_consent", "sample-wellbeing", "--email", "someone@example.org")
+    assert "withdrew 0 consent(s)" in capsys.readouterr().out
+    call_command(
+        "withdraw_consent", "sample-wellbeing", "--email", "someone@example.org", "--erase"
+    )
+    assert not SurveyContact.objects.exists()
+    with pytest.raises(CommandError, match="contact capture"):
+        call_command("withdraw_consent", "sample-wellbeing", "--participant", "1", "--erase")
+
+
 def test_export_commands(version, submitted, api_client, tmp_path, capsys):
     api_client.post(
         "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"

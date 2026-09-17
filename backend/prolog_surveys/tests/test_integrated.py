@@ -7,6 +7,8 @@ that setting is present. CI runs this configuration as a separate job.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 
 import pytest
@@ -126,6 +128,47 @@ def test_identity_capture_records_each_consent(api_client, identity_service, lin
         format="json",
     )
     assert r.status_code == 400 and len(identity_service.CALLS) == 1
+
+
+@pytest.mark.django_db
+def test_withdraw_consent_on_an_identified_response(
+    api_client, identity_service, linked_definition, capsys
+):
+    """Identity capture keeps each consent as a row; the host names the
+    participant, and the row is dated withdrawn — and exported as such."""
+    from django.core.management import call_command
+
+    from prolog_surveys.exports import write_responses
+
+    version = load_definition(linked_definition, activate=True).version
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    api_client.post(
+        f"/api/run/responses/{rid}/identity/",
+        {"email": "someone@example.org", "consents": ["contact", "reuse"]},
+        format="json",
+    )
+    participant = SurveyResponse.objects.get(pk=rid).participant_id
+    call_command(
+        "withdraw_consent",
+        "sample-wellbeing",
+        "--participant",
+        str(participant),
+        "--consent",
+        "reuse",
+    )
+    assert "withdrew 1 consent(s) (reuse)" in capsys.readouterr().out
+    rows = {c.key: c.withdrawn_at for c in SurveyCaptureConsent.objects.filter(response_id=rid)}
+    assert rows["contact"] is None and rows["reuse"] is not None
+    out = io.StringIO()
+    write_responses(version, out, submitted_only=False)
+    header, row = list(csv.reader(io.StringIO(out.getvalue())))
+    record = dict(zip(header, row, strict=True))
+    assert (record["contact_email.consent.contact"], record["contact_email.consent.reuse"]) == (
+        "1",
+        "WITHDRAWN",
+    )
 
 
 @pytest.mark.django_db
