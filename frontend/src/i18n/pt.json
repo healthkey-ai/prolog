@@ -136,6 +136,7 @@
   "error.date_too_late": "Introduza uma data igual ou anterior a {{max}}.",
   "legal.back": "Voltar ao questionário",
   "legal.missing": "Esta página não está disponível.",
+  "legal.noteBack": "Voltar ao texto da nota {{note}}",
   "legal.privacy": "Aviso de privacidade",
   "legal.terms": "Termos",
   "intro.machineTranslation": "Este questionário foi escrito em {{source}}. O texto em {{language}} que está a ler foi traduzido por uma máquina e não foi verificado por uma pessoa."

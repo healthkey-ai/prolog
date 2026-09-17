@@ -34,7 +34,9 @@ export function LegalPage({ page }: { page: string }) {
             {t("legal.missing")}
           </p>
         )}
-        {legal.data && <article data-testid="legal-body">{renderMarkdown(legal.data.markdown)}</article>}
+        {legal.data && (
+          <article data-testid="legal-body">{renderMarkdown(legal.data.markdown, { noteBack: (note) => t("legal.noteBack", { note }) })}</article>
+        )}
       </div>
     </div>
   );

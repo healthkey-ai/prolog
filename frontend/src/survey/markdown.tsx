@@ -10,9 +10,15 @@ import type { ReactNode } from "react";
  * library has to be trusted, shipped or kept patched.
  *
  * Supported: headings (# to ###), paragraphs, unordered and ordered lists,
- * tables, links, bold and italic. Anything else renders as the text it is
- * written as, which for a notice is a readable failure rather than a broken
+ * tables, links, bold and italic, and footnotes — `[^3]` in the text, a
+ * `[^3]: …` line where the note lives. Anything else renders as the text it
+ * is written as, which for a notice is a readable failure rather than a broken
  * one.
+ *
+ * Footnotes are what a legal notice's drafter reaches for, and the runner
+ * keeps them a page apart from the sentence: the marker is a superscript link
+ * down to the note, and each note carries a link back to where it was cited,
+ * so a reader on a phone is never stranded at the bottom of a long page.
  *
  * Source lines are hard-wrapped in the files these come from, so wrapped
  * continuations are joined back together before anything is parsed inline —
@@ -20,7 +26,14 @@ import type { ReactNode } from "react";
  * or a link broken across two lines renders as its own asterisks.
  */
 
-const INLINE = /(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)/g;
+const INLINE = /(\[\^[A-Za-z0-9_-]+\])|(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)/g;
+
+/** A footnote's definition line: `[^3]: the note`. */
+const FOOTNOTE_DEF = /^\[\^([A-Za-z0-9_-]+)\]:\s+(.*)$/;
+
+/** Element ids for a footnote and its (first) citation. Labels are limited to [A-Za-z0-9_-] by the regexes above. */
+const noteId = (label: string) => `fn-${label}`;
+const refId = (label: string) => `fnref-${label}`;
 
 /** Only http(s) links become links; anything else stays as text (javascript:, data:). */
 function safeHref(href: string): string | null {
@@ -32,6 +45,9 @@ function safeHref(href: string): string | null {
   }
 }
 
+/** Footnote labels already cited in the page being rendered (reset per renderMarkdown). */
+let citedOnce = new Set<string>();
+
 export function renderInline(text: string, keyPrefix = ""): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
@@ -41,7 +57,26 @@ export function renderInline(text: string, keyPrefix = ""): ReactNode[] {
     if (match.index > last) out.push(text.slice(last, match.index));
     const token = match[0];
     const key = `${keyPrefix}-${match.index}`;
-    if (token.startsWith("[")) {
+    if (token.startsWith("[^")) {
+      const label = token.slice(2, -1);
+      // The first citation is where the note's back-link returns to; a note
+      // cited twice keeps one id, so the page has no duplicate ids.
+      const first = !citedOnce.has(label);
+      citedOnce.add(label);
+      out.push(
+        <sup key={key} className="ml-0.5 text-[0.75em] leading-none">
+          <a
+            href={`#${noteId(label)}`}
+            id={first ? refId(label) : undefined}
+            className="scroll-mt-6 text-primary underline decoration-dotted underline-offset-2"
+            aria-describedby={noteId(label)}
+            data-testid={`footnote-ref-${label}`}
+          >
+            {label}
+          </a>
+        </sup>,
+      );
+    } else if (token.startsWith("[")) {
       const label = token.slice(1, token.indexOf("]"));
       const href = token.slice(token.indexOf("](") + 2, -1);
       const safe = safeHref(href);
@@ -65,12 +100,21 @@ export function renderInline(text: string, keyPrefix = ""): ReactNode[] {
   return out;
 }
 
-export function renderMarkdown(source: string): ReactNode[] {
+export interface MarkdownLabels {
+  /** Accessible name of a footnote's back-link, e.g. "Back to the text for note 3". */
+  noteBack: (label: string) => string;
+}
+
+const DEFAULT_LABELS: MarkdownLabels = { noteBack: (label) => `Back to note ${label}` };
+
+export function renderMarkdown(source: string, labels: MarkdownLabels = DEFAULT_LABELS): ReactNode[] {
+  citedOnce = new Set();
   const blocks: ReactNode[] = [];
   const lines = source.replace(/\r\n/g, "\n").split("\n");
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let table: string[][] | null = null;
+  let notes: { label: string; text: string }[] | null = null;
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
@@ -116,6 +160,25 @@ export function renderMarkdown(source: string): ReactNode[] {
     );
     table = null;
   };
+  const flushNotes = () => {
+    if (!notes) return;
+    const key = `fn${blocks.length}`;
+    blocks.push(
+      // Rendered where the definitions sit, under whatever heading the notice
+      // gives them: the runner adds no heading of its own.
+      <ol key={key} className="mb-4 ml-6 list-outside list-decimal space-y-2 text-[0.95rem]" data-testid="footnotes">
+        {notes.map(({ label, text }) => (
+          <li key={label} id={noteId(label)} className="scroll-mt-4 target:bg-tint" data-testid={`footnote-${label}`}>
+            {renderInline(text, `${key}-${label}`)}{" "}
+            <a href={`#${refId(label)}`} className="text-primary underline decoration-dotted underline-offset-2" aria-label={labels.noteBack(label)} data-testid={`footnote-back-${label}`}>
+              ↩
+            </a>
+          </li>
+        ))}
+      </ol>,
+    );
+    notes = null;
+  };
   const flushList = () => {
     if (!list) return;
     const { ordered, items } = list;
@@ -141,11 +204,25 @@ export function renderMarkdown(source: string): ReactNode[] {
     const bullet = /^[-*]\s+(.*)$/.exec(line);
     const numbered = /^\d+\.\s+(.*)$/.exec(line);
     const row = /^\|(.*)\|\s*$/.exec(line);
+    const note = FOOTNOTE_DEF.exec(line);
 
     if (!line.trim()) {
       flushParagraph();
       flushList();
       flushTable();
+      flushNotes();
+      continue;
+    }
+    if (note) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      (notes ??= []).push({ label: note[1], text: note[2] });
+      continue;
+    }
+    if (notes) {
+      // A wrapped note: the continuation belongs to the note above.
+      notes[notes.length - 1].text += ` ${line.trim()}`;
       continue;
     }
     if (row) {
@@ -192,5 +269,6 @@ export function renderMarkdown(source: string): ReactNode[] {
   flushParagraph();
   flushList();
   flushTable();
+  flushNotes();
   return blocks;
 }

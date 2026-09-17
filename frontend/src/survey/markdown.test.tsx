@@ -80,3 +80,26 @@ describe("renderMarkdown", () => {
   });
 
 });
+
+describe("footnotes", () => {
+  it("links a citation to its note and the note back to the citation", () => {
+    const out = html("Data minimisation[^1] applies.\n\n## Notes\n\n[^1]: Personal data should be limited to what is necessary.\n");
+    expect(out).toContain('<sup class="ml-0.5 text-[0.75em] leading-none"><a href="#fn-1" id="fnref-1"');
+    expect(out).toContain('>1</a></sup>');
+    expect(out).toContain('<li id="fn-1"');
+    expect(out).toContain("limited to what is necessary");
+    expect(out).toContain('href="#fnref-1"');
+    expect(out).toContain('aria-label="Back to note 1"');
+  });
+
+  it("cites a note twice without duplicating its id, and joins a wrapped note", () => {
+    const out = html("First[^a] and again[^a].\n\n[^a]: A long note that\nwraps onto a second line.\n");
+    expect(out.match(/data-testid="footnote-ref-a"/g)?.length).toBe(2);
+    expect(out.match(/id="fnref-a"/g)?.length).toBe(1);
+    expect(out).toContain("A long note that wraps onto a second line.");
+  });
+
+  it("leaves a lone caret bracket as text", () => {
+    expect(html("Not a note [^] here.\n")).toContain("Not a note [^] here.");
+  });
+});

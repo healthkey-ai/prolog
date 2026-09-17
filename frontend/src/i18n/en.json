@@ -136,6 +136,7 @@
   "error.date_too_late": "Please enter a date on or before {{max}}.",
   "legal.back": "Back to the survey",
   "legal.missing": "This page is not available.",
+  "legal.noteBack": "Back to the text for note {{note}}",
   "legal.privacy": "Privacy notice",
   "legal.terms": "Terms",
   "intro.machineTranslation": "This survey was written in {{source}}. The {{language}} you are reading was translated by a machine and has not been checked by a person."
