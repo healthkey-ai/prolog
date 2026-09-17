@@ -42,7 +42,7 @@
       "expect": {"invalidated": [], "missing": []}
     }
   ],
-  "final": {"progress": {"answered": 3, "total": 3}},
+  "final": {"progress": {"answered": 4, "total": 4}},
   "reject": [
     {
       "key": "symptom_interference",

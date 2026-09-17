@@ -26,5 +26,5 @@
     { "answer": { "key": "anything_else", "value": { "skipped": true } }, "expect": { "missing": ["contact_email"] } },
     { "answer": { "key": "contact_email", "value": { "provided": false } }, "expect": { "missing": [] } }
   ],
-  "final": { "missing": [], "progress": { "answered": 12, "total": 12 } }
+  "final": { "missing": [], "progress": { "answered": 16, "total": 16 } }
 }

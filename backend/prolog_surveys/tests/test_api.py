@@ -258,7 +258,8 @@ def test_get_response_payload(api_client, response_id):
     assert body["answers"] == {}
     assert body["visible"][0] == "welcome"
     assert "symptoms" not in body["visible"]
-    assert body["progress"] == {"answered": 0, "total": 11}
+    # Every answerable question, open branches included.
+    assert body["progress"] == {"answered": 0, "total": 16}
     assert body["slug"] == "sample-wellbeing" and body["version"] == "1.0"
 
 

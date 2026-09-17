@@ -274,6 +274,16 @@ Defaults reproduce the one-question-per-screen wizard. `progress: "bar"` draws a
 completion bar in the header; `"steps"` shows a **Step n of m** counter over the
 visible screens instead; `"none"` hides both.
 
+**How questions are counted.** The eyebrow's **Question n of m** and the bar
+are numbered over the *whole* instrument, not the questions currently visible:
+`m` is every answerable question in the definition and never changes, and `n`
+is the current question's place in that list. A branch the respondent's answer
+closes (a `visible_if` gate answered — or skipped — against it) is therefore
+*passed*: the number jumps over it and the bar moves on, rather than the total
+shrinking. A branch whose gate has not been reached yet is neither counted nor
+passed. The same rule gives the API's `progress` (`answered` / `total`), so
+hidden questions count as answered only once something has closed them.
+
 `language_step` decides where a multilingual survey asks which language to use.
 `inline` (the default) puts the picker on the intro, which is therefore read in
 whatever language the browser asked for until the respondent changes it.

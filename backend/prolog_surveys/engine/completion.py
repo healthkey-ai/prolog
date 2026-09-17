@@ -9,7 +9,9 @@ from .visibility import (
     Answers,
     VisibleQuestion,
     is_answered,
+    iter_questions,
     matrix_rows,
+    pending_keys,
     question_by_key,
     visible_questions,
 )
@@ -55,12 +57,22 @@ def progress(
     missing: list[str] | None = None,
     questions: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, int]:
-    """Answered = visible answerable questions that are not missing, so a
-    pruned matrix (rated, but not for every current row) counts as open,
-    exactly as ``missing_keys`` reports it; a skip counts as answered."""
+    """Progress over the whole instrument, so the total never moves.
+
+    ``total`` counts every answerable question in the definition, visible or
+    not. ``answered`` is everything settled: visible questions with an answer
+    (a pruned matrix — rated, but not for every current row — counts as open,
+    exactly as ``missing_keys`` reports it; a skip counts as answered) and
+    hidden questions whose branch is closed. Only hidden questions that may
+    still appear (``pending_keys``) are left out, so a respondent who answers
+    "no" to a gate sees the count jump past the branch rather than the total
+    shrink beneath them."""
+    if questions is None:
+        questions = question_by_key(definition)
     if visible is None:
         visible = visible_questions(definition, answers, questions=questions)
     if missing is None:
         missing = missing_keys(definition, answers, visible=visible, questions=questions)
-    total = sum(1 for v in visible if v.type in ANSWERABLE)
-    return {"answered": total - len(missing), "total": total}
+    pending = pending_keys(definition, answers, visible=visible, questions=questions)
+    total = sum(1 for _, _, q in iter_questions(definition) if q["type"] in ANSWERABLE)
+    return {"answered": total - len(missing) - len(pending), "total": total}
