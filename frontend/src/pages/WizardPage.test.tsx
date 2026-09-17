@@ -303,7 +303,8 @@ describe("WizardPage", () => {
     // the form again, as it was saved
     expect(m.$<HTMLInputElement>("email-input")!.value).toBe("typo@example.org");
     expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("true");
-    expect(m.$("email-skip")).toBeNull(); // No thanks is not a way out of a correction
+    expect(m.$("email-skip")).toBeNull(); // No thanks is not a way out of a correction; Remove is
+    expect(m.$("email-remove")).not.toBeNull();
     click(m.$("email-cancel"));
     await m.flush();
     expect(m.$("email-captured")!.textContent).toContain("typo@example.org");
@@ -338,13 +339,16 @@ describe("WizardPage", () => {
     server.on("POST", `/responses/${RESPONSE_ID}/contact/`, { status: 204 });
     m = mount(`/s/${SLUG}/q/q3`);
     await m.until("email-consent-contact");
+    expect(m.$("email-consents-hint")).toBeNull(); // nothing typed yet: no nagging
     type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");
+    expect(m.$<HTMLButtonElement>("email-save")!.disabled).toBe(true);
+    expect(m.$("email-consents-hint")!.textContent).toBe(t("email.consentsRequired"));
     click(m.$("email-save"));
     await m.flush();
-    expect(m.$("email-consents-error")!.textContent).toBe(t("email.consentsRequired"));
     expect(server.of("POST")).toEqual([]);
     click(m.$("email-consent-contact"));
-    expect(m.$("email-consents-error")).toBeNull();
+    expect(m.$("email-consents-hint")).toBeNull();
+    expect(m.$<HTMLButtonElement>("email-save")!.disabled).toBe(false);
     click(m.$("email-save"));
     await m.flush();
     expect(server.of("POST", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([{ email: "someone@example.org", consents: ["contact"] }]);

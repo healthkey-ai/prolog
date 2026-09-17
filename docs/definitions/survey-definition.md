@@ -369,7 +369,7 @@ question may offer up to five, each its own tick box, none ticked in advance:
 | `consents[].key` | `^[a-z0-9][a-z0-9_]*$`, ≤ 64, unique within the question (`consent_keys`). It names the consent in exports and in the record. |
 | `consents[].text` | The sentence beside the box, i18n. What is recorded is the wording *as shown*, so a later edit never changes what someone agreed to. |
 | `consents_label` | A line above the boxes, i18n, plain text — an invitation to tick what applies. |
-| `consents_min` | How many boxes must be ticked before the address is accepted; default `0` — an address with nothing ticked is a valid answer. Must not exceed the number offered (`consents_min`). Refused submissions get `400 {"consents": ["consents_required"]}`. |
+| `consents_min` | How many boxes must be ticked before the address is accepted; default `0` — an address with nothing ticked is a valid answer. Must not exceed the number offered (`consents_min`). The runner keeps **Save** disabled, with the reason under the boxes, until enough are ticked; the server refuses anyway (`400 {"consents": ["consents_required"]}`). |
 | `consents_note` | Text under the boxes, i18n, inline Markdown — bold, italic, links; `[label](privacy)` reaches the survey's own legal page, as in §7. Any `consents_*` setting without `consents` is an error (`consents_missing`). |
 
 The runner posts the ticked keys with the address (`"consents": ["reuse"]`);

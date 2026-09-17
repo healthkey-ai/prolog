@@ -64,6 +64,11 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
   const noteLinksPrivacy = consents.length > 0 && /\]\(privacy\)/.test(consentsNote);
   const [ticked, setTicked] = useState<string[]>(draft?.ticked ?? []);
   const [consentError, setConsentError] = useState(false);
+  // Save waits until it can succeed: an address, and the ticks the question
+  // requires. The reason shows once an address is typed, so it reads as a
+  // next step rather than a reproach.
+  const ticksShort = ticked.length < consentsMin;
+  const canSave = Boolean(email) && !ticksShort;
   const provided = value?.provided === true;
   // Correcting a saved address: the form again, filled with what was saved.
   // Only contact capture can be corrected — the receipt opens the contact
@@ -80,7 +85,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
       setError(t("email.invalid"));
       return;
     }
-    if (ticked.length < consentsMin) {
+    if (ticksShort) {
       setConsentError(true);
       return;
     }
@@ -121,6 +126,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
       forget(capturedKey);
       forget(draftKey);
       setCaptured(undefined);
+      setEditing(false);
       setEmail("");
       setTicked([]);
     } catch (err) {
@@ -218,10 +224,17 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
                   {renderInline(consentsNote, "consents-note", { legalPages })}
                 </p>
               )}
-              {consentError && (
+              {consentError ? (
                 <p className="text-sm text-error" role="alert" data-testid="email-consents-error">
                   {t("email.consentsRequired")}
                 </p>
+              ) : (
+                email &&
+                ticksShort && (
+                  <p className="text-sm text-ink-soft" data-testid="email-consents-hint">
+                    {t("email.consentsRequired")}
+                  </p>
+                )
               )}
             </fieldset>
           )}
@@ -231,13 +244,18 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
             </Alert>
           )}
           <div className="flex flex-wrap gap-3">
-            <Button variant="primary" size="runner" onClick={submit} disabled={busy || !email} data-testid="email-save">
+            <Button variant="primary" size="runner" onClick={submit} disabled={busy || !canSave} data-testid="email-save">
               {t("email.save")}
             </Button>
             {editing ? (
-              <Button variant="surface" size="runner" onClick={() => setEditing(false)} disabled={busy} data-testid="email-cancel">
-                {t("email.cancel")}
-              </Button>
+              <>
+                <Button variant="surface" size="runner" onClick={() => setEditing(false)} disabled={busy} data-testid="email-cancel">
+                  {t("email.cancel")}
+                </Button>
+                <Button variant="link" size="runner" className="text-error" onClick={remove} disabled={busy} data-testid="email-remove">
+                  {t("email.remove")}
+                </Button>
+              </>
             ) : (
               <Button variant="surface" size="runner" onClick={decline} disabled={busy} data-testid="email-skip">
                 {t("email.skip")}
