@@ -109,17 +109,21 @@ export function IntroPage() {
   // A top-right logo floats above the column rather than sitting in the top
   // row: the row is then only as tall as the language control, and the title
   // moves up beside the mark — the intro fits a screen it otherwise would
-  // not. The control keeps clear of the mark by the mark's measured width.
+  // not. The control keeps clear of the mark by the mark's measured width,
+  // and sits level with its middle — shifted, not spaced, so the row stays
+  // as short as the control and the words keep the room they gained.
   const floatingLogo = layout.logoPlacement === "top-right" && logo !== null;
   const logoBox = useRef<HTMLDivElement>(null);
-  const [logoWidth, setLogoWidth] = useState(0);
+  const topRow = useRef<HTMLDivElement>(null);
+  const [logoSize, setLogoSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const el = logoBox.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => setLogoWidth(el.offsetWidth));
+    const observer = new ResizeObserver(() => setLogoSize({ width: el.offsetWidth, height: el.offsetHeight }));
     observer.observe(el);
     return () => observer.disconnect();
   }, [floatingLogo]);
+  const rowShift = floatingLogo && topRow.current ? Math.max(0, (logoSize.height - topRow.current.offsetHeight) / 2) : 0;
   useDefinitionLanguage(definition.data?.language);
   usePageTitle(definition.data?.title as string | undefined);
   useEffect(() => {
@@ -323,8 +327,13 @@ export function IntroPage() {
           </div>
         )}
         <div
+          ref={topRow}
           className={`flex items-center gap-3 ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-between"}`}
-          style={floatingLogo ? { paddingRight: logoWidth ? logoWidth + 12 : undefined } : undefined}
+          style={
+            floatingLogo
+              ? { paddingRight: logoSize.width ? logoSize.width + 12 : undefined, transform: rowShift ? `translateY(${rowShift}px)` : undefined }
+              : undefined
+          }
         >
           {layout.logoPlacement !== "top-right" && logo}
           {def.presentation?.language_step !== "first" && (
