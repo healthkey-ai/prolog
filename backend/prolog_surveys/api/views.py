@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import secrets
 import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -721,22 +722,36 @@ class ContactView(ResponseMixin, RunnerView):
         answers = response.answer_map()
         if question["key"] not in _visible_set(definition, answers):
             raise ValidationError({"email": ["contact capture is not currently shown"]})
-        if (answers.get(question["key"]) or {}).get("provided") is True:
-            return Response(status=status.HTTP_204_NO_CONTENT)  # retry after a lost 204
+        receipt = ser.validated_data.get("receipt") or ""
+        if (answers.get(question["key"]) or {}).get("provided") is True and not receipt:
+            return Response(status=status.HTTP_204_NO_CONTENT)  # retry after a lost reply
         consents = _ticked_consents(question, ser.validated_data["consents"], response)
         notice = pick(
             question.get("help", {}) or question["text"],
             response.language,
             definition["default_language"],
         )
+        fields = {
+            "email": ser.validated_data["email"],
+            "language": response.language,
+            "consent_text": notice,
+            "consents": consents,
+            "receipt": secrets.token_urlsafe(32),
+        }
         try:
-            SurveyContact.objects.create(
-                survey_version=response.survey_version,
-                email=ser.validated_data["email"],
-                language=response.language,
-                consent_text=notice,
-                consents=consents,
+            # A correction rewrites the row the receipt opens — the address it
+            # held is the one being corrected, so nothing of it should remain —
+            # under a fresh receipt. A receipt that opens nothing (the row purged,
+            # a stale tab) captures anew: there is nothing left to correct.
+            replaced = (
+                SurveyContact.objects.filter(
+                    survey_version=response.survey_version, receipt=receipt
+                ).update(**fields, captured_on=timezone.localdate())
+                if receipt
+                else 0
             )
+            if not replaced:
+                SurveyContact.objects.create(survey_version=response.survey_version, **fields)
             _mark_provided(response, question["key"], [c["key"] for c in consents])
         except Exception as exc:
             # An unhandled exception would carry the request body — the address —
@@ -745,7 +760,9 @@ class ContactView(ResponseMixin, RunnerView):
                 "contact capture failed with %s for response %s", type(exc).__name__, response.id
             )
             raise APIException("contact capture failed") from None
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        # The receipt goes to the browser and nowhere else: the response never
+        # holds it, so the database still cannot join an address to its answers.
+        return Response({"receipt": fields["receipt"]})
 
 
 @method_decorator(sensitive_post_parameters("email"), name="dispatch")

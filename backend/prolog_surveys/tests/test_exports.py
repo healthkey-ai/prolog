@@ -70,7 +70,7 @@ def submitted(api_client, version):
             {"email": "someone@example.org", "consents": ["reuse"]},
             format="json",
         ).status_code
-        == 204
+        == 200
     )
     assert api_client.post(f"/api/run/responses/{rid}/submit/").status_code == 200
     return rid
@@ -203,7 +203,7 @@ def test_exports_apply_safe_cell_to_free_text_and_emails(version, api_client):
         api_client.post(
             f"/api/run/responses/{rid}/contact/", {"email": "+x@example.org"}, format="json"
         ).status_code
-        == 204
+        == 200
     )
     assert api_client.post(f"/api/run/responses/{rid}/submit/").status_code == 200
     out = io.StringIO()

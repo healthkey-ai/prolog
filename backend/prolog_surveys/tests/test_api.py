@@ -425,9 +425,11 @@ def test_contact_capture_is_unlinked(api_client, response_id):
         {"email": "someone@example.org"},
         format="json",
     )
-    assert r.status_code == 204
+    assert r.status_code == 200
     contact = SurveyContact.objects.get()
     assert contact.email == "someone@example.org"
+    # the receipt reaches the browser and the contact row, never the response
+    assert r.json() == {"receipt": contact.receipt} and len(contact.receipt) == 43
     assert "separately" in contact.consent_text
     assert not any(f.name == "response" for f in SurveyContact._meta.get_fields())
     answer = SurveyAnswer.objects.get(response_id=response_id, question_key="contact_email")
@@ -457,7 +459,7 @@ def test_contact_capture_records_the_consents_ticked(api_client, response_id):
         {"email": "someone@example.org", "consents": ["reuse", "contact", "reuse"]},
         format="json",
     )
-    assert r.status_code == 204
+    assert r.status_code == 200
     contact = SurveyContact.objects.get()
     # deduplicated, in the question's order, not the order ticked
     assert [c["key"] for c in contact.consents] == ["contact", "reuse"]
@@ -488,8 +490,40 @@ def test_contact_capture_without_ticks_is_allowed_unless_required(api_client, db
         {"email": "a@b.co", "consents": ["reuse"]},
         format="json",
     )
-    assert r.status_code == 204
+    assert r.status_code == 200
     assert [c["key"] for c in SurveyContact.objects.get().consents] == ["reuse"]
+
+
+def test_contact_capture_is_corrected_with_its_receipt(api_client, response_id):
+    """The receipt the browser was handed opens the row it came from — and
+    only that row: a correction rewrites it (address, ticks, date) under a new
+    receipt, so a typo never leaves the wrong address on the list. A receipt
+    that opens nothing captures anew; none at all is the old retry."""
+    url = f"/api/run/responses/{response_id}/contact/"
+    receipt = api_client.post(
+        url, {"email": "typo@example.org", "consents": ["contact"]}, format="json"
+    ).json()["receipt"]
+    r = api_client.post(
+        url,
+        {"email": "right@example.org", "consents": ["reuse"], "receipt": receipt},
+        format="json",
+    )
+    assert r.status_code == 200 and r.json()["receipt"] != receipt
+    contact = SurveyContact.objects.get()
+    assert contact.email == "right@example.org"
+    assert [c["key"] for c in contact.consents] == ["reuse"]
+    answer = SurveyAnswer.objects.get(response_id=response_id, question_key="contact_email")
+    assert answer.value == {"provided": True, "consents": ["reuse"]}
+    # the spent receipt opens nothing: a new row, the corrected one untouched
+    r = api_client.post(url, {"email": "third@example.org", "receipt": receipt}, format="json")
+    assert r.status_code == 200
+    assert sorted(SurveyContact.objects.values_list("email", flat=True)) == [
+        "right@example.org",
+        "third@example.org",
+    ]
+    # no receipt: the retry after a lost reply, which stores nothing
+    assert api_client.post(url, {"email": "fourth@example.org"}, format="json").status_code == 204
+    assert SurveyContact.objects.count() == 2
 
 
 def test_contact_404_without_store_separately(api_client, db, definition):
@@ -557,7 +591,7 @@ def test_consent_not_required_records_only_an_agreement(api_client, db, definiti
 
 def test_contact_capture_is_recorded_once_per_response(api_client, response_id):
     url = f"/api/run/responses/{response_id}/contact/"
-    assert api_client.post(url, {"email": "one@example.org"}, format="json").status_code == 204
+    assert api_client.post(url, {"email": "one@example.org"}, format="json").status_code == 200
     # The {provided: true} marker cannot be reset through the answer endpoint...
     r = put_answer(api_client, response_id, "contact_email", {"provided": False})
     assert r.status_code == 200 and r.json()["answer"]["value"] == {"provided": True}
@@ -620,7 +654,7 @@ def test_contact_marker_survives_hiding_the_email_question(api_client, db, defin
     ).json()["id"]
     url = f"/api/run/responses/{rid}/contact/"
     assert put_answer(api_client, rid, "has_symptoms", {"option": "yes"}).status_code == 200
-    assert api_client.post(url, {"email": "one@example.org"}, format="json").status_code == 204
+    assert api_client.post(url, {"email": "one@example.org"}, format="json").status_code == 200
     # Hiding the question must not throw the marker away with the other answers.
     r = put_answer(api_client, rid, "has_symptoms", {"option": "no"})
     assert r.status_code == 200

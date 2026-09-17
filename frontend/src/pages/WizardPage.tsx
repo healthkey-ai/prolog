@@ -487,13 +487,14 @@ export function WizardPage() {
             questionTotal={pos.questionTotal}
             answers={answers}
             questions={questions}
-            onSubmitEmail={async (email, consents) => {
+            onSubmitEmail={async (email, consents, receipt) => {
               // Identity capture goes to the host's identity service; contact capture is stored unlinked.
-              const input = { email, consents, key };
-              await (question.config?.link_identity ? identity.mutateAsync(input) : contact.mutateAsync(input));
+              const input = { email, consents, key, receipt };
+              const result = question.config?.link_identity ? await identity.mutateAsync(input) : await contact.mutateAsync(input);
               setDraftKey(key);
               setDraft(capturedValue(consents));
               flashSaved();
+              return result?.receipt;
             }}
           />
         )}

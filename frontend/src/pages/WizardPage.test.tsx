@@ -284,6 +284,43 @@ describe("WizardPage", () => {
     expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("shows the saved address and lets the participant correct it — the box and the ticks again, then the receipt goes back", async () => {
+    const withEmail = definition();
+    withEmail.sections[1].questions = [
+      { key: "q3", type: "email", text: "Stay in touch?", required: false, config: { store_separately: true, consents: [{ key: "contact", text: "You may contact me." }, { key: "reuse", text: "You may reuse my answers." }] } },
+    ];
+    const server = runnerServer(withEmail, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q3", missing: ["q3"] }));
+    server.on("POST", `/responses/${RESPONSE_ID}/contact/`, (_call, n) => ({ body: { receipt: `r${n}` } }));
+    m = mount(`/s/${SLUG}/q/q3`);
+    await m.until("email-consent-contact");
+    type(m.$<HTMLInputElement>("email-input")!, "typo@example.org");
+    click(m.$("email-consent-contact"));
+    click(m.$("email-save"));
+    await m.flush(3);
+    expect(m.$("email-captured")!.textContent).toContain("typo@example.org");
+    click(m.$("email-change"));
+    await m.flush();
+    // the form again, as it was saved
+    expect(m.$<HTMLInputElement>("email-input")!.value).toBe("typo@example.org");
+    expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("true");
+    expect(m.$("email-skip")).toBeNull(); // No thanks is not a way out of a correction
+    click(m.$("email-cancel"));
+    await m.flush();
+    expect(m.$("email-captured")!.textContent).toContain("typo@example.org");
+    click(m.$("email-change"));
+    await m.flush();
+    type(m.$<HTMLInputElement>("email-input")!, "right@example.org");
+    click(m.$("email-consent-contact"));
+    click(m.$("email-consent-reuse"));
+    click(m.$("email-save"));
+    await m.flush(3);
+    expect(server.of("POST", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([
+      { email: "typo@example.org", consents: ["contact"] },
+      { email: "right@example.org", consents: ["reuse"], receipt: "r1" },
+    ]);
+    expect(m.$("email-captured")!.textContent).toContain("right@example.org");
+  });
+
   it("refuses to save an address with too few consents ticked, before anything is sent", async () => {
     const withEmail = definition();
     withEmail.sections[1].questions = [

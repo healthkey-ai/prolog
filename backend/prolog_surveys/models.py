@@ -425,6 +425,11 @@ class SurveyContact(models.Model):
     # shown, so a later edit never changes what was agreed. Dated like the
     # row (to the day): a timestamp would pair it with the response's marker.
     consents = models.JSONField(default=list, blank=True)
+    # Handed to the participant's browser when the address is captured, and
+    # never to the response: with it they may correct the address on the same
+    # screen (a typo, a second thought), and only they can, because only they
+    # hold it. Blank once used for a correction: a receipt opens one row.
+    receipt = models.CharField(max_length=43, blank=True, default="", db_index=True)
     captured_on = models.DateField(default=timezone.localdate)
 
     class Meta:

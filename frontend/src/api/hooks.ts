@@ -342,12 +342,20 @@ export interface CaptureInput {
   email: string;
   consents: string[];
   key: string;
+  /** Contact capture: the receipt of the capture this one corrects. */
+  receipt?: string;
+}
+
+/** What the contact endpoint hands back: a receipt that lets this browser, and nobody else, correct the address. */
+export interface CaptureReceipt {
+  receipt: string;
 }
 
 export function useContact(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ email, consents }: CaptureInput) => api.post<void>(`/responses/${id}/contact/`, { email, consents }),
+    mutationFn: ({ email, consents, receipt }: CaptureInput) =>
+      api.post<CaptureReceipt | undefined>(`/responses/${id}/contact/`, receipt ? { email, consents, receipt } : { email, consents }),
     onSuccess: (_data, input) => emailProvided(qc, id, input),
   });
 }

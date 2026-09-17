@@ -211,6 +211,13 @@ you cannot honour a later "delete my answers" request from that address.
 Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
 
+A saved address stays on screen — as the person typed it, which is the only
+copy the runner has — with a **Change** button while they are on the survey
+in that tab. Correcting it rewrites the contact row (a receipt the browser
+holds opens that one row and nothing else), so a mistyped address never
+lingers on the list. With `link_identity` the address is the account's, and
+is changed there.
+
 **Ask for each consent on its own.** An address is given *for* something —
 to be contacted, to have the answers kept — and those are different
 questions with different answers. The email question can offer each as its
