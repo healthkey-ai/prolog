@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AnswerError, MAX_OTHER_TEXT, defaultOrder, implicitAnswer, validateAnswer, orderedSourceOptions, priorityCount, sourceKeys } from "./answers";
+import { type AnswerError, MAX_OTHER_TEXT, defaultOrder, implicitAnswer, sameAnswer, validateAnswer, orderedSourceOptions, priorityCount, sourceKeys } from "./answers";
 import type { Question } from "./types";
 
 const ranking: Question = {
@@ -240,5 +240,14 @@ describe("options_source_priority", () => {
     const cfg = { options_source: "iso3166_countries", options_source_priority: ["GB"] };
     const source = new Set(opts.map((o) => o.key));
     expect(sourceKeys(cfg, source)).toEqual(source);
+  });
+});
+
+describe("sameAnswer", () => {
+  it("ignores key order (the database's) but not array order (a ranking's)", () => {
+    expect(sameAnswer({ provided: true, consents: ["a"] }, { consents: ["a"], provided: true })).toBe(true);
+    expect(sameAnswer({ order: ["a", "b"] }, { order: ["b", "a"] })).toBe(false);
+    expect(sameAnswer({ ratings: { x: 1, y: 2 } }, { ratings: { y: 2, x: 1 } })).toBe(true);
+    expect(sameAnswer(undefined, { provided: false })).toBe(false);
   });
 });

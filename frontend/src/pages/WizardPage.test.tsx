@@ -243,13 +243,22 @@ describe("WizardPage", () => {
     expect(reuse.getAttribute("aria-checked")).toBe("false");
     expect(m.$("legal-link-privacy")!.getAttribute("href")).toBe(`/s/${SLUG}/privacy`);
     expect(m.$("email-consents-label")!.textContent).toBe("Tick what you agree to:");
+    expect(m.$("email-privacy-link")).toBeNull(); // the note already links the notice
     click(reuse);
     click(m.$("email-consent-contact"));
     type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");
+    // Once captured, the server hands the marker back with its keys in the
+    // database's order; Next must see the same answer and just advance.
+    server.on("GET", `/responses/${RESPONSE_ID}/`, { body: response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { consents: ["contact", "reuse"], provided: true } }, last_question_key: "q3", missing: [] }) });
+    server.on("POST", `/responses/${RESPONSE_ID}/submit/`, { body: { status: "submitted" } });
     click(m.$("email-save"));
-    await m.flush();
+    await m.flush(3);
     expect(server.of("POST", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([{ email: "someone@example.org", consents: ["contact", "reuse"] }]);
     expect(m.text()).toContain(t("email.saved"));
+    click(NEXT(m));
+    await m.flush(3);
+    expect(server.of("PUT", ANSWERS)).toEqual([]);
+    expect(server.of("POST", `/responses/${RESPONSE_ID}/submit/`)).toHaveLength(1);
   });
 
   it("refuses to save an address with too few consents ticked, before anything is sent", async () => {

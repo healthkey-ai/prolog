@@ -318,7 +318,7 @@ export function useSubmitResponse(id: string) {
 }
 
 /** The answer the server stores once an address has been captured. */
-/** The marker the server stores for a completed capture, key order included: Next compares it to the draft as JSON. */
+/** The marker the server stores for a completed capture. */
 export function capturedValue(consents: string[]): EmailValue {
   return consents.length ? { provided: true, consents } : { provided: true };
 }

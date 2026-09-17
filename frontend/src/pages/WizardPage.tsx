@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { issueMessages } from "@/i18n/issues";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
-import { AnswerError, implicitAnswer, validateAnswer } from "@/survey/answers";
+import { AnswerError, implicitAnswer, sameAnswer, validateAnswer } from "@/survey/answers";
 import { missingKeys } from "@/survey/completion";
 import { firstOpenKey, hasStoredAnswer, overview, position, progressFraction, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue, type Question } from "@/survey/types";
@@ -265,7 +265,7 @@ export function WizardPage() {
     if (!opts?.commit) return;
     if (value !== undefined) {
       // Blur on an unchanged text/number/date field must not PUT the same value again.
-      const unchanged = JSON.stringify(value) === JSON.stringify(answers[key]);
+      const unchanged = sameAnswer(value, answers[key]);
       void (unchanged ? Promise.resolve<SaveOutcome>("saved") : commit(value)).then((outcome) => {
         if (outcome === "saved" && opts.advance) void advance(after(value));
       });
@@ -374,7 +374,7 @@ export function WizardPage() {
     }
     const stored = cleared ? undefined : answers[key];
     if (hasDraft && draftValue !== undefined) {
-      if (JSON.stringify(stored) !== JSON.stringify(draftValue)) {
+      if (!sameAnswer(stored, draftValue)) {
         if ((await commit(draftValue)) !== "saved") return;
       } else {
         // Stored, possibly only optimistically: its PUT must land before a

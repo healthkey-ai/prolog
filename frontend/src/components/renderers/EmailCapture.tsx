@@ -34,6 +34,10 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
   // none pre-ticked: a consent is something the participant does, not
   // something they fail to undo.
   const consents = question.config?.consents ?? [];
+  const consentsNote = (question.config?.consents_note as string | undefined) ?? "";
+  // The note is where a deployment puts its own link to the notice; a second
+  // link to the same page under the buttons would only be noise.
+  const noteLinksPrivacy = consents.length > 0 && /\]\(privacy\)/.test(consentsNote);
   const consentsMin = question.config?.consents_min ?? 0;
   const [ticked, setTicked] = useState<string[]>([]);
   const [consentError, setConsentError] = useState(false);
@@ -120,7 +124,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
               })}
               {question.config?.consents_note && (
                 <p className="text-sm text-muted-foreground" data-testid="email-consents-note">
-                  {renderInline(question.config.consents_note as string, "consents-note", { legalPages })}
+                  {renderInline(consentsNote, "consents-note", { legalPages })}
                 </p>
               )}
               {consentError && (
@@ -143,7 +147,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
               {t("email.skip")}
             </Button>
           </div>
-          {hasPrivacy && (
+          {hasPrivacy && !noteLinksPrivacy && (
             <Link to={`/s/${slug}/privacy`} className="text-sm text-primary underline" data-testid="email-privacy-link">
               {t("legal.privacy")}
             </Link>
