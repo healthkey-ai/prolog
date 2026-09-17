@@ -115,15 +115,22 @@ export function IntroPage() {
   const floatingLogo = layout.logoPlacement === "top-right" && logo !== null;
   const logoBox = useRef<HTMLDivElement>(null);
   const topRow = useRef<HTMLDivElement>(null);
-  const [logoSize, setLogoSize] = useState({ width: 0, height: 0 });
+  const [fit, setFit] = useState({ width: 0, shift: 0 });
   useEffect(() => {
     const el = logoBox.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => setLogoSize({ width: el.offsetWidth, height: el.offsetHeight }));
+    const row = topRow.current;
+    if (!el || !row || typeof ResizeObserver === "undefined") return;
+    // offsetTop is layout position, untouched by the row's own transform.
+    const measure = () =>
+      setFit({
+        width: el.offsetWidth,
+        shift: el.offsetTop + el.offsetHeight / 2 - (row.offsetTop + row.offsetHeight / 2),
+      });
+    const observer = new ResizeObserver(measure);
     observer.observe(el);
+    observer.observe(row);
     return () => observer.disconnect();
   }, [floatingLogo]);
-  const rowShift = floatingLogo && topRow.current ? Math.max(0, (logoSize.height - topRow.current.offsetHeight) / 2) : 0;
   useDefinitionLanguage(definition.data?.language);
   usePageTitle(definition.data?.title as string | undefined);
   useEffect(() => {
@@ -320,7 +327,7 @@ export function IntroPage() {
         {floatingLogo && (
           <div
             ref={logoBox}
-            className="absolute right-6 top-[clamp(0.75rem,3vh,2.25rem)] [@media(max-height:800px)]:top-[clamp(0.5rem,2vh,1.5rem)]"
+            className="absolute right-6 top-[clamp(0.4rem,1.5vh,1.1rem)] [@media(max-height:800px)]:top-[clamp(0.3rem,1vh,0.75rem)]"
             data-testid="intro-logo"
           >
             {logo}
@@ -331,7 +338,7 @@ export function IntroPage() {
           className={`flex items-center gap-3 ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-between"}`}
           style={
             floatingLogo
-              ? { paddingRight: logoSize.width ? logoSize.width + 12 : undefined, transform: rowShift ? `translateY(${rowShift}px)` : undefined }
+              ? { paddingRight: fit.width ? fit.width + 12 : undefined, transform: fit.shift ? `translateY(${fit.shift}px)` : undefined }
               : undefined
           }
         >
