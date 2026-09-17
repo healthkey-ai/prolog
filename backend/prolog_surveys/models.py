@@ -421,6 +421,15 @@ class SurveyContact(models.Model):
     email = models.EmailField()
     language = models.CharField(max_length=12, blank=True, default="")
     consent_text = models.TextField(help_text="The notice shown when the address was given.")
+    # The consents ticked with the address: [{"key", "text"}] — the wording as
+    # shown, so a later edit never changes what was agreed. Dated like the
+    # row (to the day): a timestamp would pair it with the response's marker.
+    consents = models.JSONField(default=list, blank=True)
+    # Handed to the participant's browser when the address is captured, and
+    # never to the response: with it they may correct the address on the same
+    # screen (a typo, a second thought), and only they can, because only they
+    # hold it. Blank once used for a correction: a receipt opens one row.
+    receipt = models.CharField(max_length=43, blank=True, default="", db_index=True)
     captured_on = models.DateField(default=timezone.localdate)
 
     class Meta:
@@ -443,6 +452,59 @@ class SurveyConsent(models.Model):
 
     def __str__(self) -> str:
         return f"consent {self.consent_version} for {self.response_id}"
+
+
+class SurveyLinkedContact(models.Model):
+    """An address given with a response and kept beside it (linked contact
+    capture, CON-10): the answers can be found from the address and the
+    address from the answers, with no account made.
+
+    Its own table, not a nullable link on ``SurveyContact``: the unlinked
+    table stays structurally unable to reach a response, which is the
+    guarantee contact capture makes. This one goes with its response — a
+    purged response takes the address with it.
+    """
+
+    response = models.OneToOneField(
+        SurveyResponse, on_delete=models.CASCADE, related_name="linked_contact"
+    )
+    email = models.EmailField()
+    language = models.CharField(max_length=12, blank=True, default="")
+    consent_text = models.TextField(help_text="The notice shown when the address was given.")
+    consents = models.JSONField(default=list, blank=True)
+    receipt = models.CharField(max_length=43, blank=True, default="", db_index=True)
+    captured_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self) -> str:
+        return f"linked contact for {self.response_id}"
+
+
+class SurveyCaptureConsent(models.Model):
+    """A consent ticked with an identity capture (CON-4), one row per tick.
+
+    An identified response is not anonymous, so the record can be exact: the
+    key, the wording shown (hashed and verbatim), the language, the moment.
+    Withdrawal is ``withdrawn_at``, never deletion — the fact that consent was
+    given, and until when, is what a controller has to be able to show.
+    """
+
+    response = models.ForeignKey(
+        SurveyResponse, on_delete=models.CASCADE, related_name="capture_consents"
+    )
+    key = models.CharField(max_length=64)
+    text = models.TextField(help_text="The consent wording shown, verbatim.")
+    text_hash = models.CharField(max_length=64)
+    language = models.CharField(max_length=12)
+    agreed_at = models.DateTimeField(auto_now_add=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["response", "key"], name="one_capture_consent_per_key")
+        ]
+
+    def __str__(self) -> str:
+        return f"consent {self.key} for {self.response_id}"
 
 
 class SurveyInvitation(models.Model):

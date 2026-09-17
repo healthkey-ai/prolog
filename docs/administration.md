@@ -196,20 +196,38 @@ respondents about it: *a record nobody can put a name to*, not *no record*. The
 runner will not describe an instrument as anonymous on your behalf — the intro
 and consent text are yours, and it is your responsibility that they are true.
 
-**An email question is not a footnote.** Two modes, and they differ completely:
+**An email question is not a footnote.** Three modes, and they differ completely:
 
 | Mode | What happens | When to use it |
 | --- | --- | --- |
-| `link_identity` | The address creates an account for the person who answered. They can come back, see their own data, and be asked less next time. | The default. |
+| `link_response` | The address is kept beside the answers — you can find the answers from the address and the address from the answers. No account. | When the instrument promises to link, contact, or "ask less next time", and the host has no patient portal in the offer. |
+| `link_identity` | The address creates an account for the person who answered. They can come back, see their own data, and be asked less next time. | When the host platform's portal is part of what the person gets. |
 | `store_separately` | The address goes to a separate list with **no link to the answers**. You get a mailing list and nothing else. | When you genuinely want only a mailing list, and can say why. |
 
-With `link_identity`, an instrument is **not anonymous for the people who give
-an address**, and its copy has to say so. With `store_separately`, nobody —
-including you — can join an address back to a set of answers, which also means
-you cannot honour a later "delete my answers" request from that address.
+With either linked mode, an instrument is **not anonymous for the people who
+give an address**, and its copy has to say so. With `store_separately`,
+nobody — including you — can join an address back to a set of answers, which
+also means you cannot honour a later "delete my answers" request from that
+address; with `link_response` you can (`withdraw_consent … --erase-response`).
 
 Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
+
+A saved address stays on screen — as the person typed it, which is the only
+copy the runner has — with **Change** and **Remove** while they are on the
+survey in that tab. Remove deletes the address and leaves the question as
+declined, open for another address or none. Correcting it rewrites the contact row (a receipt the browser
+holds opens that one row and nothing else), so a mistyped address never
+lingers on the list. With `link_identity` the address is the account's, and
+is changed there.
+
+**Ask for each consent on its own.** An address is given *for* something —
+to be contacted, to have the answers kept — and those are different
+questions with different answers. The email question can offer each as its
+own tick box (`config.consents`, none pre-ticked), with a note underneath on
+how to withdraw. What is recorded is the wording the person saw, not the key,
+so editing a sentence later never rewrites what was agreed. See the
+[definition manual, §8](definitions/survey-definition.md#8-the-email-question--contact-vs-identity-capture).
 
 ---
 
@@ -424,7 +442,43 @@ includes unfinished ones, which is usually what you want for a "how far did
 people get" question and not what you want for analysis.
 
 Multi-selects and matrix rows are exploded into columns, so a row is one
-response.
+response. An email question that offers consents adds a `1`/`0` column per
+consent to both exports (`<question>.consent.<key>` beside the answers,
+`consent.<key>` beside the addresses), so what was ticked is wherever the
+thing it was ticked for is.
+
+---
+
+## When someone withdraws a consent
+
+A consent given with an address can be withdrawn on its own, and withdrawal
+is *recorded*, not erased: that it was given, and until when, is what you
+have to be able to show. The address itself can be erased when the person
+wants off the list altogether.
+
+```sh
+manage.py withdraw_consent <slug> --email someone@example.org --consent reuse   # one consent
+manage.py withdraw_consent <slug> --email someone@example.org                   # every consent given
+manage.py withdraw_consent <slug> --email someone@example.org --erase           # the address goes
+manage.py withdraw_consent <slug> --email someone@example.org --erase-response  # linked: the whole record goes
+manage.py withdraw_consent <slug> --participant <pk> --consent contact          # identity capture
+```
+
+Which form applies depends on how the address was captured. With contact
+capture — unlinked or linked — the address is on the contact row, so
+`--email` finds it (any version of the survey, case-insensitive); only a
+linked row can take `--erase-response`, which deletes the response with
+its answers, address and consents: a "forget me" honoured in full. With identity capture the address
+is the account's, held by the host: resolve it to the participant there and
+pass `--participant`; the consents are rows against that participant's
+responses, each dated when withdrawn. `--dry-run` says what would change.
+
+Both exports show the difference: a consent column reads `1` (given), `0`
+(never given) or `WITHDRAWN` (given, then withdrawn). The admin's contact
+list shows the same at a glance.
+
+Nothing here is a request the runner receives. A withdrawal arrives as an
+email to the controller, and this is what the operator does with it.
 
 ---
 

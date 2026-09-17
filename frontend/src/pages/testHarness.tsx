@@ -15,6 +15,7 @@ import type { ResponseSummary, RunnerDefinition } from "@/api/types";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { CompletePage } from "./CompletePage";
 import { IntroPage } from "./IntroPage";
+import { LegalPage } from "./LegalPage";
 import { WizardPage } from "./WizardPage";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -148,6 +149,7 @@ export function runnerRoutes(): ReactElement {
     createElement(Route, { path: "/s/:slug", element: createElement(IntroPage) }),
     createElement(Route, { path: "/s/:slug/q/:key", element: createElement(WizardPage) }),
     createElement(Route, { path: "/s/:slug/complete", element: createElement(CompletePage) }),
+    createElement(Route, { path: "/s/:slug/privacy", element: createElement(LegalPage, { page: "privacy" }) }),
   );
 }
 

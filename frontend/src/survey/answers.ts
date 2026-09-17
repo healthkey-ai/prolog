@@ -65,6 +65,21 @@ export type AnswerIssueCode =
 
 export type { AnswerIssue } from "./types";
 
+/**
+ * Whether two answer values are the same answer. Key order is not part of an
+ * answer — the server hands back `{"consents", "provided"}` for a marker the
+ * runner drafted as `{provided, consents}` — but array order is (a ranking).
+ */
+export function sameAnswer(a: AnswerValue | undefined, b: AnswerValue | undefined): boolean {
+  return canonical(a) === canonical(b);
+}
+
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, (v as Record<string, unknown>)[k]])) : v,
+  );
+}
+
 export class AnswerError extends Error {
   issues: AnswerIssue[];
   constructor(issues: AnswerIssue[]) {

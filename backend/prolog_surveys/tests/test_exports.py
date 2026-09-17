@@ -66,9 +66,11 @@ def submitted(api_client, version):
     )
     assert (
         api_client.post(
-            f"/api/run/responses/{rid}/contact/", {"email": "someone@example.org"}, format="json"
+            f"/api/run/responses/{rid}/contact/",
+            {"email": "someone@example.org", "consents": ["reuse"]},
+            format="json",
         ).status_code
-        == 204
+        == 200
     )
     assert api_client.post(f"/api/run/responses/{rid}/submit/").status_code == 200
     return rid
@@ -109,7 +111,61 @@ def test_export_contacts_separate(version, submitted):
     text = out.getvalue()
     assert "someone@example.org" in text
     assert submitted not in text
-    assert "response" not in text.splitlines()[0]
+    header, row = list(csv.reader(io.StringIO(text)))
+    assert "response" not in header
+    # what was ticked with the address travels with it, one column per consent
+    assert header[-2:] == ["consent.contact", "consent.reuse"] and row[-2:] == ["0", "1"]
+
+
+def test_export_responses_consent_columns(version, submitted):
+    out = io.StringIO()
+    write_responses(version, out)
+    header, row = list(csv.reader(io.StringIO(out.getvalue())))
+    record = dict(zip(header, row, strict=True))
+    assert record["contact_email"] == "1"
+    assert (record["contact_email.consent.contact"], record["contact_email.consent.reuse"]) == (
+        "0",
+        "1",
+    )
+
+
+def test_withdraw_consent_on_a_contact_row(version, submitted, capsys):
+    """A withdrawal is dated on the contact row and exported as such — given
+    then withdrawn is not the same as never given; --erase removes the address."""
+    with pytest.raises(CommandError, match="no contact row"):
+        call_command("withdraw_consent", "sample-wellbeing", "--email", "nobody@example.org")
+    call_command(
+        "withdraw_consent",
+        "sample-wellbeing",
+        "--email",
+        "SOMEONE@example.org",
+        "--consent",
+        "contact",
+    )
+    assert "withdrew 0 consent(s) (contact)" in capsys.readouterr().out  # never given
+    call_command(
+        "withdraw_consent", "sample-wellbeing", "--email", "someone@example.org", "--dry-run"
+    )
+    assert "would withdraw 1 consent(s) (every consent)" in capsys.readouterr().out
+    assert "withdrawn_on" not in json.dumps(SurveyContact.objects.get().consents)
+    call_command("withdraw_consent", "sample-wellbeing", "--email", "someone@example.org")
+    consents = SurveyContact.objects.get().consents
+    assert consents[0]["key"] == "reuse" and consents[0]["withdrawn_on"] == str(
+        timezone.localdate()
+    )
+    out = io.StringIO()
+    write_contacts(version, out)
+    header, row = list(csv.reader(io.StringIO(out.getvalue())))
+    assert row[-2:] == ["0", "WITHDRAWN"]
+    # a second withdrawal changes nothing; the date of the first stands
+    call_command("withdraw_consent", "sample-wellbeing", "--email", "someone@example.org")
+    assert "withdrew 0 consent(s)" in capsys.readouterr().out
+    call_command(
+        "withdraw_consent", "sample-wellbeing", "--email", "someone@example.org", "--erase"
+    )
+    assert not SurveyContact.objects.exists()
+    with pytest.raises(CommandError, match="contact capture"):
+        call_command("withdraw_consent", "sample-wellbeing", "--participant", "1", "--erase")
 
 
 def test_export_commands(version, submitted, api_client, tmp_path, capsys):
@@ -186,7 +242,7 @@ def test_exports_apply_safe_cell_to_free_text_and_emails(version, api_client):
         api_client.post(
             f"/api/run/responses/{rid}/contact/", {"email": "+x@example.org"}, format="json"
         ).status_code
-        == 204
+        == 200
     )
     assert api_client.post(f"/api/run/responses/{rid}/submit/").status_code == 200
     out = io.StringIO()

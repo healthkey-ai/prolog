@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, ty
 import { useCallback, useRef } from "react";
 import { ApiError, ApiTimeoutError, api } from "./client";
 import type { AnswerResult, OptionsSource, ResponseSummary, RunnerDefinition } from "./types";
-import type { AnswerValue } from "@/survey/types";
+import type { AnswerValue, EmailValue } from "@/survey/types";
 import type { Theme } from "@/theme/types";
 
 export const keys = {
@@ -318,24 +318,57 @@ export function useSubmitResponse(id: string) {
 }
 
 /** The answer the server stores once an address has been captured. */
-export function withEmailProvided(current: ResponseSummary, key: string): ResponseSummary {
-  return { ...current, answers: { ...current.answers, [key]: { provided: true } }, missing: current.missing.filter((k) => k !== key) };
+/** The marker the server stores for a completed capture. */
+export function capturedValue(consents: string[]): EmailValue {
+  return consents.length ? { provided: true, consents } : { provided: true };
+}
+
+export function withEmailProvided(current: ResponseSummary, key: string, consents: string[] = []): ResponseSummary {
+  const value = capturedValue(consents);
+  return { ...current, answers: { ...current.answers, [key]: value }, missing: current.missing.filter((k) => k !== key) };
 }
 
 /**
  * Write the captured state into the cache now (so Next sees stored === draft
  * and just advances) and refetch for the server's progress figures.
  */
-function emailProvided(qc: QueryClient, id: string, key: string) {
-  qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && withEmailProvided(current, key));
+function emailProvided(qc: QueryClient, id: string, { key, consents }: CaptureInput) {
+  qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && withEmailProvided(current, key, consents));
   return qc.invalidateQueries({ queryKey: keys.response(id) });
+}
+
+/** An address and the consent keys ticked with it; `key` is the question, for the cache. */
+export interface CaptureInput {
+  email: string;
+  consents: string[];
+  key: string;
+  /** Contact capture: the receipt of the capture this one corrects. */
+  receipt?: string;
+}
+
+/** What the contact endpoint hands back: a receipt that lets this browser, and nobody else, correct the address. */
+export interface CaptureReceipt {
+  receipt: string;
 }
 
 export function useContact(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ email }: { email: string; key: string }) => api.post<void>(`/responses/${id}/contact/`, { email }),
-    onSuccess: (_data, { key }) => emailProvided(qc, id, key),
+    mutationFn: ({ email, consents, receipt }: CaptureInput) =>
+      api.post<CaptureReceipt | undefined>(`/responses/${id}/contact/`, receipt ? { email, consents, receipt } : { email, consents }),
+    onSuccess: (_data, input) => emailProvided(qc, id, input),
+  });
+}
+
+/** A change of mind: the captured address goes (the receipt opens its row) and the question stands as declined. */
+export function useRemoveContact(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ receipt }: { receipt: string; key: string }) => api.delete<void>(`/responses/${id}/contact/`, { receipt }),
+    onSuccess: (_data, { key }) => {
+      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && { ...current, answers: { ...current.answers, [key]: { provided: false } } });
+      return qc.invalidateQueries({ queryKey: keys.response(id) });
+    },
   });
 }
 
@@ -343,7 +376,7 @@ export function useContact(id: string) {
 export function useIdentity(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ email }: { email: string; key: string }) => api.post<void>(`/responses/${id}/identity/`, { email }),
-    onSuccess: (_data, { key }) => emailProvided(qc, id, key),
+    mutationFn: ({ email, consents }: CaptureInput) => api.post<void>(`/responses/${id}/identity/`, { email, consents }),
+    onSuccess: (_data, input) => emailProvided(qc, id, input),
   });
 }

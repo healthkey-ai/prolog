@@ -25,12 +25,11 @@ export function useThemeLogo(onPrimary = false, screen: "header" | "intro" = "he
   const src = onPrimary ? (theme?.assets?.logo_on_primary ?? theme?.assets?.logo) : theme?.assets?.logo;
   if (!src) return null;
   const headerHeight = theme?.layout?.logo_height ?? "2rem";
-  // On the intro the theme's height is a ceiling, not a demand: a short
-  // viewport (a phone) gives the logo a tenth of its height and keeps the
-  // rest for the words the respondent came for — but never less than the
-  // 44px control it sits beside, or a mark with text in it stops being
-  // legible before the viewport is anywhere near too short for it.
-  const height = screen === "intro" ? `min(${theme?.layout?.intro_logo_height ?? headerHeight}, max(10dvh, 2.75rem))` : headerHeight;
+  // On the intro the theme's height is the height: a mark with text in it
+  // is sized so that text can be read, and shrinking it on a short viewport
+  // defeats that. The intro floats a top-right logo above the column, so the
+  // size costs the words nothing.
+  const height = screen === "intro" ? (theme?.layout?.intro_logo_height ?? headerHeight) : headerHeight;
   return createElement("img", { src, alt: theme?.name ?? "", className: "w-auto shrink-0", style: { height }, "data-testid": "theme-logo" });
 }
 

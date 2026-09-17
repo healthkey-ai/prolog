@@ -17,7 +17,8 @@ import { questionRequired, type AnswerValue, type Question } from "@/survey/type
 interface Props extends RendererProps {
   questionNumber: number;
   questionTotal: number;
-  onSubmitEmail?: (email: string) => Promise<void>;
+  onSubmitEmail?: (email: string, consents: string[], receipt?: string) => Promise<string | undefined>;
+  onRemoveEmail?: (receipt: string) => Promise<void>;
   answers: Record<string, AnswerValue>;
   questions: Record<string, Question>;
 }
@@ -75,7 +76,7 @@ function renderControl(question: Question, props: Props) {
     case "date":
       return <DateInput {...p} />;
     case "email":
-      return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => {})} />;
+      return <EmailCapture {...p} onSubmitEmail={props.onSubmitEmail ?? (async () => undefined)} onRemoveEmail={props.onRemoveEmail ?? (async () => undefined)} />;
     default: {
       const Extra = extraRenderers[question.type];
       return (

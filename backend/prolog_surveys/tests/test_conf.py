@@ -63,8 +63,8 @@ def test_placeholder_salt_is_refused(settings, salt):
 
 
 class _Service:
-    def create_or_link(self, request: IdentityRequest) -> IdentityResult:
-        return IdentityResult(participant_pk=1)
+    def attach_account(self, request: IdentityRequest) -> IdentityResult:
+        return IdentityResult(linked=True)
 
 
 def make_service() -> _Service:
@@ -86,8 +86,8 @@ def test_integrated_resolves_identity_service_at_startup(settings):
     for name in ("_Service", "make_service", "PREBUILT"):
         settings.PROLOG_IDENTITY_SERVICE = f"{__name__}.{name}"
         conf.validate()
-    settings.PROLOG_IDENTITY_SERVICE = "prolog_surveys.conf.THROTTLE_RATES"  # no create_or_link
-    with pytest.raises(ImproperlyConfigured, match="create_or_link"):
+    settings.PROLOG_IDENTITY_SERVICE = "prolog_surveys.conf.THROTTLE_RATES"  # no attach_account
+    with pytest.raises(ImproperlyConfigured, match="attach_account"):
         conf.validate()
     settings.PROLOG_IDENTITY_SERVICE = "prolog_surveys.no_such_module.Service"
     with pytest.raises(ImproperlyConfigured, match="could not be resolved"):

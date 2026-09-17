@@ -56,7 +56,7 @@ export interface InlineOptions {
    * renders as plain text, never as a link to a 404: the link is only
    * offered where there is a page behind it.
    */
-  legalPages?: { keys: string[]; href: (key: string) => string };
+  legalPages?: { keys: string[]; href: (key: string) => string; from?: string };
 }
 
 export function renderInline(text: string, keyPrefix = "", options: InlineOptions = {}): ReactNode[] {
@@ -94,7 +94,7 @@ export function renderInline(text: string, keyPrefix = "", options: InlineOption
       const safe = safeHref(href);
       out.push(
         legal && legal.keys.includes(href) ? (
-          <Link key={key} to={legal.href(href)} className="text-primary underline" data-testid={`legal-link-${href}`}>
+          <Link key={key} to={legal.href(href)} state={legal.from ? { from: legal.from } : undefined} className="text-primary underline" data-testid={`legal-link-${href}`}>
             {label}
           </Link>
         ) : safe ? (
