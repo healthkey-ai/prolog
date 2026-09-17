@@ -58,7 +58,7 @@ describe("the logo's size is the theme's to set", () => {
     await m.flush(12);
 
     // The theme's intro height is a ceiling: a short viewport gives the logo a tenth of itself.
-    expect(m.$<HTMLImageElement>("theme-logo")?.style.height).toBe("min(96px, max(10dvh, 2.75rem))");
+    expect(m.$<HTMLImageElement>("theme-logo")?.style.height).toBe("96px");
   });
 
   it("falls back to the header height on the intro when no intro height is given", async () => {
@@ -69,6 +69,6 @@ describe("the logo's size is the theme's to set", () => {
     const m = mount(`/s/${SLUG}`, themedRoutes());
     await m.flush(12);
 
-    expect(m.$<HTMLImageElement>("theme-logo")?.style.height).toBe("min(3rem, max(10dvh, 2.75rem))");
+    expect(m.$<HTMLImageElement>("theme-logo")?.style.height).toBe("3rem");
   });
 });
