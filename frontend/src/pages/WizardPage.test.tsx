@@ -319,6 +319,14 @@ describe("WizardPage", () => {
       { email: "right@example.org", consents: ["reuse"], receipt: "r1" },
     ]);
     expect(m.$("email-captured")!.textContent).toContain("right@example.org");
+    // a change of mind: the receipt's row goes, and the question is declined, open for a new address
+    server.on("DELETE", `/responses/${RESPONSE_ID}/contact/`, { status: 204 });
+    click(m.$("email-remove"));
+    await m.flush(3);
+    expect(server.of("DELETE", `/responses/${RESPONSE_ID}/contact/`).map((c) => c.body)).toEqual([{ receipt: "r2" }]);
+    expect(m.$("email-captured")).toBeNull();
+    expect(m.$<HTMLInputElement>("email-input")!.value).toBe("");
+    expect(m.$("email-consent-reuse")!.getAttribute("aria-checked")).toBe("false");
   });
 
   it("refuses to save an address with too few consents ticked, before anything is sent", async () => {

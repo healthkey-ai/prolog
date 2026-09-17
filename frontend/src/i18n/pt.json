@@ -69,6 +69,7 @@
   "email.consentsRequired": "Marque a caixa acima para guardar o seu e-mail.",
   "email.change": "Alterar",
   "email.cancel": "Manter",
+  "email.remove": "Remover",
   "email.savedAs": "Guardado como",
   "multi.counter": "{{count}} de {{max}} selecionadas",
   "multi.limit": "Selecione até {{max}}",

@@ -526,6 +526,30 @@ def test_contact_capture_is_corrected_with_its_receipt(api_client, response_id):
     assert SurveyContact.objects.count() == 2
 
 
+def test_contact_capture_is_removed_with_its_receipt(api_client, response_id):
+    """A change of mind: the receipt's row goes, the question stands as declined,
+    and the screen is open for a new address (or not) — the marker no longer
+    blocks a capture. A receipt that opens nothing still declines."""
+    url = f"/api/run/responses/{response_id}/contact/"
+    receipt = api_client.post(
+        url, {"email": "gone@example.org", "consents": ["contact"]}, format="json"
+    ).json()["receipt"]
+    assert api_client.delete(url, {}, format="json").status_code == 400
+    r = api_client.delete(url, {"receipt": receipt}, format="json")
+    assert r.status_code == 204
+    assert not SurveyContact.objects.exists()
+    answer = SurveyAnswer.objects.get(response_id=response_id, question_key="contact_email")
+    assert answer.value == {"provided": False}
+    assert api_client.get(f"/api/run/responses/{response_id}/").json()["answers"][
+        "contact_email"
+    ] == {"provided": False}
+    # and a fresh capture is accepted again
+    r = api_client.post(url, {"email": "again@example.org"}, format="json")
+    assert r.status_code == 200 and SurveyContact.objects.get().email == "again@example.org"
+    assert api_client.delete(url, {"receipt": "stale"}, format="json").status_code == 204
+    assert SurveyContact.objects.count() == 1
+
+
 def test_contact_404_without_store_separately(api_client, db, definition):
     for s in definition["sections"]:
         s["questions"] = [q for q in s["questions"] if q["type"] != "email"]

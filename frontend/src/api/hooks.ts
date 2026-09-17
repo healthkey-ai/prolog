@@ -360,6 +360,18 @@ export function useContact(id: string) {
   });
 }
 
+/** A change of mind: the captured address goes (the receipt opens its row) and the question stands as declined. */
+export function useRemoveContact(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ receipt }: { receipt: string; key: string }) => api.delete<void>(`/responses/${id}/contact/`, { receipt }),
+    onSuccess: (_data, { key }) => {
+      qc.setQueryData<ResponseSummary>(keys.response(id), (current) => current && { ...current, answers: { ...current.answers, [key]: { provided: false } } });
+      return qc.invalidateQueries({ queryKey: keys.response(id) });
+    },
+  });
+}
+
 /** Identity capture (CON-4): the address goes to the host platform's identity service. */
 export function useIdentity(id: string) {
   const qc = useQueryClient();

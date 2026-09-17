@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
-import { SupersededError, capturedValue, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
+import { SupersededError, capturedValue, useContact, useIdentity, useRemoveContact, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
 import { DefinitionError } from "@/components/DefinitionError";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
@@ -52,7 +52,7 @@ export function WizardPage() {
   const submit = useSubmitResponse(id ?? "");
   const contact = useContact(id ?? "");
   const identity = useIdentity(id ?? "");
-  const logo = useThemeLogo();
+  const removeContact = useRemoveContact(id ?? "");  const logo = useThemeLogo();
 
   const [draft, setDraft] = useState<AnswerValue | undefined>(undefined);
   const [draftKey, setDraftKey] = useState<string | null>(null);
@@ -495,6 +495,12 @@ export function WizardPage() {
               setDraft(capturedValue(consents));
               flashSaved();
               return result?.receipt;
+            }}
+            onRemoveEmail={async (receipt) => {
+              await removeContact.mutateAsync({ receipt, key });
+              setDraftKey(key);
+              setDraft({ provided: false });
+              flashSaved();
             }}
           />
         )}

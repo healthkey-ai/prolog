@@ -34,6 +34,12 @@ class ContactSerializer(serializers.Serializer):
     receipt = serializers.CharField(required=False, allow_blank=True, max_length=43)
 
 
+class ReceiptSerializer(serializers.Serializer):
+    """The receipt alone: what removing a captured address takes."""
+
+    receipt = serializers.CharField(max_length=43)
+
+
 class ResponseSerializer(serializers.ModelSerializer):
     slug = serializers.CharField(source="survey_version.survey.slug", read_only=True)
     version = serializers.CharField(source="survey_version.version", read_only=True)

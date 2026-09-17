@@ -58,6 +58,7 @@ from .serializers import (
     ContactSerializer,
     CreateResponseSerializer,
     PatchResponseSerializer,
+    ReceiptSerializer,
     ResponseSerializer,
 )
 from .throttles import (
@@ -763,6 +764,26 @@ class ContactView(ResponseMixin, RunnerView):
         # The receipt goes to the browser and nowhere else: the response never
         # holds it, so the database still cannot join an address to its answers.
         return Response({"receipt": fields["receipt"]})
+
+    @sensitive_variables()
+    @transaction.atomic
+    def delete(self, request, response_id):
+        """A change of mind: the row the receipt opens goes, and the question
+        stands as declined — the same state as never having given an address,
+        which is what the participant asked for."""
+        response = self.writable(response_id)
+        ser = ReceiptSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        question = _capture_question(response.definition, "store_separately")
+        SurveyContact.objects.filter(
+            survey_version=response.survey_version, receipt=ser.validated_data["receipt"]
+        ).delete()
+        SurveyAnswer.objects.update_or_create(
+            response=response,
+            question_key=question["key"],
+            defaults={"value": {"provided": False}, "option_keys": []},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @method_decorator(sensitive_post_parameters("email"), name="dispatch")

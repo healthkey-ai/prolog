@@ -17,6 +17,8 @@ import type { EmailValue } from "@/survey/types";
 interface Props extends RendererProps<EmailValue> {
   /** Captures the address; resolves to the receipt a later correction needs (contact capture only). */
   onSubmitEmail: (email: string, consents: string[], receipt?: string) => Promise<string | undefined>;
+  /** Removes the captured address (contact capture only); the question stands as declined afterwards. */
+  onRemoveEmail: (receipt: string) => Promise<void>;
 }
 
 /** What this browser knows of a capture it made: the address as typed, the ticks, and the receipt that lets it correct them. */
@@ -27,7 +29,7 @@ interface Captured {
 }
 
 /** Contact/identity capture (Q-11, CON-3/4): the address goes to its own endpoint, never into the answer. */
-export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props) {
+export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemoveEmail }: Props) {
   const { t } = useTranslation();
   // The notice belongs on this screen more than anywhere else: this is where
   // somebody decides whether to hand over an address, and it opens on this
@@ -110,6 +112,25 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
     setEditing(true);
   };
 
+  const remove = async () => {
+    if (!captured?.receipt) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onRemoveEmail(captured.receipt);
+      forget(capturedKey);
+      forget(draftKey);
+      setCaptured(undefined);
+      setEmail("");
+      setTicked([]);
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      setError(t(status === 429 ? "app.throttled" : "app.error"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const decline = () => {
     forget(draftKey);
     onChange({ provided: false }, { commit: true, advance: true });
@@ -133,11 +154,21 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
                 <span className="text-ink-soft">{t("email.savedAs")}</span> <span className="font-medium">{captured.email}</span>
               </span>
               {correctable && (
-                <Button variant="surface" size="runner-sm" onClick={startEditing} data-testid="email-change">
-                  {t("email.change")}
-                </Button>
+                <>
+                  <Button variant="surface" size="runner-sm" onClick={startEditing} disabled={busy} data-testid="email-change">
+                    {t("email.change")}
+                  </Button>
+                  <Button variant="link" size="runner-sm" className="text-error" onClick={remove} disabled={busy} data-testid="email-remove">
+                    {t("email.remove")}
+                  </Button>
+                </>
               )}
             </div>
+          )}
+          {error && (
+            <Alert variant="destructive" role="alert" className="[&>svg]:hidden">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
         </div>
       ) : (

@@ -212,8 +212,9 @@ Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
 
 A saved address stays on screen — as the person typed it, which is the only
-copy the runner has — with a **Change** button while they are on the survey
-in that tab. Correcting it rewrites the contact row (a receipt the browser
+copy the runner has — with **Change** and **Remove** while they are on the
+survey in that tab. Remove deletes the address and leaves the question as
+declined, open for another address or none. Correcting it rewrites the contact row (a receipt the browser
 holds opens that one row and nothing else), so a mistyped address never
 lingers on the list. With `link_identity` the address is the account's, and
 is changed there.
