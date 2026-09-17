@@ -16,7 +16,13 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from ...models import Survey, SurveyCaptureConsent, SurveyContact, SurveyResponse
+from ...models import (
+    Survey,
+    SurveyCaptureConsent,
+    SurveyContact,
+    SurveyLinkedContact,
+    SurveyResponse,
+)
 
 
 class Command(BaseCommand):
@@ -42,6 +48,11 @@ class Command(BaseCommand):
             action="store_true",
             help="Contact capture only: delete the contact row(s) — the address goes, consents with it.",
         )
+        parser.add_argument(
+            "--erase-response",
+            action="store_true",
+            help="Linked contact capture only: delete the whole response — answers, address, consents.",
+        )
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, *args, **options):
@@ -51,26 +62,52 @@ class Command(BaseCommand):
             raise CommandError(f"unknown survey '{options['slug']}'") from exc
         keys = set(options["consent"])
         if options["email"]:
-            self._contacts(survey, options["email"], keys, options["erase"], options["dry_run"])
+            self._contacts(
+                survey,
+                options["email"],
+                keys,
+                options["erase"],
+                options["erase_response"],
+                options["dry_run"],
+            )
         else:
-            if options["erase"]:
+            if options["erase"] or options["erase_response"]:
                 raise CommandError("--erase applies to contact capture; an identity is the host's")
             self._captures(survey, options["participant"], keys, options["dry_run"])
 
-    def _contacts(self, survey, email: str, keys: set[str], erase: bool, dry_run: bool) -> None:
-        rows = SurveyContact.objects.filter(survey_version__survey=survey, email__iexact=email)
-        if not rows.exists():
+    def _contacts(
+        self, survey, email: str, keys: set[str], erase: bool, erase_response: bool, dry_run: bool
+    ) -> None:
+        unlinked = SurveyContact.objects.filter(survey_version__survey=survey, email__iexact=email)
+        linked = SurveyLinkedContact.objects.filter(
+            response__survey_version__survey=survey, email__iexact=email
+        )
+        if not unlinked.exists() and not linked.exists():
             raise CommandError("no contact row holds that address for this survey")
         today = timezone.localdate().isoformat()
-        if erase:
-            n = rows.count()
+        if erase_response:
+            # The whole record, as a person asking to be forgotten means it:
+            # the response goes and takes its answers, address and consents.
+            responses = SurveyResponse.objects.filter(pk__in=linked.values("response_id"))
+            n = responses.count()
+            if n == 0:
+                raise CommandError(
+                    "--erase-response needs a linked contact; none holds that address"
+                )
             if not dry_run:
-                rows.delete()
+                responses.delete()
+            self.stdout.write(f"{'would erase' if dry_run else 'erased'} {n} response(s)")
+            return
+        if erase:
+            n = unlinked.count() + linked.count()
+            if not dry_run:
+                unlinked.delete()
+                linked.delete()
             self.stdout.write(f"{'would erase' if dry_run else 'erased'} {n} contact row(s)")
             return
         withdrawn = 0
         with transaction.atomic():
-            for row in rows.select_for_update():
+            for row in [*unlinked.select_for_update(), *linked.select_for_update()]:
                 changed = False
                 for entry in row.consents:
                     if (not keys or entry["key"] in keys) and "withdrawn_on" not in entry:

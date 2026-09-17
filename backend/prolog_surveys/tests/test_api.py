@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 
 import pytest
@@ -548,6 +550,98 @@ def test_contact_capture_is_removed_with_its_receipt(api_client, response_id):
     assert r.status_code == 200 and SurveyContact.objects.get().email == "again@example.org"
     assert api_client.delete(url, {"receipt": "stale"}, format="json").status_code == 204
     assert SurveyContact.objects.count() == 1
+
+
+def _linked(definition: dict) -> dict:
+    q = next(q for s in definition["sections"] for q in s["questions"] if q["type"] == "email")
+    q["config"] = {k: v for k, v in q["config"].items() if k != "store_separately"}
+    q["config"]["link_response"] = True
+    return definition
+
+
+def test_linked_contact_capture_keeps_the_address_beside_the_response(api_client, db, definition):
+    """Linked contact capture (CON-10): the same endpoint, the row keyed by the
+    response — a correction is the row again, removal empties it, the
+    response export still carries no address, the contact export carries the
+    response id, and a purged response takes the address with it."""
+    from prolog_surveys.exports import write_contacts, write_responses
+    from prolog_surveys.models import SurveyLinkedContact
+
+    version = load_definition(_linked(definition), activate=True).version
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "es"}, format="json"
+    ).json()["id"]
+    url = f"/api/run/responses/{rid}/contact/"
+    r = api_client.post(url, {"email": "typo@example.org", "consents": ["contact"]}, format="json")
+    assert r.status_code == 200
+    receipt = r.json()["receipt"]
+    row = SurveyLinkedContact.objects.get(response_id=rid)
+    assert row.email == "typo@example.org" and row.language == "es"
+    assert not SurveyContact.objects.exists()
+    # a correction with the receipt: the same row, rewritten
+    r = api_client.post(
+        url,
+        {"email": "right@example.org", "consents": ["reuse"], "receipt": receipt},
+        format="json",
+    )
+    assert r.status_code == 200
+    row.refresh_from_db()
+    assert row.email == "right@example.org" and [c["key"] for c in row.consents] == ["reuse"]
+    assert SurveyLinkedContact.objects.count() == 1
+    # nothing of the address in the response API or export; the join is the contact export's
+    assert "example.org" not in json.dumps(api_client.get(f"/api/run/responses/{rid}/").json())
+    out = io.StringIO()
+    write_responses(version, out, submitted_only=False)
+    assert "example.org" not in out.getvalue()
+    out = io.StringIO()
+    write_contacts(version, out)
+    header, line = list(csv.reader(io.StringIO(out.getvalue())))
+    record = dict(zip(header, line, strict=True))
+    assert record["response_id"] == rid and record["email"] == "right@example.org"
+    assert (record["consent.contact"], record["consent.reuse"]) == ("0", "1")
+    # removal with the receipt
+    assert api_client.delete(url, {"receipt": row.receipt}, format="json").status_code == 204
+    assert not SurveyLinkedContact.objects.exists()
+    assert SurveyAnswer.objects.get(response_id=rid, question_key="contact_email").value == {
+        "provided": False
+    }
+    # and the row goes with its response
+    api_client.post(url, {"email": "again@example.org"}, format="json")
+    SurveyResponse.objects.filter(pk=rid).delete()
+    assert not SurveyLinkedContact.objects.exists()
+
+
+def test_withdraw_consent_on_a_linked_contact(api_client, db, definition, capsys):
+    """Found by address like the unlinked row; --erase-response deletes the
+    whole record, which only a linked address can ask for."""
+    from django.core.management import call_command
+
+    from prolog_surveys.models import SurveyLinkedContact
+
+    load_definition(_linked(definition), activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    url = f"/api/run/responses/{rid}/contact/"
+    api_client.post(
+        url, {"email": "linked@example.org", "consents": ["contact", "reuse"]}, format="json"
+    )
+    call_command(
+        "withdraw_consent",
+        "sample-wellbeing",
+        "--email",
+        "Linked@example.org",
+        "--consent",
+        "reuse",
+    )
+    assert "withdrew 1 consent(s) (reuse)" in capsys.readouterr().out
+    consents = {c["key"]: c.get("withdrawn_on") for c in SurveyLinkedContact.objects.get().consents}
+    assert consents["contact"] is None and consents["reuse"]
+    call_command(
+        "withdraw_consent", "sample-wellbeing", "--email", "linked@example.org", "--erase-response"
+    )
+    assert "erased 1 response(s)" in capsys.readouterr().out
+    assert not SurveyResponse.objects.filter(pk=rid).exists()
 
 
 def test_contact_404_without_store_separately(api_client, db, definition):

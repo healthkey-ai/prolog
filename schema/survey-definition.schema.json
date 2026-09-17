@@ -381,8 +381,12 @@
           "description": "email: contact capture. The address is persisted in a separate contact table with no link to the response, and is never returned by the API or included in answer exports.",
           "type": "boolean"
         },
+        "link_response": {
+          "description": "email: linked contact capture. The address is stored beside the response — the answers can be found from the address and the address from the answers — with no account created. The instrument is not anonymous for anyone who gives one, and its copy must say so. Exported as a contact file keyed by response id; never in the answer export or the API. Exactly one of store_separately, link_response, link_identity.",
+          "type": "boolean"
+        },
         "link_identity": {
-          "description": "email: identity capture. The address is sent to the host platform's identity service, which creates or finds a participant record; the response is linked to that record. Mutually exclusive with store_separately. Requires the integrated deployment profile.",
+          "description": "email: identity capture. The address is sent to the host platform's identity service, which creates or finds a participant record; the response is linked to that record. Exactly one of store_separately, link_response, link_identity. Requires the integrated deployment profile.",
           "type": "boolean"
         },
         "consents": {
@@ -414,7 +418,11 @@
           "$ref": "#/$defs/i18n"
         }
       },
-      "not": { "required": ["store_separately", "link_identity"] }
+      "allOf": [
+        { "not": { "required": ["store_separately", "link_identity"] } },
+        { "not": { "required": ["store_separately", "link_response"] } },
+        { "not": { "required": ["link_response", "link_identity"] } }
+      ]
     }
   }
 }

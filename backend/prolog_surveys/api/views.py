@@ -48,6 +48,7 @@ from ..models import (
     SurveyCaptureConsent,
     SurveyConsent,
     SurveyContact,
+    SurveyLinkedContact,
     SurveyResponse,
     SurveyVersion,
 )
@@ -653,17 +654,23 @@ class SubmitView(ResponseMixin, RunnerView):
         return Response(_response_payload(response, answers=answers, state=state))
 
 
-_CAPTURE_KINDS = {"store_separately": "contact", "link_identity": "identity"}
+_CAPTURE_KINDS = {
+    "store_separately": "contact",
+    "link_response": "contact",
+    "link_identity": "identity",
+}
 
 
-def _capture_question(definition: dict, flag: str) -> dict:
-    """The email question configured for the capture ``flag`` (CON-3/4), else 404."""
+def _capture_question(definition: dict, *flags: str) -> tuple[dict, str]:
+    """The email question configured for one of the capture ``flags`` (CON-3/4/10),
+    and which flag it is; 404 when the survey has no such capture."""
     for q in question_by_key(definition).values():
         if q["type"] == "email":
-            if q["config"].get(flag):
-                return q
+            for flag in flags:
+                if q["config"].get(flag):
+                    return q, flag
             break
-    raise NotFound(f"this survey has no {_CAPTURE_KINDS[flag]} capture")
+    raise NotFound(f"this survey has no {_CAPTURE_KINDS[flags[0]]} capture")
 
 
 def _mark_provided(response: SurveyResponse, key: str, consents: list[str]) -> None:
@@ -719,7 +726,7 @@ class ContactView(ResponseMixin, RunnerView):
         ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         definition = response.definition
-        question = _capture_question(definition, "store_separately")
+        question, mode = _capture_question(definition, "store_separately", "link_response")
         answers = response.answer_map()
         if question["key"] not in _visible_set(definition, answers):
             raise ValidationError({"email": ["contact capture is not currently shown"]})
@@ -740,19 +747,27 @@ class ContactView(ResponseMixin, RunnerView):
             "receipt": secrets.token_urlsafe(32),
         }
         try:
-            # A correction rewrites the row the receipt opens — the address it
-            # held is the one being corrected, so nothing of it should remain —
-            # under a fresh receipt. A receipt that opens nothing (the row purged,
-            # a stale tab) captures anew: there is nothing left to correct.
-            replaced = (
-                SurveyContact.objects.filter(
-                    survey_version=response.survey_version, receipt=receipt
-                ).update(**fields, captured_on=timezone.localdate())
-                if receipt
-                else 0
-            )
-            if not replaced:
-                SurveyContact.objects.create(survey_version=response.survey_version, **fields)
+            if mode == "link_response":
+                # Linked: the response is the key, so a correction is simply the
+                # row again. The receipt is kept for the runner's sake (one
+                # contract for both contact modes) and for removal.
+                SurveyLinkedContact.objects.update_or_create(
+                    response=response, defaults={**fields, "captured_at": timezone.now()}
+                )
+            else:
+                # Unlinked: a correction rewrites the row the receipt opens — the
+                # address it held is the one being corrected, so nothing of it
+                # should remain — under a fresh receipt. A receipt that opens
+                # nothing (the row purged, a stale tab) captures anew.
+                replaced = (
+                    SurveyContact.objects.filter(
+                        survey_version=response.survey_version, receipt=receipt
+                    ).update(**fields, captured_on=timezone.localdate())
+                    if receipt
+                    else 0
+                )
+                if not replaced:
+                    SurveyContact.objects.create(survey_version=response.survey_version, **fields)
             _mark_provided(response, question["key"], [c["key"] for c in consents])
         except Exception as exc:
             # An unhandled exception would carry the request body — the address —
@@ -761,8 +776,8 @@ class ContactView(ResponseMixin, RunnerView):
                 "contact capture failed with %s for response %s", type(exc).__name__, response.id
             )
             raise APIException("contact capture failed") from None
-        # The receipt goes to the browser and nowhere else: the response never
-        # holds it, so the database still cannot join an address to its answers.
+        # The receipt goes to the browser and nowhere else; for unlinked capture
+        # that is what keeps the database unable to join an address to answers.
         return Response({"receipt": fields["receipt"]})
 
     @sensitive_variables()
@@ -774,10 +789,15 @@ class ContactView(ResponseMixin, RunnerView):
         response = self.writable(response_id)
         ser = ReceiptSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        question = _capture_question(response.definition, "store_separately")
-        SurveyContact.objects.filter(
-            survey_version=response.survey_version, receipt=ser.validated_data["receipt"]
-        ).delete()
+        question, mode = _capture_question(response.definition, "store_separately", "link_response")
+        if mode == "link_response":
+            SurveyLinkedContact.objects.filter(
+                response=response, receipt=ser.validated_data["receipt"]
+            ).delete()
+        else:
+            SurveyContact.objects.filter(
+                survey_version=response.survey_version, receipt=ser.validated_data["receipt"]
+            ).delete()
         SurveyAnswer.objects.update_or_create(
             response=response,
             question_key=question["key"],
@@ -808,7 +828,7 @@ class IdentityView(ResponseMixin, RunnerView):
         ser = ContactSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         definition = response.definition
-        question = _capture_question(definition, "link_identity")
+        question, _ = _capture_question(definition, "link_identity")
         if question["key"] not in _visible_set(definition, response.answer_map()):
             raise ValidationError({"email": ["identity capture is not currently shown"]})
         consents = _ticked_consents(question, ser.validated_data["consents"], response)

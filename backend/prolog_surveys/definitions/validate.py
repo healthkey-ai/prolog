@@ -42,6 +42,7 @@ CONFIG_BY_TYPE: dict[str, set[str]] = {
     "date": {"min_date", "max_date"},
     "email": {
         "store_separately",
+        "link_response",
         "link_identity",
         "consents",
         "consents_label",
@@ -416,13 +417,15 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             cfg.get(k) for k in ("consents_min", "consents_label", "consents_note")
         ):
             err("consents_missing", f"{qp}.config", "consents_* settings need consents")
-        if t == "email" and not (cfg.get("store_separately") or cfg.get("link_identity")):
+        if t == "email" and not any(
+            cfg.get(k) for k in ("store_separately", "link_response", "link_identity")
+        ):
             # Without a capture mode neither endpoint accepts an address, so the
             # runner could only ever record a decline.
             err(
                 "email_capture",
                 f"{qp}.config",
-                "an email question needs store_separately or link_identity",
+                "an email question needs store_separately, link_response or link_identity",
             )
         if t == "text" and (cfg.get("max_length") or 0) > MAX_TEXT_LENGTH:
             warn(

@@ -488,7 +488,7 @@ export function WizardPage() {
             answers={answers}
             questions={questions}
             onSubmitEmail={async (email, consents, receipt) => {
-              // Identity capture goes to the host's identity service; contact capture is stored unlinked.
+              // Identity capture goes to the host's identity service; contact capture (unlinked or linked) to the contact endpoint.
               const input = { email, consents, key, receipt };
               const result = question.config?.link_identity ? await identity.mutateAsync(input) : await contact.mutateAsync(input);
               setDraftKey(key);

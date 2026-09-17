@@ -454,6 +454,31 @@ class SurveyConsent(models.Model):
         return f"consent {self.consent_version} for {self.response_id}"
 
 
+class SurveyLinkedContact(models.Model):
+    """An address given with a response and kept beside it (linked contact
+    capture, CON-10): the answers can be found from the address and the
+    address from the answers, with no account made.
+
+    Its own table, not a nullable link on ``SurveyContact``: the unlinked
+    table stays structurally unable to reach a response, which is the
+    guarantee contact capture makes. This one goes with its response — a
+    purged response takes the address with it.
+    """
+
+    response = models.OneToOneField(
+        SurveyResponse, on_delete=models.CASCADE, related_name="linked_contact"
+    )
+    email = models.EmailField()
+    language = models.CharField(max_length=12, blank=True, default="")
+    consent_text = models.TextField(help_text="The notice shown when the address was given.")
+    consents = models.JSONField(default=list, blank=True)
+    receipt = models.CharField(max_length=43, blank=True, default="", db_index=True)
+    captured_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self) -> str:
+        return f"linked contact for {self.response_id}"
+
+
 class SurveyCaptureConsent(models.Model):
     """A consent ticked with an identity capture (CON-4), one row per tick.
 

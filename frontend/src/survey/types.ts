@@ -60,6 +60,8 @@ export interface QuestionConfig {
   min_date?: string;
   max_date?: string;
   store_separately?: boolean;
+  /** The address is kept beside the response — findable both ways — with no account. */
+  link_response?: boolean;
   link_identity?: boolean;
   /** Consents offered with the address, each recorded separately (CON-3/4). */
   consents?: CaptureConsent[];

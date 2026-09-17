@@ -163,7 +163,7 @@ selected/ranked, and it is limited to 500 characters.
 | `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. The limit is measured on the stored value: leading/trailing ASCII whitespace (space, tab, CR, LF) is stripped by both engines; other Unicode whitespace (e.g. U+00A0, U+FEFF) is kept and counted. Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
 | `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. Both must be real calendar dates (the schema only checks the digit pattern) with `min_date` ≤ `max_date`. |
-| `email` | `store_separately: true` **or** `link_identity: true` | **Exactly one is required**: the schema rejects both together and the validator rejects neither (`email_capture` — without a capture mode no endpoint could accept an address, so the step could only ever record a decline). §8. |
+| `email` | `store_separately: true`, `link_response: true` **or** `link_identity: true` | **Exactly one is required**: the schema rejects any two together and the validator rejects none (`email_capture` — without a capture mode no endpoint could accept an address, so the step could only ever record a decline). §8. |
 
 Keys not used by the type are reported as warnings.
 
@@ -339,6 +339,7 @@ the keys of the ones ticked (below).
 | Config | Behaviour | Profile |
 | --- | --- | --- |
 | `"store_separately": true` | **Contact capture.** `POST /responses/{id}/contact/` stores the address in a contact table with the survey version and the notice shown, and **no reference to the response**. Exported separately; never returned by the API; never logged. The reply carries a **receipt** (`{"receipt": …}`), held by the browser only: sent back with a new address it rewrites that one row — a typo corrected on the spot — under a fresh receipt. The runner shows the address as typed with **Change** and **Remove** for as long as it remembers it (memory, not storage: a reload forgets); `DELETE /responses/{id}/contact/` with the receipt deletes the row and leaves the question declined. | standalone + integrated |
+| `"link_response": true` | **Linked contact capture.** The same endpoint, receipt, Change and Remove as above, but the row is keyed by the **response**: the answers can be found from the address and the address from the answers. No account is made. The response export still carries no address; the contact export gains a `response_id` column, which is the join and the only place it exists. An instrument using this is **not anonymous** for anyone who gives an address, and its copy must say so (CON-8). | standalone + integrated |
 | `"link_identity": true` | **Identity capture.** The address goes only to the host platform's identity service, which creates/finds a participant; the response is linked to it. The address is never persisted by the runner. | integrated only (validator error otherwise) |
 
 At most one `email` question per survey. Use the question's `help` for the
@@ -379,6 +380,8 @@ capture mode, and follows the same line as the address itself:
 - **Contact capture** — the ticks go on the contact row (key and wording,
   dated like the row, to the day); the response records only the keys:
   `{"provided": true, "consents": ["reuse"]}`. Nothing links the two.
+- **Linked contact capture** — the same, on the row beside the response
+  (timestamped: it is linked anyway).
 - **Identity capture** — the response is no longer anonymous, so each tick
   is its own row against it: key, wording, language, timestamp, and a
   `withdrawn_at` for later. Withdrawal is a date, never a deletion — that
@@ -417,8 +420,8 @@ the **active** version; loading a draft cannot retarget a live survey.
   operators/values fit the referenced question type; `rows_from` targets a
   `multi`; `max_selections` ≤ options; `min` ≤ `max`; `optional_items` are
   options; scale `min < max` and label counts; one `email` question, and
-  it declares exactly one capture mode (`store_separately` or
-  `link_identity`); `link_identity` only in the integrated profile;
+  it declares exactly one capture mode (`store_separately`, `link_response`
+  or `link_identity`); `link_identity` only in the integrated profile;
   consent keys unique and `consents_min` within the number offered; `min_date`/`max_date` and
   `repeat.start_date`/`end_date` are real calendar dates in order; `title`
   in the default language ≤ 255 characters; every non-default language has
