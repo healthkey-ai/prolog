@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
@@ -106,6 +106,20 @@ export function IntroPage() {
   });
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
+  // A top-right logo floats above the column rather than sitting in the top
+  // row: the row is then only as tall as the language control, and the title
+  // moves up beside the mark — the intro fits a screen it otherwise would
+  // not. The control keeps clear of the mark by the mark's measured width.
+  const floatingLogo = layout.logoPlacement === "top-right" && logo !== null;
+  const logoBox = useRef<HTMLDivElement>(null);
+  const [logoWidth, setLogoWidth] = useState(0);
+  useEffect(() => {
+    const el = logoBox.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setLogoWidth(el.offsetWidth));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [floatingLogo]);
   useDefinitionLanguage(definition.data?.language);
   usePageTitle(definition.data?.title as string | undefined);
   useEffect(() => {
@@ -299,8 +313,18 @@ export function IntroPage() {
             language the survey would not continue in. A submitted response is
             not written to (the server would refuse, and there is nothing to
             continue): the choice stays on this screen. */}
+        {floatingLogo && (
+          <div
+            ref={logoBox}
+            className="absolute right-6 top-[clamp(0.75rem,3vh,2.25rem)] [@media(max-height:800px)]:top-[clamp(0.5rem,2vh,1.5rem)]"
+            data-testid="intro-logo"
+          >
+            {logo}
+          </div>
+        )}
         <div
           className={`flex items-center gap-3 ${layout.logoPlacement === "top-right" ? "justify-end" : "justify-between"}`}
+          style={floatingLogo ? { paddingRight: logoWidth ? logoWidth + 12 : undefined } : undefined}
         >
           {layout.logoPlacement !== "top-right" && logo}
           {def.presentation?.language_step !== "first" && (
@@ -328,7 +352,6 @@ export function IntroPage() {
               }}
             />
           )}
-          {layout.logoPlacement === "top-right" && logo}
         </div>
         {/* Auto margins, not justify-center: they centre the block when there is
             room and resolve to nothing when there is not, so a tall intro on a
