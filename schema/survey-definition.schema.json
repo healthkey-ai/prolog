@@ -384,6 +384,30 @@
         "link_identity": {
           "description": "email: identity capture. The address is sent to the host platform's identity service, which creates or finds a participant record; the response is linked to that record. Mutually exclusive with store_separately. Requires the integrated deployment profile.",
           "type": "boolean"
+        },
+        "consents": {
+          "description": "email: optional, separately recorded consents offered with the address — each an unticked checkbox under the input. What was ticked is stored with the capture (key, the wording shown, when) and exported one column per key; nothing is implied by an address alone.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["key", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$", "maxLength": 64 },
+              "text": { "$ref": "#/$defs/i18n" }
+            }
+          }
+        },
+        "consents_min": {
+          "description": "email: how many of `consents` must be ticked for an address to be accepted (default 0: an address may be given with none). The capture refuses otherwise, and the runner says so.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "consents_note": {
+          "description": "email: a sentence under the consent boxes (withdrawal, where to read more). Inline Markdown; a link to a legal page key opens that page.",
+          "$ref": "#/$defs/i18n"
         }
       },
       "not": { "required": ["store_separately", "link_identity"] }

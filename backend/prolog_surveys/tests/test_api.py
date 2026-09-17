@@ -442,6 +442,56 @@ def test_contact_capture_is_unlinked(api_client, response_id):
     )
 
 
+def test_contact_capture_records_the_consents_ticked(api_client, response_id):
+    """The ticks travel with the address, wording as shown, in the response's
+    language; the response keeps only the keys. Unknown keys are refused."""
+    r = api_client.post(
+        f"/api/run/responses/{response_id}/contact/",
+        {"email": "someone@example.org", "consents": ["nope"]},
+        format="json",
+    )
+    assert r.status_code == 400 and "nope" in r.json()["consents"][0]
+    assert not SurveyContact.objects.exists()
+    r = api_client.post(
+        f"/api/run/responses/{response_id}/contact/",
+        {"email": "someone@example.org", "consents": ["reuse", "contact", "reuse"]},
+        format="json",
+    )
+    assert r.status_code == 204
+    contact = SurveyContact.objects.get()
+    # deduplicated, in the question's order, not the order ticked
+    assert [c["key"] for c in contact.consents] == ["contact", "reuse"]
+    assert contact.consents[0]["text"] == "You may contact me about future surveys."
+    answer = SurveyAnswer.objects.get(response_id=response_id, question_key="contact_email")
+    assert answer.value == {"provided": True, "consents": ["contact", "reuse"]}
+    body = api_client.get(f"/api/run/responses/{response_id}/").json()
+    assert body["answers"]["contact_email"] == {"provided": True, "consents": ["contact", "reuse"]}
+
+
+def test_contact_capture_without_ticks_is_allowed_unless_required(api_client, db, definition):
+    """No tick is a valid answer by default (the address alone may be what the
+    instrument wants); ``consents_min`` turns it into a refusal."""
+    question = next(
+        q for s in definition["sections"] for q in s["questions"] if q["type"] == "email"
+    )
+    question["config"]["consents_min"] = 1
+    load_definition(definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    r = api_client.post(
+        f"/api/run/responses/{rid}/contact/", {"email": "a@b.co", "consents": []}, format="json"
+    )
+    assert r.status_code == 400 and r.json()["consents"] == ["consents_required"]
+    r = api_client.post(
+        f"/api/run/responses/{rid}/contact/",
+        {"email": "a@b.co", "consents": ["reuse"]},
+        format="json",
+    )
+    assert r.status_code == 204
+    assert [c["key"] for c in SurveyContact.objects.get().consents] == ["reuse"]
+
+
 def test_contact_404_without_store_separately(api_client, db, definition):
     for s in definition["sections"]:
         s["questions"] = [q for q in s["questions"] if q["type"] != "email"]

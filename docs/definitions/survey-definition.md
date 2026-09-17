@@ -333,7 +333,8 @@ administration and never alters an existing response's attestation.
 ## 8. The `email` question — contact vs identity capture
 
 The address never travels through the answer endpoint; the answer row only
-records `{"provided": true|false}`.
+records `{"provided": true|false}` — plus, when the question offers consents,
+the keys of the ones ticked (below).
 
 | Config | Behaviour | Profile |
 | --- | --- | --- |
@@ -343,6 +344,47 @@ records `{"provided": true|false}`.
 At most one `email` question per survey. Use the question's `help` for the
 privacy notice (shown as a panel above the input). **No thanks** records the
 decline and moves on; on the last question it submits.
+
+### Consents given with the address
+
+An address is usually given *for* something — to be contacted, to have the
+answers kept for later research — and those are separate decisions. The
+question may offer up to five, each its own tick box, none ticked in advance:
+
+```json
+"config": {
+  "link_identity": true,
+  "consents": [
+    { "key": "contact", "text": { "en": "You may contact me about future surveys." } },
+    { "key": "reuse",   "text": { "en": "You may use my answers in future research." } }
+  ],
+  "consents_min": 0,
+  "consents_note": { "en": "You can withdraw either consent at any time. See the [privacy notice](privacy) for details." }
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `consents[].key` | `^[a-z0-9][a-z0-9_]*$`, ≤ 64, unique within the question (`consent_keys`). It names the consent in exports and in the record. |
+| `consents[].text` | The sentence beside the box, i18n. What is recorded is the wording *as shown*, so a later edit never changes what someone agreed to. |
+| `consents_min` | How many boxes must be ticked before the address is accepted; default `0` — an address with nothing ticked is a valid answer. Must not exceed the number offered (`consents_min`). Refused submissions get `400 {"consents": ["consents_required"]}`. |
+| `consents_note` | Text under the boxes, i18n, inline Markdown — bold, italic, links; `[label](privacy)` reaches the survey's own legal page, as in §7. `consents_min` and `consents_note` without `consents` is an error (`consents_missing`). |
+
+The runner posts the ticked keys with the address (`"consents": ["reuse"]`);
+a key the question does not offer is a `400`. What is kept depends on the
+capture mode, and follows the same line as the address itself:
+
+- **Contact capture** — the ticks go on the contact row (key and wording,
+  dated like the row, to the day); the response records only the keys:
+  `{"provided": true, "consents": ["reuse"]}`. Nothing links the two.
+- **Identity capture** — the response is no longer anonymous, so each tick
+  is its own row against it: key, wording, language, timestamp, and a
+  `withdrawn_at` for later. Withdrawal is a date, never a deletion — that
+  consent was given, and until when, is what a controller has to show.
+
+Exports carry one column per consent offered: `<key>.consent.<consent>` on
+the response export (`1`/`0`, empty where no address was given) and
+`consent.<consent>` on the contact export.
 
 ---
 
@@ -372,7 +414,8 @@ the **active** version; loading a draft cannot retarget a live survey.
   `multi`; `max_selections` ≤ options; `min` ≤ `max`; `optional_items` are
   options; scale `min < max` and label counts; one `email` question, and
   it declares exactly one capture mode (`store_separately` or
-  `link_identity`); `link_identity` only in the integrated profile; `min_date`/`max_date` and
+  `link_identity`); `link_identity` only in the integrated profile;
+  consent keys unique and `consents_min` within the number offered; `min_date`/`max_date` and
   `repeat.start_date`/`end_date` are real calendar dates in order; `title`
   in the default language ≤ 255 characters; every non-default language has
   a `translation_status`; every i18n object has the default language;

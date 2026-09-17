@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
-import { SupersededError, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
+import { SupersededError, capturedValue, useContact, useIdentity, useOptionsSources, usePatchResponse, useResponse, useSaveAnswer, useSubmitResponse, useSurveyDefinition } from "@/api/hooks";
 import { DefinitionError } from "@/components/DefinitionError";
 import { OverviewPanel } from "@/components/OverviewPanel";
 import { QuestionScreen } from "@/components/QuestionScreen";
@@ -487,11 +487,12 @@ export function WizardPage() {
             questionTotal={pos.questionTotal}
             answers={answers}
             questions={questions}
-            onSubmitEmail={async (email) => {
+            onSubmitEmail={async (email, consents) => {
               // Identity capture goes to the host's identity service; contact capture is stored unlinked.
-              await (question.config?.link_identity ? identity.mutateAsync({ email, key }) : contact.mutateAsync({ email, key }));
+              const input = { email, consents, key };
+              await (question.config?.link_identity ? identity.mutateAsync(input) : contact.mutateAsync(input));
               setDraftKey(key);
-              setDraft({ provided: true });
+              setDraft(capturedValue(consents));
               flashSaved();
             }}
           />

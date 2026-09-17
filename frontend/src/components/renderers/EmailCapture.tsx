@@ -3,14 +3,17 @@ import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
 import { useSurveyDefinition } from "@/api/hooks";
 import { ApiError } from "@/api/client";
+import { renderInline } from "@/survey/markdown";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { inputClass, type RendererProps } from "./types";
 import type { EmailValue } from "@/survey/types";
 
 interface Props extends RendererProps<EmailValue> {
-  onSubmitEmail: (email: string) => Promise<void>;
+  onSubmitEmail: (email: string, consents: string[]) => Promise<void>;
 }
 
 /** Contact/identity capture (Q-11, CON-3/4): the address goes to its own endpoint, never into the answer. */
@@ -21,10 +24,19 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
   // origin, so their place in the survey survives reading it.
   const { slug = "" } = useParams();
   const definition = useSurveyDefinition(slug);
-  const hasPrivacy = definition.data?.legal_pages?.includes("privacy") ?? false;
+  const legalKeys = definition.data?.legal_pages ?? [];
+  const hasPrivacy = legalKeys.includes("privacy");
+  const legalPages = { keys: legalKeys, href: (page: string) => `/s/${slug}/${page}` };
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The consents offered with the address (CON-3/4), each its own tick box,
+  // none pre-ticked: a consent is something the participant does, not
+  // something they fail to undo.
+  const consents = question.config?.consents ?? [];
+  const consentsMin = question.config?.consents_min ?? 0;
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [consentError, setConsentError] = useState(false);
   const provided = value?.provided === true;
 
   const submit = async () => {
@@ -32,10 +44,18 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
       setError(t("email.invalid"));
       return;
     }
+    if (ticked.length < consentsMin) {
+      setConsentError(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await onSubmitEmail(email);
+      // In the question's order, whatever order the boxes were ticked in.
+      await onSubmitEmail(
+        email,
+        consents.map((c) => c.key).filter((k) => ticked.includes(k)),
+      );
     } catch (err) {
       // The address never reaches the answer; the endpoint's status says what went wrong.
       const status = err instanceof ApiError ? err.status : 0;
@@ -70,6 +90,41 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
             onChange={(e) => setEmail(e.target.value)}
             data-testid="email-input"
           />
+          {consents.length > 0 && (
+            <div className="flex flex-col gap-1" data-testid="email-consents">
+              {consents.map((c) => {
+                const id = `consent-${c.key}`;
+                return (
+                  <div key={c.key} className="flex min-h-[44px] items-start gap-3">
+                    <Checkbox
+                      id={id}
+                      className="mt-3 size-5"
+                      checked={ticked.includes(c.key)}
+                      disabled={busy}
+                      onCheckedChange={(on) => {
+                        setTicked((prev) => (on === true ? [...prev, c.key] : prev.filter((k) => k !== c.key)));
+                        setConsentError(false);
+                      }}
+                      data-testid={`email-consent-${c.key}`}
+                    />
+                    <Label htmlFor={id} className="flex min-h-[44px] items-center text-[0.95rem] font-normal leading-snug">
+                      {c.text as string}
+                    </Label>
+                  </div>
+                );
+              })}
+              {question.config?.consents_note && (
+                <p className="text-sm text-muted-foreground" data-testid="email-consents-note">
+                  {renderInline(question.config.consents_note as string, "consents-note", { legalPages })}
+                </p>
+              )}
+              {consentError && (
+                <p className="text-sm text-error" role="alert" data-testid="email-consents-error">
+                  {t("email.consentsRequired")}
+                </p>
+              )}
+            </div>
+          )}
           {error && (
             <Alert variant="destructive" role="alert" className="[&>svg]:hidden">
               <AlertDescription>{error}</AlertDescription>

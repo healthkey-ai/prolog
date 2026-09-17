@@ -22,9 +22,14 @@ class AnswerSerializer(serializers.Serializer):
 
 
 class ContactSerializer(serializers.Serializer):
-    """An email address for the contact and identity endpoints (CON-3/4)."""
+    """An email address, and the consents ticked with it, for the contact and
+    identity endpoints (CON-3/4). Keys are checked against the question's
+    ``config.consents`` in the view."""
 
     email = serializers.EmailField(max_length=254)
+    consents = serializers.ListField(
+        child=serializers.CharField(max_length=64), required=False, default=list, max_length=5
+    )
 
 
 class ResponseSerializer(serializers.ModelSerializer):

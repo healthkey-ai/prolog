@@ -66,7 +66,9 @@ def submitted(api_client, version):
     )
     assert (
         api_client.post(
-            f"/api/run/responses/{rid}/contact/", {"email": "someone@example.org"}, format="json"
+            f"/api/run/responses/{rid}/contact/",
+            {"email": "someone@example.org", "consents": ["reuse"]},
+            format="json",
         ).status_code
         == 204
     )
@@ -109,7 +111,22 @@ def test_export_contacts_separate(version, submitted):
     text = out.getvalue()
     assert "someone@example.org" in text
     assert submitted not in text
-    assert "response" not in text.splitlines()[0]
+    header, row = list(csv.reader(io.StringIO(text)))
+    assert "response" not in header
+    # what was ticked with the address travels with it, one column per consent
+    assert header[-2:] == ["consent.contact", "consent.reuse"] and row[-2:] == ["0", "1"]
+
+
+def test_export_responses_consent_columns(version, submitted):
+    out = io.StringIO()
+    write_responses(version, out)
+    header, row = list(csv.reader(io.StringIO(out.getvalue())))
+    record = dict(zip(header, row, strict=True))
+    assert record["contact_email"] == "1"
+    assert (record["contact_email.consent.contact"], record["contact_email.consent.reuse"]) == (
+        "0",
+        "1",
+    )
 
 
 def test_export_commands(version, submitted, api_client, tmp_path, capsys):

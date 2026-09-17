@@ -43,6 +43,12 @@ def _columns(definition: dict[str, Any]) -> list[tuple[str, str, str | None]]:
             cols.append((k, k, None))
             if any(o.get("free_text") for o in q.get("options", [])):
                 cols.append((f"{k}.other_text", k, "other_text"))
+        elif t == "email":
+            cols.append((k, k, None))
+            # One column per consent offered: what was ticked with the address
+            # is the record a controller acts on, so it travels with the answers.
+            for c in cfg.get("consents", []):
+                cols.append((f"{k}.consent.{c['key']}", k, f"consent:{c['key']}"))
         else:
             cols.append((k, k, None))
     return cols
@@ -80,6 +86,8 @@ def _cell(value: dict[str, Any] | None, sub: str | None) -> str:
         if key in value:
             return str(value[key])
     if "provided" in value:
+        if sub and sub.startswith("consent:"):
+            return "1" if sub[len("consent:") :] in value.get("consents", []) else "0"
         return "1" if value["provided"] else "0"
     return ""
 
@@ -132,18 +140,30 @@ def write_responses(version: SurveyVersion, out: IO[str], *, submitted_only: boo
     return n
 
 
+def _consent_keys(definition: dict[str, Any]) -> list[str]:
+    for _, _, q in iter_questions(definition):
+        if q["type"] == "email":
+            return [c["key"] for c in (q.get("config") or {}).get("consents", [])]
+    return []
+
+
 def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
+    consent_keys = _consent_keys(version.definition)
     writer = csv.writer(out)
-    writer.writerow(["survey", "version", "email", "language", "captured_on"])
+    writer.writerow(
+        ["survey", "version", "email", "language", "captured_on"]
+        + [f"consent.{k}" for k in consent_keys]
+    )
     n = 0
     contacts = (
         SurveyContact.objects.filter(survey_version=version)
         .order_by("captured_on", "email")
-        .values_list("email", "language", "captured_on")
+        .values_list("email", "language", "captured_on", "consents")
     )
     # Streamed like the responses: a long-running instrument holds as many
     # contacts as submitted responses.
-    for email, language, captured_on in contacts.iterator(chunk_size=1000):
+    for email, language, captured_on, consents in contacts.iterator(chunk_size=1000):
+        ticked = {c["key"] for c in consents or []}
         writer.writerow(
             [
                 version.survey.slug,
@@ -152,6 +172,7 @@ def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
                 language,
                 captured_on.isoformat(),
             ]
+            + ["1" if k in ticked else "0" for k in consent_keys]
         )
         n += 1
     return n

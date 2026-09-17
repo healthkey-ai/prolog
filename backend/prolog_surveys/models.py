@@ -421,6 +421,10 @@ class SurveyContact(models.Model):
     email = models.EmailField()
     language = models.CharField(max_length=12, blank=True, default="")
     consent_text = models.TextField(help_text="The notice shown when the address was given.")
+    # The consents ticked with the address: [{"key", "text"}] — the wording as
+    # shown, so a later edit never changes what was agreed. Dated like the
+    # row (to the day): a timestamp would pair it with the response's marker.
+    consents = models.JSONField(default=list, blank=True)
     captured_on = models.DateField(default=timezone.localdate)
 
     class Meta:
@@ -443,6 +447,34 @@ class SurveyConsent(models.Model):
 
     def __str__(self) -> str:
         return f"consent {self.consent_version} for {self.response_id}"
+
+
+class SurveyCaptureConsent(models.Model):
+    """A consent ticked with an identity capture (CON-4), one row per tick.
+
+    An identified response is not anonymous, so the record can be exact: the
+    key, the wording shown (hashed and verbatim), the language, the moment.
+    Withdrawal is ``withdrawn_at``, never deletion — the fact that consent was
+    given, and until when, is what a controller has to be able to show.
+    """
+
+    response = models.ForeignKey(
+        SurveyResponse, on_delete=models.CASCADE, related_name="capture_consents"
+    )
+    key = models.CharField(max_length=64)
+    text = models.TextField(help_text="The consent wording shown, verbatim.")
+    text_hash = models.CharField(max_length=64)
+    language = models.CharField(max_length=12)
+    agreed_at = models.DateTimeField(auto_now_add=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["response", "key"], name="one_capture_consent_per_key")
+        ]
+
+    def __str__(self) -> str:
+        return f"consent {self.key} for {self.response_id}"
 
 
 class SurveyInvitation(models.Model):

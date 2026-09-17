@@ -40,7 +40,7 @@ CONFIG_BY_TYPE: dict[str, set[str]] = {
     "text": {"max_length", "multiline"},
     "number": {"min_value", "max_value", "integer"},
     "date": {"min_date", "max_date"},
-    "email": {"store_separately", "link_identity"},
+    "email": {"store_separately", "link_identity", "consents", "consents_min", "consents_note"},
 }
 
 
@@ -91,6 +91,9 @@ def walk_i18n(definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
                     add(f"{qp}.config.scale.point_labels[{pi}]", p)
             for ri, r in enumerate(cfg.get("rows", [])):
                 add(f"{qp}.config.rows[{ri}].label", r.get("label"))
+            for ci, c in enumerate(cfg.get("consents", [])):
+                add(f"{qp}.config.consents[{ci}].text", c.get("text"))
+            add(f"{qp}.config.consents_note", cfg.get("consents_note"))
     return found
 
 
@@ -391,6 +394,18 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
                 f"{qp}.config.link_identity",
                 "link_identity requires the integrated profile",
             )
+        if t == "email" and cfg.get("consents"):
+            keys = [c["key"] for c in cfg["consents"]]
+            if len(set(keys)) != len(keys):
+                err("consent_keys", f"{qp}.config.consents", "consent keys must be unique")
+            if (cfg.get("consents_min") or 0) > len(keys):
+                err(
+                    "consents_min",
+                    f"{qp}.config.consents_min",
+                    f"consents_min ({cfg['consents_min']}) exceeds the {len(keys)} consents offered",
+                )
+        elif t == "email" and (cfg.get("consents_min") or cfg.get("consents_note")):
+            err("consents_missing", f"{qp}.config", "consents_min / consents_note need consents")
         if t == "email" and not (cfg.get("store_separately") or cfg.get("link_identity")):
             # Without a capture mode neither endpoint accepts an address, so the
             # runner could only ever record a decline.

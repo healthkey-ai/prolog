@@ -61,6 +61,17 @@ export interface QuestionConfig {
   max_date?: string;
   store_separately?: boolean;
   link_identity?: boolean;
+  /** Consents offered with the address, each recorded separately (CON-3/4). */
+  consents?: CaptureConsent[];
+  /** How many of them must be ticked before an address is accepted; default 0. */
+  consents_min?: number;
+  /** A note under the tick boxes — withdrawal, where to read more; inline Markdown. */
+  consents_note?: Text;
+}
+
+export interface CaptureConsent {
+  key: string;
+  text: Text;
 }
 
 export type ConditionOp = "eq" | "neq" | "in" | "contains" | "not_contains" | "answered";
@@ -141,7 +152,8 @@ export type MatrixValue = { ratings: Record<string, Rating> };
 export type TextValue = { text: string };
 export type NumberValue = { number: number };
 export type DateValue = { date: string };
-export type EmailValue = { provided: boolean };
+/** `consents` lists the keys ticked with the address — the marker is all the response holds. */
+export type EmailValue = { provided: boolean; consents?: string[] };
 
 export type AnswerValue =
   | SkipValue

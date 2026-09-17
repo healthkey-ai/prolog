@@ -227,6 +227,19 @@ def _repeat(**overrides):
             lambda d: question(d, "contact_email").update(config={"link_identity": True}),
             "link_identity",
         ),
+        (
+            lambda d: question(d, "contact_email")["config"]["consents"].append(
+                {"key": "contact", "text": {"en": "again"}}
+            ),
+            "consent_keys",
+        ),
+        (lambda d: question(d, "contact_email")["config"].update(consents_min=3), "consents_min"),
+        (
+            lambda d: question(d, "contact_email").update(
+                config={"store_separately": True, "consents_min": 1}
+            ),
+            "consents_missing",
+        ),
         (lambda d: d["translation_status"].pop("fr"), "translation_status"),
         (lambda d: d["translation_status"].update(de="reviewed"), "translation_status"),
         (lambda d: d.update(default_language="de"), "default_language"),

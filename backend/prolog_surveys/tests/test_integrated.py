@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 
 from prolog_surveys import conf
 from prolog_surveys.definitions.loader import load_definition
-from prolog_surveys.models import SurveyResponse
+from prolog_surveys.models import SurveyCaptureConsent, SurveyResponse
 from prolog_surveys.tests import fake_identity
 from prolog_surveys.tests.conftest import example_definition
 
@@ -40,7 +40,9 @@ def linked_definition():
     for s in doc["sections"]:
         for q in s["questions"]:
             if q["type"] == "email":
-                q["config"] = {"link_identity": True}
+                # the consents offered stay; only the capture mode changes
+                q["config"] = {k: v for k, v in q["config"].items() if k != "store_separately"}
+                q["config"]["link_identity"] = True
     return doc
 
 
@@ -87,6 +89,43 @@ def test_identity_capture_links_participant(api_client, identity_service, linked
     body = api_client.get(f"/api/run/responses/{rid}/").json()
     assert "someone" not in json.dumps(body)
     assert not get_user_model().objects.filter(email__contains="someone").exists()
+
+
+@pytest.mark.django_db
+def test_identity_capture_records_each_consent(api_client, identity_service, linked_definition):
+    """An identified response is not anonymous, so each tick is its own row —
+    key, wording shown, language, moment — and a retry adds nothing."""
+    load_definition(linked_definition, activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "es"}, format="json"
+    ).json()["id"]
+    body = {"email": "someone@example.org", "consents": ["reuse"]}
+    r = api_client.post(f"/api/run/responses/{rid}/identity/", body, format="json")
+    assert r.status_code == 204
+    response = SurveyResponse.objects.get(pk=rid)
+    assert response.answers.get(question_key="contact_email").value == {
+        "provided": True,
+        "consents": ["reuse"],
+    }
+    row = SurveyCaptureConsent.objects.get()
+    assert (str(row.response_id), row.key, row.language) == (rid, "reuse", "es")
+    assert row.text == "Pueden usar mis respuestas en investigaciones futuras."
+    assert len(row.text_hash) == 64 and row.withdrawn_at is None
+    api_client.post(f"/api/run/responses/{rid}/identity/", body, format="json")
+    assert SurveyCaptureConsent.objects.count() == 1
+    # an unknown key is refused before the identity service is called
+    api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    )
+    rid2 = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    r = api_client.post(
+        f"/api/run/responses/{rid2}/identity/",
+        {"email": "other@example.org", "consents": ["nope"]},
+        format="json",
+    )
+    assert r.status_code == 400 and len(identity_service.CALLS) == 1
 
 
 @pytest.mark.django_db

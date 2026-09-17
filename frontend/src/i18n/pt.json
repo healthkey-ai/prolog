@@ -66,6 +66,7 @@
   "email.saved": "Obrigado — seu e-mail foi salvo.",
   "email.invalid": "Digite um endereço de e-mail válido.",
   "email.unavailable": "O serviço de e-mail está indisponível no momento. Você pode continuar sem ele.",
+  "email.consentsRequired": "Marque a caixa acima para guardar o seu e-mail.",
   "multi.counter": "{{count}} de {{max}} selecionadas",
   "multi.limit": "Selecione até {{max}}",
   "ranking.help": "Arraste para reordenar ou use os botões de seta.",

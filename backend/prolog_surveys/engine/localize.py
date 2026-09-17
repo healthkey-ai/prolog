@@ -15,6 +15,7 @@ I18N_FIELDS = {
     "min_label",
     "max_label",
     "not_applicable",
+    "consents_note",
 }
 
 

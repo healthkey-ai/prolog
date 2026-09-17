@@ -211,6 +211,14 @@ you cannot honour a later "delete my answers" request from that address.
 Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
 
+**Ask for each consent on its own.** An address is given *for* something —
+to be contacted, to have the answers kept — and those are different
+questions with different answers. The email question can offer each as its
+own tick box (`config.consents`, none pre-ticked), with a note underneath on
+how to withdraw. What is recorded is the wording the person saw, not the key,
+so editing a sentence later never rewrites what was agreed. See the
+[definition manual, §8](definitions/survey-definition.md#8-the-email-question--contact-vs-identity-capture).
+
 ---
 
 ## From the admin
@@ -424,7 +432,10 @@ includes unfinished ones, which is usually what you want for a "how far did
 people get" question and not what you want for analysis.
 
 Multi-selects and matrix rows are exploded into columns, so a row is one
-response.
+response. An email question that offers consents adds a `1`/`0` column per
+consent to both exports (`<question>.consent.<key>` beside the answers,
+`consent.<key>` beside the addresses), so what was ticked is wherever the
+thing it was ticked for is.
 
 ---
 

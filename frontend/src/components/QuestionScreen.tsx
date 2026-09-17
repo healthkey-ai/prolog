@@ -17,7 +17,7 @@ import { questionRequired, type AnswerValue, type Question } from "@/survey/type
 interface Props extends RendererProps {
   questionNumber: number;
   questionTotal: number;
-  onSubmitEmail?: (email: string) => Promise<void>;
+  onSubmitEmail?: (email: string, consents: string[]) => Promise<void>;
   answers: Record<string, AnswerValue>;
   questions: Record<string, Question>;
 }
