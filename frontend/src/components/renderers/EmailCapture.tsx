@@ -164,7 +164,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
                   <Button variant="surface" size="runner-sm" onClick={startEditing} disabled={busy} data-testid="email-change">
                     {t("email.change")}
                   </Button>
-                  <Button variant="link" size="runner-sm" className="text-error" onClick={remove} disabled={busy} data-testid="email-remove">
+                  <Button variant="surface" size="runner-sm" className="text-error" onClick={remove} disabled={busy} data-testid="email-remove">
                     {t("email.remove")}
                   </Button>
                 </>
@@ -252,7 +252,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail, onRemov
                 <Button variant="surface" size="runner" onClick={() => setEditing(false)} disabled={busy} data-testid="email-cancel">
                   {t("email.cancel")}
                 </Button>
-                <Button variant="link" size="runner" className="text-error" onClick={remove} disabled={busy} data-testid="email-remove">
+                <Button variant="surface" size="runner" className="text-error" onClick={remove} disabled={busy} data-testid="email-remove">
                   {t("email.remove")}
                 </Button>
               </>
