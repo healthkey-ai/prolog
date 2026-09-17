@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 
 /**
  * A deliberately small Markdown subset, rendered into elements.
@@ -48,7 +49,17 @@ function safeHref(href: string): string | null {
 /** Footnote labels already cited in the page being rendered (reset per renderMarkdown). */
 let citedOnce = new Set<string>();
 
-export function renderInline(text: string, keyPrefix = ""): ReactNode[] {
+export interface InlineOptions {
+  /**
+   * In-survey legal pages a link may point at by key — `[the notice](privacy)`
+   * — resolved to that page's route. A key the deployment does not mount
+   * renders as plain text, never as a link to a 404: the link is only
+   * offered where there is a page behind it.
+   */
+  legalPages?: { keys: string[]; href: (key: string) => string };
+}
+
+export function renderInline(text: string, keyPrefix = "", options: InlineOptions = {}): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let match: RegExpExecArray | null;
@@ -79,9 +90,14 @@ export function renderInline(text: string, keyPrefix = ""): ReactNode[] {
     } else if (token.startsWith("[")) {
       const label = token.slice(1, token.indexOf("]"));
       const href = token.slice(token.indexOf("](") + 2, -1);
+      const legal = options.legalPages;
       const safe = safeHref(href);
       out.push(
-        safe ? (
+        legal && legal.keys.includes(href) ? (
+          <Link key={key} to={legal.href(href)} className="text-primary underline" data-testid={`legal-link-${href}`}>
+            {label}
+          </Link>
+        ) : safe ? (
           <a key={key} href={safe} className="text-primary underline" target="_blank" rel="noreferrer noopener">
             {label}
           </a>

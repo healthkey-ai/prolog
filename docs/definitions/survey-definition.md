@@ -318,7 +318,11 @@ then the browser, then the default.
 }
 ```
 
-The notice is shown on the intro page with a checkbox. Creating a response
+The notice is shown on the intro page with a checkbox. Its `text` may carry
+inline Markdown — links, bold, italic — and a link whose target is the key of
+a legal page the deployment mounts (`[the privacy notice](privacy)`) opens
+that page inside the survey; where no such page is mounted the label renders
+as plain text. Creating a response
 requires `{"version": "2026-01", "agreed": true}` for the current version;
 the attestation is stored separately from answers (version, text hash,
 language, timestamp). Bumping `version` re-presents the notice on the next

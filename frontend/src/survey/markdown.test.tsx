@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { renderMarkdown } from "./markdown";
+import { MemoryRouter } from "react-router";
+import { renderInline, renderMarkdown } from "./markdown";
 
 const html = (source: string) => renderToStaticMarkup(<>{renderMarkdown(source)}</>);
 
@@ -101,5 +102,16 @@ describe("footnotes", () => {
 
   it("leaves a lone caret bracket as text", () => {
     expect(html("Not a note [^] here.\n")).toContain("Not a note [^] here.");
+  });
+});
+
+describe("legal page links", () => {
+  it("links to a mounted legal page by key, and leaves an unmounted key as text", () => {
+    const opts = { legalPages: { keys: ["privacy"], href: (k: string) => `/s/x/${k}` } };
+    const out = renderToStaticMarkup(<MemoryRouter>{renderInline("Read [the notice](privacy) and [terms](terms).", "c", opts)}</MemoryRouter>);
+    expect(out).toContain('href="/s/x/privacy"');
+    expect(out).toContain(">the notice</a>");
+    expect(out).not.toContain("/s/x/terms");
+    expect(out).toContain("terms");
   });
 });

@@ -27,6 +27,7 @@ import { RadioGroup } from "@/components/ui/radio-group";
 import { Eyebrow } from "@/components/Eyebrow";
 import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { languageName } from "@/i18n/languageName";
+import { renderInline } from "@/survey/markdown";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { needsLanguageStep } from "@/survey/languageStep";
@@ -443,7 +444,14 @@ export function IntroPage() {
               )}
               {consent && (
                 <div className="rounded-[var(--p-radius-card)] bg-surface p-5 text-ink">
-                  <p className="text-[0.95rem]">{consent.text as string}</p>
+                  {/* Inline links in the notice text: `[…](privacy)` reaches the
+                      survey's own privacy page, which is what a consent sentence
+                      usually needs to point at. */}
+                  <p className="text-[0.95rem]">
+                    {renderInline(consent.text as string, "consent", {
+                      legalPages: { keys: def.legal_pages ?? [], href: (page) => `/s/${slug}/${page}` },
+                    })}
+                  </p>
                   {!hasLocalPrivacy && privacyUrl && (
                     <a
                       href={privacyUrl}
