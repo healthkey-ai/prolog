@@ -242,6 +242,7 @@
                 "text": { "en": "You may use my answers in future research.", "es": "Pueden usar mis respuestas en investigaciones futuras.", "fr": "Vous pouvez utiliser mes réponses dans de futures recherches." }
               }
             ],
+            "consents_label": { "en": "Please tick any boxes you agree to:", "es": "Marque las casillas con las que esté de acuerdo:", "fr": "Cochez les cases avec lesquelles vous êtes d'accord :" },
             "consents_note": {
               "en": "You can withdraw either consent at any time. See the [privacy notice](privacy) for details.",
               "es": "Puede retirar cualquiera de los consentimientos en cualquier momento. Consulte el [aviso de privacidad](privacy) para más información.",

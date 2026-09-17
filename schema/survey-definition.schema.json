@@ -400,6 +400,10 @@
             }
           }
         },
+        "consents_label": {
+          "description": "email: a line above the consent boxes (e.g. an invitation to tick what applies). Plain text.",
+          "$ref": "#/$defs/i18n"
+        },
         "consents_min": {
           "description": "email: how many of `consents` must be ticked for an address to be accepted (default 0: an address may be given with none). The capture refuses otherwise, and the runner says so.",
           "type": "integer",

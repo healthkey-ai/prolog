@@ -63,6 +63,8 @@ export interface QuestionConfig {
   link_identity?: boolean;
   /** Consents offered with the address, each recorded separately (CON-3/4). */
   consents?: CaptureConsent[];
+  /** A line above the boxes, e.g. an invitation to tick what applies. */
+  consents_label?: Text;
   /** How many of them must be ticked before an address is accepted; default 0. */
   consents_min?: number;
   /** A note under the tick boxes — withdrawal, where to read more; inline Markdown. */

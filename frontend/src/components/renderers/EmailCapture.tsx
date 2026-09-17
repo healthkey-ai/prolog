@@ -91,7 +91,12 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
             data-testid="email-input"
           />
           {consents.length > 0 && (
-            <div className="flex flex-col gap-1" data-testid="email-consents">
+            <fieldset className="flex flex-col gap-1" data-testid="email-consents">
+              {question.config?.consents_label && (
+                <legend className="mb-1 text-[0.95rem]" data-testid="email-consents-label">
+                  {question.config.consents_label as string}
+                </legend>
+              )}
               {consents.map((c) => {
                 const id = `consent-${c.key}`;
                 return (
@@ -123,7 +128,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
                   {t("email.consentsRequired")}
                 </p>
               )}
-            </div>
+            </fieldset>
           )}
           {error && (
             <Alert variant="destructive" role="alert" className="[&>svg]:hidden">

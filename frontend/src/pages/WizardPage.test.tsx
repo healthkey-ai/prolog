@@ -229,6 +229,7 @@ describe("WizardPage", () => {
             { key: "contact", text: "You may contact me." },
             { key: "reuse", text: "You may reuse my answers." },
           ],
+          consents_label: "Tick what you agree to:",
           consents_note: "Withdraw any time — see the [notice](privacy).",
         },
       },
@@ -241,6 +242,7 @@ describe("WizardPage", () => {
     expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("false");
     expect(reuse.getAttribute("aria-checked")).toBe("false");
     expect(m.$("legal-link-privacy")!.getAttribute("href")).toBe(`/s/${SLUG}/privacy`);
+    expect(m.$("email-consents-label")!.textContent).toBe("Tick what you agree to:");
     click(reuse);
     click(m.$("email-consent-contact"));
     type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");

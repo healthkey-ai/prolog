@@ -358,6 +358,7 @@ question may offer up to five, each its own tick box, none ticked in advance:
     { "key": "contact", "text": { "en": "You may contact me about future surveys." } },
     { "key": "reuse",   "text": { "en": "You may use my answers in future research." } }
   ],
+  "consents_label": { "en": "Please tick any boxes you agree to:" },
   "consents_min": 0,
   "consents_note": { "en": "You can withdraw either consent at any time. See the [privacy notice](privacy) for details." }
 }
@@ -367,8 +368,9 @@ question may offer up to five, each its own tick box, none ticked in advance:
 | --- | --- |
 | `consents[].key` | `^[a-z0-9][a-z0-9_]*$`, ≤ 64, unique within the question (`consent_keys`). It names the consent in exports and in the record. |
 | `consents[].text` | The sentence beside the box, i18n. What is recorded is the wording *as shown*, so a later edit never changes what someone agreed to. |
+| `consents_label` | A line above the boxes, i18n, plain text — an invitation to tick what applies. |
 | `consents_min` | How many boxes must be ticked before the address is accepted; default `0` — an address with nothing ticked is a valid answer. Must not exceed the number offered (`consents_min`). Refused submissions get `400 {"consents": ["consents_required"]}`. |
-| `consents_note` | Text under the boxes, i18n, inline Markdown — bold, italic, links; `[label](privacy)` reaches the survey's own legal page, as in §7. `consents_min` and `consents_note` without `consents` is an error (`consents_missing`). |
+| `consents_note` | Text under the boxes, i18n, inline Markdown — bold, italic, links; `[label](privacy)` reaches the survey's own legal page, as in §7. Any `consents_*` setting without `consents` is an error (`consents_missing`). |
 
 The runner posts the ticked keys with the address (`"consents": ["reuse"]`);
 a key the question does not offer is a `400`. What is kept depends on the
