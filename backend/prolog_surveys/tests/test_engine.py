@@ -505,3 +505,28 @@ def test_accept_language_is_read_most_preferred_first():
     assert language_from_accept_header(d, "es;q=abc, fr") == "fr", (
         "a bad weight is a zero, not a crash"
     )
+
+
+def test_progress_total_is_fixed_and_a_closed_branch_counts_as_passed():
+    """The total never moves; a gate answered against a branch settles that
+    branch as done, a gate not yet reached leaves it pending."""
+    from prolog_surveys.engine.visibility import pending_keys
+
+    definition = load_definition("sample-wellbeing.json")
+    assert progress(definition, {})["total"] == 16
+    # Nothing answered: every conditional question is pending, none passed.
+    assert progress(definition, {})["answered"] == 0
+    pending = set(pending_keys(definition, {}))
+    assert {"low_wellbeing_reason", "symptoms", "symptom_impact"} <= pending
+
+    # has_symptoms = no closes the whole symptoms branch for good — the two
+    # follow-up questions and the two in the gated section — so they count as
+    # passed; low_wellbeing_reason still waits on `overall`.
+    answers = {"has_symptoms": {"option": "no"}}
+    assert pending_keys(definition, answers) == ["low_wellbeing_reason"]
+    assert progress(definition, answers)["answered"] == 5  # the answer + 4 closed
+
+    # A skip is a stored row: it settles the branch the same way.
+    answers = {"has_symptoms": {"skipped": True}}
+    assert pending_keys(definition, answers) == ["low_wellbeing_reason"]
+    assert progress(definition, answers)["answered"] == 5

@@ -150,6 +150,56 @@ def _dynamic_rows_empty(
     )
 
 
+def pending_keys(
+    definition: dict[str, Any],
+    answers: Answers,
+    *,
+    visible: list[VisibleQuestion] | None = None,
+    questions: dict[str, dict[str, Any]] | None = None,
+) -> list[str]:
+    """Hidden answerable questions that may still appear.
+
+    A hidden question is *closed* — it will not be asked — when something it
+    depends on has been decided against it: a gating question that holds a row
+    (a value or a skip) with which the condition is false, or a gate that is
+    itself closed. It is *pending* while every false condition rests on a
+    question the respondent has simply not reached yet. The distinction is
+    what lets a progress count treat a skipped branch as passed and an
+    unreached one as still to come. Mirrors visibility.ts.
+    """
+    if questions is None:
+        questions = question_by_key(definition)
+    if visible is None:
+        visible = visible_questions(definition, answers, questions=questions)
+    shown = {v.key for v in visible}
+    # Conditions are judged on visible answers only, as visible_questions
+    # does: a hidden gate's stale answer settles nothing.
+    seen = {k: v for k, v in answers.items() if k in shown}
+    closed: set[str] = set()
+    pending: list[str] = []
+
+    def settled(key: str) -> bool:
+        # A visible question is settled once it holds any row; a hidden one
+        # once it is closed. Anything else is still ahead of the respondent.
+        return key in answers if key in shown else key in closed
+
+    for _, section, q in iter_questions(definition):
+        if q["key"] in shown:
+            continue
+        conditions = [*section.get("visible_if", []), *q.get("visible_if", [])]
+        false = [c for c in conditions if not evaluate_condition(c, seen)]
+        # A rows_from matrix hidden for want of rows waits on its source the
+        # same way a condition waits on its question.
+        if not false and q["type"] == "matrix":
+            source = q.get("config", {}).get("rows_from")
+            false = [{"question": source}] if source else []
+        if any(settled(c["question"]) for c in false):
+            closed.add(q["key"])
+        elif q["type"] in ANSWERABLE:
+            pending.append(q["key"])
+    return pending
+
+
 def visible_keys(
     definition: dict[str, Any],
     answers: Answers,

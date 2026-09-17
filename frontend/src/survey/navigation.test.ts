@@ -20,7 +20,11 @@ describe("navigation", () => {
     const p = position(def, { has_symptoms: { option: "yes" } }, "symptoms");
     expect(p.previousKey).toBe("has_symptoms");
     expect(p.visible[p.index + 1].key).toBe("daily_activities");
-    expect(p.questionNumber).toBe(7); // welcome is info, not counted
+    // Numbered over the whole instrument: welcome is info (not counted) and
+    // low_wellbeing_reason, hidden because overall is unanswered, still holds
+    // its place — the number never depends on which branches happen to be open.
+    expect(p.questionNumber).toBe(8);
+    expect(p.questionTotal).toBe(16);
     expect(p.sectionNumber).toBe(2);
     expect(p.sectionTotal).toBe(5); // follow-up section revealed by has_symptoms=yes
     expect(p.isLast).toBe(false);
@@ -53,6 +57,20 @@ describe("navigation", () => {
     } as unknown as Definition;
     const rows = overview(tiny, { contact: { provided: false } }, "note", "note").flatMap((s) => s.rows);
     expect(rows.find((r) => r.key === "contact")?.status).toBe("answered");
+  });
+
+  it("keeps the total fixed and jumps the number over a closed branch", () => {
+    // Fresh start: the first question is 1 of 16 whatever branches exist.
+    expect(position(def, {}, "country").questionTotal).toBe(16);
+    // has_symptoms = no closes symptoms and symptom_impact: the next question
+    // is numbered as if they had been passed, and progress counts them done.
+    const no = position(def, { has_symptoms: { option: "no" } }, "daily_activities");
+    expect(no.questionNumber).toBe(10);
+    expect(no.questionTotal).toBe(16);
+    expect(progressFraction(no, false)).toBeCloseTo(9 / 16);
+    // The same screen reached with the branch open is numbered the same.
+    const yes = position(def, { has_symptoms: { option: "yes" }, symptoms: { options: ["fatigue"] }, symptom_impact: { ratings: { fatigue: 2 } } }, "daily_activities");
+    expect(yes.questionNumber).toBe(10);
   });
 
   it("never reports negative progress on an info block", () => {

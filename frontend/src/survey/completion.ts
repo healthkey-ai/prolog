@@ -1,5 +1,5 @@
 import { ANSWERABLE, type Answers, type Definition } from "./types";
-import { isAnswered, matrixRows, questionByKey, visibleQuestions } from "./visibility";
+import { isAnswered, matrixRows, pendingKeys, questionByKey, visibleQuestions } from "./visibility";
 
 /** Visible answerable questions without an answer row (RUN-18). */
 export function missingKeys(def: Definition, answers: Answers): string[] {
@@ -23,11 +23,14 @@ export function missingKeys(def: Definition, answers: Answers): string[] {
 }
 
 /**
- * Answered = visible answerable questions that are not missing, so a pruned
- * matrix (rated, but not for every current row) counts as open, exactly as
- * `missingKeys` reports it; a skip counts as answered. Mirrors completion.py.
+ * Progress over the whole instrument, so the total never moves. `total` counts
+ * every answerable question in the definition, visible or not; `answered` is
+ * everything settled — visible questions with an answer (a pruned matrix counts
+ * as open, exactly as `missingKeys` reports it; a skip counts as answered) and
+ * hidden questions whose branch is closed. Only hidden questions that may still
+ * appear (`pendingKeys`) are left out. Mirrors completion.py.
  */
 export function progress(def: Definition, answers: Answers): { answered: number; total: number } {
-  const total = visibleQuestions(def, answers).filter((v) => ANSWERABLE.has(v.type)).length;
-  return { answered: total - missingKeys(def, answers).length, total };
+  const total = def.sections.flatMap((s) => s.questions).filter((q) => ANSWERABLE.has(q.type)).length;
+  return { answered: total - missingKeys(def, answers).length - pendingKeys(def, answers).length, total };
 }
