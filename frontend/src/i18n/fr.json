@@ -136,6 +136,7 @@
   "error.date_too_late": "Veuillez saisir une date jusqu'au {{max}}.",
   "legal.back": "Retour au questionnaire",
   "legal.missing": "Cette page n'est pas disponible.",
+  "legal.noteBack": "Retour au texte pour la note {{note}}",
   "legal.privacy": "Avis de confidentialité",
   "legal.terms": "Conditions",
   "intro.machineTranslation": "Ce questionnaire a été rédigé en {{source}}. Le texte en {{language}} que vous lisez a été traduit par une machine et n'a pas été vérifié par une personne."

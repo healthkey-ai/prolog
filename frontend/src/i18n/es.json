@@ -136,6 +136,7 @@
   "error.date_too_late": "Introduzca una fecha igual o anterior a {{max}}.",
   "legal.back": "Volver a la encuesta",
   "legal.missing": "Esta página no está disponible.",
+  "legal.noteBack": "Volver al texto de la nota {{note}}",
   "legal.privacy": "Aviso de privacidad",
   "legal.terms": "Términos",
   "intro.machineTranslation": "Esta encuesta se redactó en {{source}}. El texto en {{language}} que está leyendo fue traducido por una máquina y no ha sido revisado por una persona."
