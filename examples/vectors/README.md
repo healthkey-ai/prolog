@@ -8,7 +8,10 @@ a list of `steps` (an answer to store, then what must hold afterwards) and a
 `final` expectation. Expectations may include `visible` (ordered visible
 question keys), `invalidated` (keys whose stored answers were deleted or
 pruned by the cascade), `answers` (the surviving answer map), `missing`
-(completion check) and `progress`.
+(completion check) and `progress` — `total` is every answerable question in
+the definition, `answered` everything settled: visible questions with a row,
+plus hidden questions whose branch a stored answer has closed (a hidden
+question whose gate is still unanswered is pending and counts for neither).
 
 `retained` entries start from `given` answers, store one `answer` and check
 the same expectations — for rules about answers that outlive their question's

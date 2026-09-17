@@ -1,4 +1,5 @@
 import {
+  ANSWERABLE,
   type AnswerValue,
   type Answers,
   type Condition,
@@ -103,6 +104,39 @@ export function visibleQuestions(def: Definition, answers: Answers): VisibleQues
 function dynamicRowsEmpty(q: Question, answers: Answers, questions: Record<string, Question>): boolean {
   const cfg = questionConfig(q);
   return Boolean(cfg.rows_from) && !(cfg.rows && cfg.rows.length) && matrixRows(q, answers, questions).length === 0;
+}
+
+/**
+ * Hidden answerable questions that may still appear. A hidden question is
+ * *closed* — it will not be asked — when something it depends on has been
+ * decided against it: a gating question holding a row (a value or a skip) with
+ * which the condition is false, or a gate that is itself closed. It is
+ * *pending* while every false condition rests on a question the respondent has
+ * simply not reached yet. Mirrors visibility.py.
+ */
+export function pendingKeys(def: Definition, answers: Answers): string[] {
+  const shown = new Set(visibleQuestions(def, answers).map((v) => v.key));
+  // Conditions are judged on visible answers only, as visibleQuestions does.
+  const seen: Answers = Object.fromEntries(Object.entries(answers).filter(([k]) => shown.has(k)));
+  const closed = new Set<string>();
+  const pending: string[] = [];
+  const settled = (key: string) => (shown.has(key) ? key in answers : closed.has(key));
+  for (const section of def.sections) {
+    for (const q of section.questions) {
+      if (shown.has(q.key)) continue;
+      const conditions = [...(section.visible_if ?? []), ...(q.visible_if ?? [])];
+      let falseConditions = conditions.filter((c) => !evaluateCondition(c, seen)).map((c) => c.question);
+      // A rows_from matrix hidden for want of rows waits on its source the
+      // same way a condition waits on its question.
+      if (!falseConditions.length && q.type === "matrix") {
+        const source = questionConfig(q).rows_from;
+        falseConditions = source ? [source] : [];
+      }
+      if (falseConditions.some(settled)) closed.add(q.key);
+      else if (ANSWERABLE.has(q.type)) pending.push(q.key);
+    }
+  }
+  return pending;
 }
 
 export function visibleKeys(def: Definition, answers: Answers): string[] {

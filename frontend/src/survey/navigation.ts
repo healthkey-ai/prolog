@@ -28,7 +28,7 @@ export interface Position {
   index: number; // index within visible list, -1 if not visible
   previousKey: string | null;
   isLast: boolean;
-  /** 1-based question number among answerable visible questions. */
+  /** 1-based question number among all answerable questions, hidden ones before it counted as passed. */
   questionNumber: number;
   questionTotal: number;
   visibleSectionIndexes: number[];
@@ -40,7 +40,12 @@ export function position(def: Definition, answers: Answers, currentKey: string |
   const visible = visibleQuestions(def, answers);
   const index = currentKey ? visible.findIndex((v) => v.key === currentKey) : -1;
   const current = index >= 0 ? visible[index] : null;
-  const answerable = visible.filter((v) => ANSWERABLE.has(v.type));
+  // Numbered over the whole instrument, not the visible list: the total then
+  // never moves, and a branch the respondent's answers close is passed — the
+  // number jumps over it — rather than silently vanishing from the count.
+  const all = def.sections.flatMap((s) => s.questions);
+  const answerableAll = all.filter((q) => ANSWERABLE.has(q.type));
+  const reached = current ? all.findIndex((q) => q.key === current.key) : -1;
   const visibleSectionIndexes = [...new Set(visible.map((v) => v.sectionIndex))];
   return {
     visible,
@@ -48,8 +53,8 @@ export function position(def: Definition, answers: Answers, currentKey: string |
     index,
     previousKey: index > 0 ? visible[index - 1].key : null,
     isLast: index === visible.length - 1,
-    questionNumber: current ? answerable.filter((v) => v.index <= current.index).length : 0,
-    questionTotal: answerable.length,
+    questionNumber: current ? all.slice(0, reached + 1).filter((q) => ANSWERABLE.has(q.type)).length : 0,
+    questionTotal: answerableAll.length,
     visibleSectionIndexes,
     sectionNumber: current ? visibleSectionIndexes.indexOf(current.sectionIndex) + 1 : 0,
     sectionTotal: visibleSectionIndexes.length,
