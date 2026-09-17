@@ -114,22 +114,25 @@ else — to your service:
 from prolog_surveys.identity import IdentityRequest, IdentityResult, IdentityServiceError
 
 class IdentityService:
-    def create_or_link(self, request: IdentityRequest) -> IdentityResult:
+    def attach_account(self, request: IdentityRequest) -> IdentityResult:
         # request.email, request.idempotency_key (stable per response),
         # request.participant_pk (the Person the response is already bound to),
         # request.survey_slug, request.language
-        account = create_or_find_account(email=request.email,
-                                         person_id=request.participant_pk,
-                                         idempotency_key=request.idempotency_key)
-        return IdentityResult(participant_pk=account.person_id)
+        other = person_holding(request.email)
+        if other is not None and other != request.participant_pk:
+            return IdentityResult(linked=False, conflicting_participant_pk=other)
+        attach_account_to(person_id=request.participant_pk, email=request.email,
+                          idempotency_key=request.idempotency_key)
+        return IdentityResult(linked=True)
 ```
 
 In PRomop this creates an `Identity` and a `PatientUser` for the existing
 `Person`, promoting it from unidentified to identified **in place** — no answer
-is re-parented and no second person record appears. Returning a different
-`participant_pk` than the one passed in means the host matched the address to an
-existing person; PROlog re-points the response, which is the one case where a
-response changes hands. Treat a freshly created account's address as unverified
+is re-parented and no second person record appears. An address that already
+belongs to a *different* person is not attached: return it as
+`conflicting_participant_pk` and PROlog records the pair for a human to
+reconcile (open decision #7) — merging two patient records is a clinical-safety
+operation, not a survey side effect. Treat a freshly created account's address as unverified
 until confirmed and expose no pre-existing data to it before then (requirements
 open decision #6): a participant can always mistype, or type, someone else's
 address.

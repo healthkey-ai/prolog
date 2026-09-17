@@ -817,7 +817,7 @@ class IdentityView(ResponseMixin, RunnerView):
     @sensitive_variables()
     def post(self, request, response_id):
         # The checks and the host's service call run outside any transaction:
-        # ``create_or_link`` is an out-of-process call of unknown latency, and
+        # ``attach_account`` is an out-of-process call of unknown latency, and
         # holding the response row lock (and the connection) across it would
         # queue every concurrent autosave for the response behind it. The
         # locked write below re-checks what it depends on; the idempotency key
