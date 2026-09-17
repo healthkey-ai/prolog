@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { forgetAll } from "@/survey/scratch";
 import { RESPONSE_ID, SLUG, blur, click, deferred, definition, findOnLanguage, installDom, mount, response, runnerServer, t, type, type Mounted } from "./testHarness";
 
 const ANSWERS = `/responses/${RESPONSE_ID}/answers/`;
@@ -16,6 +17,7 @@ describe("WizardPage", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     localStorage.clear();
+    forgetAll();
   });
 
   it("shows the definition error with a retry when the definition GET fails but the response loaded", async () => {
@@ -259,6 +261,27 @@ describe("WizardPage", () => {
     await m.flush(3);
     expect(server.of("PUT", ANSWERS)).toEqual([]);
     expect(server.of("POST", `/responses/${RESPONSE_ID}/submit/`)).toHaveLength(1);
+  });
+
+  it("keeps what was typed and ticked across a detour to the notice, whose Back returns to the question", async () => {
+    const withEmail = definition({ legal_pages: ["privacy"] });
+    withEmail.sections[1].questions = [
+      { key: "q3", type: "email", text: "Stay in touch?", required: false, config: { store_separately: true, consents: [{ key: "contact", text: "You may contact me." }], consents_note: "See the [notice](privacy)." } },
+    ];
+    const server = runnerServer(withEmail, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q3", missing: ["q3"] }));
+    server.on("GET", `/surveys/${SLUG}/legal/privacy/`, { body: { page: "privacy", language: "en", markdown: "# Notice" } });
+    m = mount(`/s/${SLUG}/q/q3`);
+    await m.until("email-consent-contact");
+    type(m.$<HTMLInputElement>("email-input")!, "someone@example.org");
+    click(m.$("email-consent-contact"));
+    click(m.$("legal-link-privacy"));
+    await m.until("legal-back");
+    expect(m.pathname()).toBe(`/s/${SLUG}/privacy`);
+    click(m.$("legal-back"));
+    await m.until("email-consent-contact");
+    expect(m.pathname()).toBe(`/s/${SLUG}/q/q3`);
+    expect(m.$<HTMLInputElement>("email-input")!.value).toBe("someone@example.org");
+    expect(m.$("email-consent-contact")!.getAttribute("aria-checked")).toBe("true");
   });
 
   it("refuses to save an address with too few consents ticked, before anything is sent", async () => {

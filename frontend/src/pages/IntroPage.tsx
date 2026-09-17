@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, isClosed, isGone } from "@/api/client";
 import {
   SupersededError,
@@ -28,6 +28,7 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { languageName } from "@/i18n/languageName";
 import { renderInline } from "@/survey/markdown";
+import { forget, recall, remember } from "@/survey/scratch";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { needsLanguageStep } from "@/survey/languageStep";
@@ -40,6 +41,7 @@ import { usePageTitle } from "./usePageTitle";
 
 export function IntroPage() {
   const { slug = "" } = useParams();
+  const location = useLocation();
   const [search] = useSearchParams();
   const invite = search.get("invite") ?? undefined;
   // A link may name the language, which answers the question before it is asked.
@@ -51,7 +53,12 @@ export function IntroPage() {
   const existing = useResponse(existingId);
   const create = useCreateResponse();
   const patch = usePatchResponse(existingId ?? "");
-  const [agreed, setAgreed] = useState(false);
+  // The tick survives a detour to the notice (memory only; see scratch.ts).
+  const [agreed, setAgreedState] = useState(() => recall<boolean>(`consent:${slug}`) ?? false);
+  const setAgreed = (on: boolean) => {
+    setAgreedState(on);
+    remember(`consent:${slug}`, on);
+  };
   const [consentError, setConsentError] = useState(false);
   // "Start a new response" / "Start again": show the start form (with the
   // consent notice) instead of the resume card; the old id is only replaced
@@ -166,6 +173,7 @@ export function IntroPage() {
       return; // create.isError renders the message (below both the resume card and the start form)
     }
     storeResponseId(slug, response.id, resumable);
+    forget(`consent:${slug}`);
     const key = firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
   };
@@ -449,7 +457,7 @@ export function IntroPage() {
                       usually needs to point at. */}
                   <p className="text-[0.95rem]">
                     {renderInline(consent.text as string, "consent", {
-                      legalPages: { keys: def.legal_pages ?? [], href: (page) => `/s/${slug}/${page}` },
+                      legalPages: { keys: def.legal_pages ?? [], href: (page) => `/s/${slug}/${page}`, from: location.pathname + location.search },
                     })}
                   </p>
                   {!hasLocalPrivacy && privacyUrl && (

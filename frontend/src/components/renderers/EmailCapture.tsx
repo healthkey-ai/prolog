@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { useSurveyDefinition } from "@/api/hooks";
 import { ApiError } from "@/api/client";
 import { renderInline } from "@/survey/markdown";
+import { forget, recall, remember } from "@/survey/scratch";
+import { storedResponseId } from "@/lib/storage";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -26,8 +28,14 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
   const definition = useSurveyDefinition(slug);
   const legalKeys = definition.data?.legal_pages ?? [];
   const hasPrivacy = legalKeys.includes("privacy");
-  const legalPages = { keys: legalKeys, href: (page: string) => `/s/${slug}/${page}` };
-  const [email, setEmail] = useState("");
+  // Opened from here, the notice comes back here (LegalPage reads `from`).
+  const location = useLocation();
+  const legalPages = { keys: legalKeys, href: (page: string) => `/s/${slug}/${page}`, from: location.pathname };
+  // Reading the notice must not cost the participant what they had typed or
+  // ticked: the unsaved state outlives this screen, in memory only.
+  const scratchKey = `capture:${storedResponseId(slug) ?? slug}:${question.key}`;
+  const draft = recall<{ email: string; ticked: string[] }>(scratchKey);
+  const [email, setEmail] = useState(draft?.email ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The consents offered with the address (CON-3/4), each its own tick box,
@@ -39,9 +47,13 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
   // link to the same page under the buttons would only be noise.
   const noteLinksPrivacy = consents.length > 0 && /\]\(privacy\)/.test(consentsNote);
   const consentsMin = question.config?.consents_min ?? 0;
-  const [ticked, setTicked] = useState<string[]>([]);
+  const [ticked, setTicked] = useState<string[]>(draft?.ticked ?? []);
   const [consentError, setConsentError] = useState(false);
   const provided = value?.provided === true;
+  useEffect(() => {
+    if (email || ticked.length) remember(scratchKey, { email, ticked });
+    else forget(scratchKey);
+  }, [scratchKey, email, ticked]);
 
   const submit = async () => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -60,6 +72,7 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
         email,
         consents.map((c) => c.key).filter((k) => ticked.includes(k)),
       );
+      forget(scratchKey);
     } catch (err) {
       // The address never reaches the answer; the endpoint's status says what went wrong.
       const status = err instanceof ApiError ? err.status : 0;
@@ -143,12 +156,21 @@ export function EmailCapture({ question, value, onChange, onSubmitEmail }: Props
             <Button variant="primary" size="runner" onClick={submit} disabled={busy || !email} data-testid="email-save">
               {t("email.save")}
             </Button>
-            <Button variant="surface" size="runner" onClick={() => onChange({ provided: false }, { commit: true, advance: true })} disabled={busy} data-testid="email-skip">
+            <Button
+              variant="surface"
+              size="runner"
+              onClick={() => {
+                forget(scratchKey);
+                onChange({ provided: false }, { commit: true, advance: true });
+              }}
+              disabled={busy}
+              data-testid="email-skip"
+            >
               {t("email.skip")}
             </Button>
           </div>
           {hasPrivacy && !noteLinksPrivacy && (
-            <Link to={`/s/${slug}/privacy`} className="text-sm text-primary underline" data-testid="email-privacy-link">
+            <Link to={`/s/${slug}/privacy`} state={{ from: location.pathname }} className="text-sm text-primary underline" data-testid="email-privacy-link">
               {t("legal.privacy")}
             </Link>
           )}
