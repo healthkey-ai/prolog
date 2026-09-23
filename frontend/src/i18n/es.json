@@ -180,5 +180,15 @@
   "report.responses": "Respuestas",
   "report.beforeStarting": "Antes de la primera pregunta",
   "report.noneYet": "Nada todavía.",
-  "report.versionLabel": "Versión {{version}}"
+  "report.versionLabel": "Versión {{version}}",
+  "password.show": "Mostrar contraseña",
+  "password.hide": "Ocultar contraseña",
+  "password.change": "Cambiar contraseña",
+  "password.current": "Contraseña actual",
+  "password.new": "Nueva contraseña",
+  "password.confirm": "Repita la nueva contraseña",
+  "password.mismatch": "Las dos no coinciden.",
+  "password.save": "Cambiarla",
+  "password.changed": "Su contraseña ha sido cambiada.",
+  "password.close": "Cerrar"
 }

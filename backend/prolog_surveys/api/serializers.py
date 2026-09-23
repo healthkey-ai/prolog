@@ -42,6 +42,14 @@ class ReportLoginSerializer(serializers.Serializer):
     password = serializers.CharField(max_length=256, trim_whitespace=False)
 
 
+class ReportPasswordSerializer(serializers.Serializer):
+    """A reader changing their own password. Both go to the host untouched: its
+    policy decides what a new password may be."""
+
+    current_password = serializers.CharField(max_length=256, trim_whitespace=False)
+    new_password = serializers.CharField(max_length=256, trim_whitespace=False)
+
+
 class ReceiptSerializer(serializers.Serializer):
     """The receipt alone: what removing a captured address takes."""
 
