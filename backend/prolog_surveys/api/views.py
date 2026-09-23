@@ -10,6 +10,7 @@ import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.cache import get_conditional_response
@@ -22,7 +23,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .. import conf, legal
+from .. import conf, exports, legal, results, stats
 from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade, retained_when_hidden
 from ..engine.completion import missing_keys, progress
@@ -60,12 +61,14 @@ from .serializers import (
     CreateResponseSerializer,
     PatchResponseSerializer,
     ReceiptSerializer,
+    ReportLoginSerializer,
     ResponseSerializer,
 )
 from .throttles import (
     CaptureThrottle,
     ClientKeyThrottle,
     CreateThrottle,
+    ReportLoginThrottle,
     ResponseThrottle,
     WriteThrottle,
 )
@@ -906,3 +909,171 @@ class IdentityView(ResponseMixin, RunnerView):
                     },
                 )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- the report page (results access) -------------------------------------------
+
+
+def _report_version(slug: str):
+    """The survey and the version a report is about: the active one, or the most
+    recent if none is active.
+
+    Deliberately not ``_active_version``: a report matters most once fieldwork
+    has closed, and a closed survey must not answer 410 here.
+    """
+    survey = get_object_or_404(Survey, slug=slug)
+    version = (
+        survey.versions.filter(status=LifecycleStatus.ACTIVE).first()
+        or survey.versions.order_by("-created_at").first()
+    )
+    if version is None:
+        raise NotFound("survey has no version")
+    return survey, version
+
+
+def _report_payload(request, survey, version) -> dict:
+    """What the report page renders. Without a reader it is the door only: the
+    survey's name and whether there is any way in at all."""
+    viewer = results.viewer_of(request)
+    payload: dict = {
+        "survey": survey.slug,
+        "title": survey.title,
+        "version": version.version,
+        "sign_in_available": results.get_results_auth() is not None,
+        "viewer": None,
+    }
+    if viewer is None:
+        return payload
+    payload["viewer"] = {
+        "label": viewer.label,
+        "may_read_responses": viewer.may_read_responses,
+        "may_read_contacts": viewer.may_read_contacts,
+    }
+    rows = stats.basic_stats(survey)
+    payload["stats"] = {
+        "versions": [
+            {
+                "label": r.label,
+                "respondents": r.respondents,
+                "completions": r.completions,
+                "partials": r.partials,
+                "completion_rate": r.completion_rate,
+                "average_response_time": stats.format_duration(r.average_response_time),
+            }
+            for r in rows
+        ],
+        "by_day": [
+            {"day": d.day, "started": d.started, "completed": d.completed}
+            for d in stats.by_day(version)
+        ],
+        "by_language": [
+            {"language": r.language, "respondents": r.respondents, "completions": r.completions}
+            for r in stats.by_language(version)
+        ],
+        "drop_off": [
+            {"question_key": r.question_key, "label": r.label, "count": r.count}
+            for r in stats.drop_off(version)
+        ],
+    }
+    return payload
+
+
+def _reader(request, *, contacts: bool = False):
+    """The signed-in reader, or 403. Contacts are their own permission: the
+    answers and the addresses are separate files for the same reason."""
+    viewer = results.viewer_of(request)
+    if viewer is None:
+        raise PermissionDenied("sign in to read results")
+    if contacts and not viewer.may_read_contacts:
+        raise PermissionDenied("not permitted to read contact details")
+    if not contacts and not viewer.may_read_responses:
+        raise PermissionDenied("not permitted to read responses")
+    return viewer
+
+
+class ReportLoginView(RunnerView):
+    """Sign in to a survey's report page.
+
+    PROlog checks nothing itself: the deployment's ``PROLOG_RESULTS_AUTH``
+    callable is the only judge of who a reader is, so the host's own hashing,
+    lockout and audit are the ones that run. A deployment that names no
+    callable has no way in, and says so rather than pretending the credentials
+    were wrong.
+    """
+
+    throttle_classes = [ReportLoginThrottle]
+
+    @method_decorator(sensitive_post_parameters("password"))
+    @method_decorator(ensure_csrf_cookie)
+    @sensitive_variables()
+    def post(self, request, slug: str):
+        survey, version = _report_version(slug)
+        ser = ReportLoginSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        if results.get_results_auth() is None:
+            raise NotFound("no results authentication is configured")
+        try:
+            viewer = results.authenticate(
+                ser.validated_data["email"], ser.validated_data["password"]
+            )
+        except Exception as exc:
+            # The body holds a password, so only the class name may be logged;
+            # and a host that raises is not a reason to let anybody in.
+            log.error("results authentication raised %s", type(exc).__name__)
+            raise APIException("results authentication failed") from None
+        if viewer is None:
+            raise PermissionDenied("not a results reader")
+        results.sign_in(request, viewer)
+        return Response(_report_payload(request, survey, version))
+
+
+class ReportLogoutView(RunnerView):
+    throttle_classes = [ClientKeyThrottle]
+
+    def post(self, request, slug: str):
+        results.sign_out(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReportView(RunnerView):
+    """The numbers a reader sees, and what they may download."""
+
+    throttle_classes = [ClientKeyThrottle]
+
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request, slug: str):
+        survey, version = _report_version(slug)
+        return Response(_report_payload(request, survey, version))
+
+
+class ReportDownloadView(RunnerView):
+    """The exports, streamed.
+
+    Streamed rather than built in memory because a long-running instrument has
+    as many rows as it has respondents, and a download must not be a way to
+    make the runner allocate all of them at once.
+    """
+
+    throttle_classes = [ClientKeyThrottle]
+
+    def get(self, request, slug: str, kind: str):
+        survey, version = _report_version(slug)
+        if kind not in ("responses", "contacts"):
+            raise NotFound("no such export")
+        viewer = _reader(request, contacts=kind == "contacts")
+        include_in_progress = request.query_params.get("include_in_progress") == "true"
+        if kind == "contacts":
+            lines = exports.stream_contacts(version)
+        else:
+            lines = exports.stream_responses(version, submitted_only=not include_in_progress)
+        today = timezone.localdate().isoformat()
+        filename = f"{survey.slug}-{version.version}-{kind}-{today}.csv"
+        # Who read what, and how much of it — never a row of it.
+        log.info(
+            "results export: %s of %s@%s by %s", kind, survey.slug, version.version, viewer.label
+        )
+        return StreamingHttpResponse(
+            lines,
+            content_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )

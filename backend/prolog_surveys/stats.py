@@ -1,9 +1,9 @@
-"""The numbers a survey's owner asks for on day one of fieldwork.
+"""The numbers a survey's owner asks for while fieldwork is running.
 
-Three of them: how many people started, how many finished, and how long
-finishing took. Every one comes from what a response already records —
-``started_at``, ``submitted_at`` and the status between them — so this is a
-view over the responses, not a thing collected from respondents.
+Every one comes from what a response already records — ``started_at``,
+``submitted_at``, ``language``, ``last_question_key`` and the status between
+them — so this is a view over the responses, not a thing collected from
+respondents.
 
 Definitions, because each could mean two things:
 
@@ -11,9 +11,20 @@ Definitions, because each could mean two things:
   they were finished. A respondent who opened the survey and answered
   nothing is still one; a respondent who came back and resumed is still one.
 - **Completions** — responses submitted.
+- **Partials** — started and not submitted. Respondents minus completions,
+  named because "how many people are part-way through" is its own question.
 - **Average response time** — the mean of ``submitted_at - started_at``
   over completions only. An unfinished response has no end to measure to,
   and counting it at "so far" would only shrink as people gave up.
+- **By day** — starts and completions per calendar day in the deployment's
+  own time zone, not UTC: a survey that opens in the evening would otherwise
+  look like two days.
+- **By language** — the same two counts per language, which is also how a
+  translation that is failing its readers shows up.
+- **Drop-off** — for responses not submitted, the question they reached
+  last. Not the last one they answered: ``last_question_key`` is where the
+  runner would put them back, and where somebody stopped is the question the
+  instrument has to answer for.
 """
 
 from __future__ import annotations
@@ -22,8 +33,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
+from django.db.models.functions import TruncDate
 
-from .models import ResponseStatus, Survey, SurveyResponse
+from .engine.visibility import iter_questions
+from .models import ResponseStatus, Survey, SurveyResponse, SurveyVersion
 
 
 @dataclass(frozen=True)
@@ -34,8 +47,41 @@ class BasicStats:
     average_response_time: timedelta | None
 
     @property
+    def partials(self) -> int:
+        return self.respondents - self.completions
+
+    @property
     def completion_rate(self) -> float | None:
         return self.completions / self.respondents if self.respondents else None
+
+
+@dataclass(frozen=True)
+class DayRow:
+    """Starts and completions on one day, in the deployment's time zone."""
+
+    day: str
+    started: int
+    completed: int
+
+
+@dataclass(frozen=True)
+class LanguageRow:
+    language: str
+    respondents: int
+    completions: int
+
+    @property
+    def completion_rate(self) -> float | None:
+        return self.completions / self.respondents if self.respondents else None
+
+
+@dataclass(frozen=True)
+class DropOffRow:
+    """Where unfinished responses stopped: the question they reached last."""
+
+    question_key: str
+    label: str
+    count: int
 
 
 _SUBMITTED = Q(status=ResponseStatus.SUBMITTED)
@@ -63,6 +109,65 @@ def basic_stats(survey: Survey) -> list[BasicStats]:
     if len(rows) != 1:
         rows.append(BasicStats("All versions", **responses.aggregate(**_AGGREGATES)))
     return rows
+
+
+def by_day(version: SurveyVersion, *, limit: int = 60) -> list[DayRow]:
+    """Starts and completions per day, most recent last, at most ``limit`` days."""
+    responses = SurveyResponse.objects.filter(survey_version=version)
+    started = dict(
+        responses.annotate(d=TruncDate("started_at"))
+        .values_list("d")
+        .annotate(n=Count("id"))
+        .values_list("d", "n")
+    )
+    completed = dict(
+        responses.filter(_SUBMITTED)
+        .annotate(d=TruncDate("submitted_at"))
+        .values_list("d")
+        .annotate(n=Count("id"))
+        .values_list("d", "n")
+    )
+    days = sorted(d for d in {*started, *completed} if d is not None)[-limit:]
+    return [DayRow(d.isoformat(), started.get(d, 0), completed.get(d, 0)) for d in days]
+
+
+def by_language(version: SurveyVersion) -> list[LanguageRow]:
+    """One row per language answered in, most respondents first."""
+    rows = (
+        SurveyResponse.objects.filter(survey_version=version)
+        .values("language")
+        .annotate(respondents=Count("id"), completions=Count("id", filter=_SUBMITTED))
+        .order_by("-respondents", "language")
+    )
+    return [LanguageRow(r["language"] or "—", r["respondents"], r["completions"]) for r in rows]
+
+
+def drop_off(version: SurveyVersion, *, limit: int = 10) -> list[DropOffRow]:
+    """Where unfinished responses stopped, most common first.
+
+    A response with no ``last_question_key`` never reached a question — it was
+    opened and abandoned on the intro — and is reported as such rather than
+    dropped, because "they never started" is the most actionable answer of all.
+    """
+    counts = (
+        SurveyResponse.objects.filter(survey_version=version)
+        .exclude(status=ResponseStatus.SUBMITTED)
+        .values("last_question_key")
+        .annotate(n=Count("id"))
+        .order_by("-n")
+    )
+    labels = {
+        q["key"]: str((q.get("text") or {}).get(version.definition.get("default_language"), ""))
+        or q["key"]
+        for _, _, q in iter_questions(version.definition)
+    }
+    rows = [
+        DropOffRow(
+            r["last_question_key"] or "", labels.get(r["last_question_key"] or "", ""), r["n"]
+        )
+        for r in counts
+    ]
+    return rows[:limit]
 
 
 def format_duration(d: timedelta | None) -> str:
