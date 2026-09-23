@@ -25,6 +25,7 @@ export interface Report {
   title: string;
   version: string;
   sign_in_available: boolean;
+  password_change_available: boolean;
   viewer: { label: string; may_read_responses: boolean; may_read_contacts: boolean } | null;
   stats?: ReportStats;
 }
@@ -46,6 +47,14 @@ export function useReportLogin(slug: string) {
   return useMutation({
     mutationFn: (body: { email: string; password: string }) => api.post<Report>(`/report/${slug}/login/`, body),
     onSuccess: (report) => qc.setQueryData(key(slug), report),
+  });
+}
+
+/** A reader changing their own password; the host's refusals come back as `new_password` messages. */
+export function useChangeReportPassword(slug: string) {
+  return useMutation({
+    mutationFn: (body: { current_password: string; new_password: string }) =>
+      api.post<void>(`/report/${slug}/password/`, body),
   });
 }
 

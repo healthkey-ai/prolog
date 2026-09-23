@@ -83,6 +83,10 @@ DEFAULTS: dict[str, Any] = {
     # may read a survey's results on the report page. PROlog holds no accounts,
     # so unset means the page offers no way in and says so.
     "PROLOG_RESULTS_AUTH": None,
+    # Dotted path to a callable (email, current, new) -> None, raising
+    # results.PasswordRefused with the host's own reasons. Unset means a reader
+    # cannot change their password here and the page does not offer to.
+    "PROLOG_RESULTS_PASSWORD_CHANGE": None,
     # Dotted path to a callable (request) -> participant pk or None. Default: the
     # authenticated user's pk when PROLOG_PARTICIPANT_MODEL is AUTH_USER_MODEL.
     "PROLOG_PARTICIPANT_RESOLVER": None,
