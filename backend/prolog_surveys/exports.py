@@ -160,6 +160,13 @@ def _email_config(definition: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def is_linked_capture(definition: dict[str, Any]) -> bool:
+    """Whether this version keeps addresses beside their responses (CON-10) or
+    in the unlinked contact table (CON-3). The export reads one table or the
+    other, so anything counting what an export will contain must ask this too."""
+    return bool(_email_config(definition).get("link_response"))
+
+
 def _consent_keys(definition: dict[str, Any]) -> list[str]:
     return [c["key"] for c in _email_config(definition).get("consents", [])]
 
@@ -171,7 +178,7 @@ def _consent_cells(consents: list[dict[str, Any]] | None, keys: list[str]) -> li
 
 def contact_header(version: SurveyVersion) -> list[str]:
     consent_keys = _consent_keys(version.definition)
-    linked = bool(_email_config(version.definition).get("link_response"))
+    linked = is_linked_capture(version.definition)
     return (
         ["survey", "version"]
         + (["response_id"] if linked else [])
@@ -184,7 +191,7 @@ def contact_rows(version: SurveyVersion) -> Iterator[list[str]]:
     """One row per address, streamed: a long-running instrument holds as many
     contacts as submitted responses."""
     consent_keys = _consent_keys(version.definition)
-    linked = bool(_email_config(version.definition).get("link_response"))
+    linked = is_linked_capture(version.definition)
     if linked:
         rows = (
             SurveyLinkedContact.objects.filter(response__survey_version=version)

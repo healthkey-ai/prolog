@@ -36,6 +36,7 @@ from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.db.models.functions import TruncDate
 
 from .engine.visibility import iter_questions
+from .exports import is_linked_capture
 from .models import (
     LifecycleStatus,
     ResponseStatus,
@@ -127,24 +128,28 @@ def basic_stats(survey: Survey) -> list[BasicStats]:
 
 
 def contact_counts(survey: Survey) -> dict[str, int]:
-    """How many addresses each version holds, by version string.
+    """How many addresses each version's export will contain, by version.
 
-    Whichever table the instrument's capture mode fills: an unlinked contact
-    row belongs to the version, a linked one to a response of it.
+    A version keeps addresses in one table or the other, and its capture mode
+    says which (``is_linked_capture``). Counting both would promise rows the
+    export does not produce: a version whose mode changed while it was still a
+    draft can have rows in the table it no longer reads, and those are not what
+    a reader is about to download.
     """
-    counts: dict[str, int] = {}
-    for version, n in (
+    unlinked = dict(
         SurveyContact.objects.filter(survey_version__survey=survey)
         .values_list("survey_version__version")
         .annotate(n=Count("id"))
-    ):
-        counts[version] = counts.get(version, 0) + n
-    for version, n in (
+    )
+    linked = dict(
         SurveyLinkedContact.objects.filter(response__survey_version__survey=survey)
         .values_list("response__survey_version__version")
         .annotate(n=Count("id"))
-    ):
-        counts[version] = counts.get(version, 0) + n
+    )
+    counts: dict[str, int] = {}
+    for version in survey.versions.all():
+        source = linked if is_linked_capture(version.definition) else unlinked
+        counts[version.version] = source.get(version.version, 0)
     return counts
 
 
