@@ -45,6 +45,10 @@ class BasicStats:
     respondents: int
     completions: int
     average_response_time: timedelta | None
+    # The version these numbers are for, or None for the whole-survey row.
+    # An export is per version — answers are bound to the version they were
+    # given against, and two versions need not have the same columns.
+    version: str | None = None
 
     @property
     def partials(self) -> int:
@@ -101,7 +105,11 @@ def basic_stats(survey: Survey) -> list[BasicStats]:
     # Ordered by when the version was loaded, not by its string: "0.10.0"
     # sorts before "0.9.0" as text, and the loader stamps created_at anyway.
     rows = [
-        BasicStats(r["survey_version__version"], **{k: r[k] for k in _AGGREGATES})
+        BasicStats(
+            r["survey_version__version"],
+            **{k: r[k] for k in _AGGREGATES},
+            version=r["survey_version__version"],
+        )
         for r in responses.values("survey_version__version", "survey_version__created_at")
         .annotate(**_AGGREGATES)
         .order_by("-survey_version__created_at")

@@ -3,6 +3,8 @@ import { api } from "./client";
 
 export interface ReportVersionRow {
   label: string;
+  /** The version these numbers are for; null on the whole-survey row. */
+  version: string | null;
   respondents: number;
   completions: number;
   partials: number;
@@ -54,8 +56,13 @@ export function useReportLogout(slug: string) {
   });
 }
 
-/** Where a download goes. A plain link, so the browser saves the file the runner streams. */
-export function exportHref(slug: string, kind: "responses" | "contacts", includeInProgress = false): string {
-  const base = `${import.meta.env.VITE_API_BASE ?? "/api/run"}/report/${slug}/export/${kind}.csv`;
-  return includeInProgress ? `${base}?include_in_progress=true` : base;
+/**
+ * Where a download goes. A plain link, so the browser saves the file the runner
+ * streams. One version per file: an answer means what its own version says it
+ * means, and two versions need not have the same columns.
+ */
+export function exportHref(slug: string, kind: "responses" | "contacts", version: string, includeInProgress = false): string {
+  const params = new URLSearchParams({ version });
+  if (includeInProgress) params.set("include_in_progress", "true");
+  return `${import.meta.env.VITE_API_BASE ?? "/api/run"}/report/${slug}/export/${kind}.csv?${params}`;
 }

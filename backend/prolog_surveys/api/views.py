@@ -954,6 +954,7 @@ def _report_payload(request, survey, version) -> dict:
         "versions": [
             {
                 "label": r.label,
+                "version": r.version,
                 "respondents": r.respondents,
                 "completions": r.completions,
                 "partials": r.partials,
@@ -1060,6 +1061,12 @@ class ReportDownloadView(RunnerView):
         survey, version = _report_version(slug)
         if kind not in ("responses", "contacts"):
             raise NotFound("no such export")
+        # An export is of one version: an answer means what the version it was
+        # given against says it means, and two versions need not even have the
+        # same questions. The page offers a download per version that has any.
+        wanted = request.query_params.get("version")
+        if wanted:
+            version = get_object_or_404(survey.versions, version=wanted)
         viewer = _reader(request, contacts=kind == "contacts")
         include_in_progress = request.query_params.get("include_in_progress") == "true"
         if kind == "contacts":

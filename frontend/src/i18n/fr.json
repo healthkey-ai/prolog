@@ -179,5 +179,6 @@
   "report.question": "Question",
   "report.responses": "Réponses",
   "report.beforeStarting": "Avant la première question",
-  "report.noneYet": "Rien pour l'instant."
+  "report.noneYet": "Rien pour l'instant.",
+  "report.versionLabel": "Version {{version}}"
 }

@@ -90,22 +90,31 @@ export function ReportPage() {
               </Button>
             </div>
 
-            <section className="flex flex-col gap-3">
+            <section className="flex flex-col gap-3" data-testid="report-downloads">
               <h2 className="text-lg">{t("report.downloads")}</h2>
               <p className="text-sm text-ink-soft">{t("report.downloadsNote")}</p>
-              <div className="flex flex-wrap gap-3">
-                <Button asChild variant="primary" size="runner">
-                  <a href={exportHref(slug, "responses")} data-testid="report-download-responses">{t("report.downloadResponses")}</a>
-                </Button>
-                <Button asChild variant="surface" size="runner">
-                  <a href={exportHref(slug, "responses", true)} data-testid="report-download-all">{t("report.downloadAll")}</a>
-                </Button>
-                {viewer.may_read_contacts && (
-                  <Button asChild variant="surface" size="runner">
-                    <a href={exportHref(slug, "contacts")} data-testid="report-download-contacts">{t("report.downloadContacts")}</a>
-                  </Button>
-                )}
-              </div>
+              {data.stats.versions.filter((v) => v.version && v.respondents > 0).length === 0 ? (
+                <p className="text-sm text-ink-soft">{t("report.noneYet")}</p>
+              ) : (
+                data.stats.versions
+                  .filter((v) => v.version && v.respondents > 0)
+                  .map((v) => (
+                    <div key={v.version} className="flex flex-wrap items-center gap-3">
+                      <span className="w-24 text-sm text-ink-soft">{t("report.versionLabel", { version: v.version })}</span>
+                      <Button asChild variant="primary" size="runner-sm">
+                        <a href={exportHref(slug, "responses", v.version!)} data-testid={`report-download-responses-${v.version}`}>{t("report.downloadResponses")}</a>
+                      </Button>
+                      <Button asChild variant="surface" size="runner-sm">
+                        <a href={exportHref(slug, "responses", v.version!, true)} data-testid={`report-download-all-${v.version}`}>{t("report.downloadAll")}</a>
+                      </Button>
+                      {viewer.may_read_contacts && (
+                        <Button asChild variant="surface" size="runner-sm">
+                          <a href={exportHref(slug, "contacts", v.version!)} data-testid={`report-download-contacts-${v.version}`}>{t("report.downloadContacts")}</a>
+                        </Button>
+                      )}
+                    </div>
+                  ))
+              )}
             </section>
 
             <Table

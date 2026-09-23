@@ -179,5 +179,6 @@
   "report.question": "Pergunta",
   "report.responses": "Respostas",
   "report.beforeStarting": "Antes da primeira pergunta",
-  "report.noneYet": "Ainda nada."
+  "report.noneYet": "Ainda nada.",
+  "report.versionLabel": "Versão {{version}}"
 }
