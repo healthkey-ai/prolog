@@ -964,15 +964,15 @@ def _report_payload(request, survey, version) -> dict:
         ],
         "by_day": [
             {"day": d.day, "started": d.started, "completed": d.completed}
-            for d in stats.by_day(version)
+            for d in stats.by_day(survey)
         ],
         "by_language": [
             {"language": r.language, "respondents": r.respondents, "completions": r.completions}
-            for r in stats.by_language(version)
+            for r in stats.by_language(survey)
         ],
         "drop_off": [
             {"question_key": r.question_key, "label": r.label, "count": r.count}
-            for r in stats.drop_off(version)
+            for r in stats.drop_off(survey)
         ],
     }
     return payload
