@@ -28,6 +28,11 @@ urlpatterns = [
     path("report/<slug:slug>/login/", views.ReportLoginView.as_view(), name="run-report-login"),
     path("report/<slug:slug>/logout/", views.ReportLogoutView.as_view(), name="run-report-logout"),
     path(
+        "report/<slug:slug>/password/",
+        views.ReportPasswordView.as_view(),
+        name="run-report-password",
+    ),
+    path(
         "report/<slug:slug>/export/<slug:kind>.csv",
         views.ReportDownloadView.as_view(),
         name="run-report-export",

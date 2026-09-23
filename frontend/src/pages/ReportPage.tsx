@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { exportHref, useReport, useReportLogin, useReportLogout } from "@/api/report";
 import { ApiError } from "@/api/client";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { Decor } from "@/components/Decor";
+import { PasswordField } from "@/components/PasswordField";
 import { Eyebrow } from "@/components/Eyebrow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,10 +66,7 @@ export function ReportPage() {
                   <Label htmlFor="report-email">{t("report.email")}</Label>
                   <Input id="report-email" type="email" autoComplete="username" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} data-testid="report-email" />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="report-password">{t("report.password")}</Label>
-                  <Input id="report-password" type="password" autoComplete="current-password" className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} data-testid="report-password" />
-                </div>
+                <PasswordField label={t("report.password")} value={password} onChange={setPassword} autoComplete="current-password" testId="report-password" />
                 {login.isError && (
                   <p className="text-sm text-error" role="alert" data-testid="report-error">
                     {signInFailed ? t("report.signInFailed") : t("app.error")}
@@ -85,9 +84,12 @@ export function ReportPage() {
           <div className="mt-8 flex flex-col gap-10" data-testid="report-body">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-ink-soft">{t("report.signedInAs", { label: viewer.label })}</p>
-              <Button variant="surface" size="runner-sm" onClick={() => logout.mutate()} data-testid="report-sign-out">
-                {t("report.signOut")}
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                {data.password_change_available && <ChangePasswordDialog slug={slug} />}
+                <Button variant="surface" size="runner-sm" onClick={() => logout.mutate()} data-testid="report-sign-out">
+                  {t("report.signOut")}
+                </Button>
+              </div>
             </div>
 
             <section className="flex flex-col gap-3" data-testid="report-downloads">

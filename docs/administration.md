@@ -437,6 +437,12 @@ through, completion rate, average time, responses per day, by language, and
 the question unfinished responses reached last. One download per version,
 labelled with how many rows are behind it.
 
+A reader can **change their own password** on that page when the deployment
+offers `PROLOG_RESULTS_PASSWORD_CHANGE` — so a temporary password an operator
+set does not have to live on in somebody's message history. The host's policy
+(length, reuse, lockout) is the only one applied, and its refusals are what the
+reader is shown.
+
 **Who may read them** is the deployment's decision, never PROlog's: it names a
 callable in `PROLOG_RESULTS_AUTH` (`(email, password) -> ResultsViewer | None`)
 and the host's own login path — its hashing, its lockout, its audit — is the

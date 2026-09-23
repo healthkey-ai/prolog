@@ -9,10 +9,26 @@ import pytest
 
 from prolog_surveys.definitions.loader import load_definition, publish_version
 from prolog_surveys.models import SurveyContact
-from prolog_surveys.results import ResultsViewer
+from prolog_surveys.results import PasswordRefused, ResultsViewer
 
 REPORT = "/api/run/report/sample-wellbeing/"
 LOGIN = REPORT + "login/"
+PASSWORD = REPORT + "password/"
+
+CHANGED: list[tuple[str, str, str]] = []
+
+
+def _change_password(email, current, new):
+    """A stand-in host: its policy, its refusals."""
+    if current != "right":
+        raise PasswordRefused(["Your current password is not right."])
+    if len(new) < 12:
+        raise PasswordRefused(["This password is too short.", "It must have 12 characters."])
+    CHANGED.append((email, current, new))
+
+
+def _change_raises(email, current, new):
+    raise RuntimeError("the host blew up handling " + new)
 
 
 def _viewer(email, password):
@@ -159,6 +175,70 @@ def test_the_counts_are_of_the_rows_the_export_will_contain(api_client, survey, 
     r = api_client.get(REPORT + "export/contacts.csv")
     rows = list(csv.reader(io.StringIO(b"".join(r.streaming_content).decode())))
     assert row["contacts"] == len(rows) - 1
+
+
+def test_a_reader_changes_their_own_password_through_the_host(
+    api_client, survey, host_auth, settings
+):
+    """The temporary password an operator set does not have to live on in
+    somebody's message history — and every refusal is the host's own words."""
+    settings.PROLOG_RESULTS_PASSWORD_CHANGE = f"{__name__}._change_password"
+    CHANGED.clear()
+    # not signed in: no
+    assert (
+        api_client.post(
+            PASSWORD, {"current_password": "right", "new_password": "x" * 12}, format="json"
+        ).status_code
+        == 403
+    )
+    api_client.post(LOGIN, {"email": "reader@example.org", "password": "right"}, format="json")
+    assert api_client.get(REPORT).json()["password_change_available"] is True
+
+    wrong = api_client.post(
+        PASSWORD, {"current_password": "no", "new_password": "x" * 12}, format="json"
+    )
+    assert wrong.status_code == 400
+    assert wrong.json()["new_password"] == ["Your current password is not right."]
+
+    short = api_client.post(
+        PASSWORD, {"current_password": "right", "new_password": "short"}, format="json"
+    )
+    assert short.json()["new_password"] == [
+        "This password is too short.",
+        "It must have 12 characters.",
+    ]
+    assert CHANGED == []
+
+    ok = api_client.post(
+        PASSWORD, {"current_password": "right", "new_password": "a better one"}, format="json"
+    )
+    assert ok.status_code == 204
+    assert CHANGED == [("reader@example.org", "right", "a better one")]
+    # the session is the reader's own and survives it
+    assert api_client.get(REPORT).json()["viewer"]["label"] == "reader@example.org"
+
+
+def test_a_deployment_that_offers_no_password_change_says_so(api_client, survey, host_auth):
+    api_client.post(LOGIN, {"email": "reader@example.org", "password": "right"}, format="json")
+    assert api_client.get(REPORT).json()["password_change_available"] is False
+    r = api_client.post(
+        PASSWORD, {"current_password": "right", "new_password": "a better one"}, format="json"
+    )
+    assert r.status_code == 400
+    assert "does not offer" in r.json()["new_password"][0]
+
+
+def test_a_host_that_raises_on_a_password_change_is_a_500_without_the_password(
+    api_client, survey, host_auth, settings, caplog
+):
+    settings.PROLOG_RESULTS_PASSWORD_CHANGE = f"{__name__}._change_raises"
+    api_client.post(LOGIN, {"email": "reader@example.org", "password": "right"}, format="json")
+    r = api_client.post(
+        PASSWORD, {"current_password": "right", "new_password": "hunter2hunter2"}, format="json"
+    )
+    assert r.status_code == 500
+    assert "hunter2" not in caplog.text and "hunter2" not in r.content.decode()
+    assert "RuntimeError" in caplog.text
 
 
 def test_signing_out_closes_the_door_again(api_client, survey, host_auth):

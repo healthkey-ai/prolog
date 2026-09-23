@@ -180,5 +180,15 @@
   "report.responses": "Réponses",
   "report.beforeStarting": "Avant la première question",
   "report.noneYet": "Rien pour l'instant.",
-  "report.versionLabel": "Version {{version}}"
+  "report.versionLabel": "Version {{version}}",
+  "password.show": "Afficher le mot de passe",
+  "password.hide": "Masquer le mot de passe",
+  "password.change": "Changer le mot de passe",
+  "password.current": "Mot de passe actuel",
+  "password.new": "Nouveau mot de passe",
+  "password.confirm": "Nouveau mot de passe, à nouveau",
+  "password.mismatch": "Les deux ne correspondent pas.",
+  "password.save": "Le changer",
+  "password.changed": "Votre mot de passe a été changé.",
+  "password.close": "Fermer"
 }

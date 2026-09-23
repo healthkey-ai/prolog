@@ -25,6 +25,19 @@ from . import conf
 SESSION_KEY = "prolog_results_viewer"
 
 
+class PasswordRefused(Exception):
+    """The host declined a password change, with reasons a reader can act on.
+
+    Its ``messages`` are the host's own: its policy (length, reuse, how common
+    the word is) is the only policy there is, and its wording is what the
+    reader is told.
+    """
+
+    def __init__(self, messages: list[str]):
+        super().__init__("; ".join(messages))
+        self.messages = messages
+
+
 @dataclass(frozen=True)
 class ResultsViewer:
     """A person the host has recognised, and what they may see.
@@ -77,6 +90,21 @@ def authenticate(email: str, password: str) -> ResultsViewer | None:
     if not isinstance(viewer, ResultsViewer):
         raise TypeError("PROLOG_RESULTS_AUTH must return a ResultsViewer or None")
     return viewer
+
+
+def get_password_change():
+    """The configured password-change hook, if the deployment offers one."""
+    path = conf.get("PROLOG_RESULTS_PASSWORD_CHANGE")
+    return import_string(path) if path else None
+
+
+def change_password(email: str, current: str, new: str) -> None:
+    """Ask the host to change a reader's password. Raises PasswordRefused with
+    the host's reasons; anything else is the host failing, not a refusal."""
+    hook = get_password_change()
+    if hook is None:
+        raise PasswordRefused(["this deployment does not offer a password change here"])
+    hook(email, current, new)
 
 
 def sign_in(request, viewer: ResultsViewer) -> None:

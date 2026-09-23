@@ -62,6 +62,7 @@ from .serializers import (
     PatchResponseSerializer,
     ReceiptSerializer,
     ReportLoginSerializer,
+    ReportPasswordSerializer,
     ResponseSerializer,
 )
 from .throttles import (
@@ -940,6 +941,7 @@ def _report_payload(request, survey, version) -> dict:
         "title": survey.title,
         "version": version.version,
         "sign_in_available": results.get_results_auth() is not None,
+        "password_change_available": results.get_password_change() is not None,
         "viewer": None,
     }
     if viewer is None:
@@ -1030,6 +1032,41 @@ class ReportLoginView(RunnerView):
             raise PermissionDenied("not a results reader")
         results.sign_in(request, viewer)
         return Response(_report_payload(request, survey, version))
+
+
+@method_decorator(sensitive_post_parameters("current_password", "new_password"), name="dispatch")
+class ReportPasswordView(RunnerView):
+    """A reader changing their own password, so that a temporary one set by an
+    operator does not have to stay in somebody's message history.
+
+    PROlog neither stores nor judges passwords: the host's hook applies the
+    host's policy — length, reuse, lockout — and its refusals are what the
+    reader is shown.
+    """
+
+    throttle_classes = [ReportLoginThrottle]
+
+    @sensitive_variables()
+    def post(self, request, slug: str):
+        _report_version(slug)
+        viewer = results.viewer_of(request)
+        if viewer is None:
+            raise PermissionDenied("sign in first")
+        ser = ReportPasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            results.change_password(
+                viewer.label,
+                ser.validated_data["current_password"],
+                ser.validated_data["new_password"],
+            )
+        except results.PasswordRefused as refused:
+            raise ValidationError({"new_password": refused.messages}) from None
+        except Exception as exc:
+            log.error("results password change raised %s", type(exc).__name__)
+            raise APIException("password change failed") from None
+        # The session is the reader's own and stays; nothing about it changed.
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ReportLogoutView(RunnerView):
