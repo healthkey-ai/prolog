@@ -428,6 +428,25 @@ or a link broken across two lines still works.
 
 ## Getting the answers out
 
+Two ways, the same two files. **From the survey itself** — `/s/<slug>/report`,
+in the survey's own theme — a reader signs in and downloads them; that is the
+only way on a platform with no shell and no readable disk (a container), and
+it is what a charity's staff should be sent to rather than the Django admin.
+The page shows how fieldwork is going: respondents, completions, part-way
+through, completion rate, average time, responses per day, by language, and
+the question unfinished responses reached last. One download per version,
+labelled with how many rows are behind it.
+
+**Who may read them** is the deployment's decision, never PROlog's: it names a
+callable in `PROLOG_RESULTS_AUTH` (`(email, password) -> ResultsViewer | None`)
+and the host's own login path — its hashing, its lockout, its audit — is the
+only one that runs. A `ResultsViewer` carries a label to show and two
+permissions: responses, and addresses. A deployment that names no callable has
+no report sign-in at all, and the page says so. PROlog stores no accounts, no
+passwords and no tokens of its own; a signed-in reader is a session entry.
+
+**From a shell**, where there is one:
+
 ```sh
 manage.py export_responses <slug> [--survey-version 1.0] [--out file.csv] [--include-in-progress]
 manage.py export_contacts  <slug> [--out contacts.csv]

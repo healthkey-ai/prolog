@@ -24,4 +24,12 @@ urlpatterns = [
     path(
         "responses/<uuid:response_id>/identity/", views.IdentityView.as_view(), name="run-identity"
     ),
+    path("report/<slug:slug>/", views.ReportView.as_view(), name="run-report"),
+    path("report/<slug:slug>/login/", views.ReportLoginView.as_view(), name="run-report-login"),
+    path("report/<slug:slug>/logout/", views.ReportLogoutView.as_view(), name="run-report-logout"),
+    path(
+        "report/<slug:slug>/export/<slug:kind>.csv",
+        views.ReportDownloadView.as_view(),
+        name="run-report-export",
+    ),
 ]

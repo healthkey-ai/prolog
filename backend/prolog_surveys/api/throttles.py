@@ -62,3 +62,10 @@ class ResponseThrottle(_RunnerThrottle):
     def get_cache_key(self, request, view):
         ident = str(view.kwargs.get("response_id") or self.get_ident(request))
         return self.cache_format % {"scope": self.scope, "ident": conf.salted_hash(ident)}
+
+
+class ReportLoginThrottle(ClientKeyThrottle):
+    """Sign-in attempts at the report page, per client. The host's own lockout
+    is the real defence; this only bounds how fast it can be probed."""
+
+    scope = "run.report_login"
