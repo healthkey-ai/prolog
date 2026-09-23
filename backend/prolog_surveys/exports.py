@@ -160,6 +160,13 @@ def _email_config(definition: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def is_linked_capture(definition: dict[str, Any]) -> bool:
+    """Whether this version keeps addresses beside their responses (CON-10) or
+    in the unlinked contact table (CON-3). The export reads one table or the
+    other, so anything counting what an export will contain must ask this too."""
+    return bool(_email_config(definition).get("link_response"))
+
+
 def _consent_keys(definition: dict[str, Any]) -> list[str]:
     return [c["key"] for c in _email_config(definition).get("consents", [])]
 
@@ -169,23 +176,22 @@ def _consent_cells(consents: list[dict[str, Any]] | None, keys: list[str]) -> li
     return [(WITHDRAWN if ticked[k] else "1") if k in ticked else "0" for k in keys]
 
 
-def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
-    """The addresses of a version. Unlinked contact capture: one row per
-    address, nothing that reaches a response. Linked contact capture: one row
-    per response that gave one, keyed by ``response_id`` — the join to the
-    response export is deliberate, and the only place it exists."""
+def contact_header(version: SurveyVersion) -> list[str]:
     consent_keys = _consent_keys(version.definition)
-    linked = bool(_email_config(version.definition).get("link_response"))
-    writer = csv.writer(out)
-    writer.writerow(
+    linked = is_linked_capture(version.definition)
+    return (
         ["survey", "version"]
         + (["response_id"] if linked else [])
         + ["email", "language", "captured_at" if linked else "captured_on"]
         + [f"consent.{k}" for k in consent_keys]
     )
-    n = 0
-    # Streamed like the responses: a long-running instrument holds as many
-    # contacts as submitted responses.
+
+
+def contact_rows(version: SurveyVersion) -> Iterator[list[str]]:
+    """One row per address, streamed: a long-running instrument holds as many
+    contacts as submitted responses."""
+    consent_keys = _consent_keys(version.definition)
+    linked = is_linked_capture(version.definition)
     if linked:
         rows = (
             SurveyLinkedContact.objects.filter(response__survey_version=version)
@@ -193,24 +199,62 @@ def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
             .values_list("response_id", "email", "language", "captured_at", "consents")
         )
         for rid, email, language, captured_at, consents in rows.iterator(chunk_size=1000):
-            writer.writerow(
+            yield (
                 [version.survey.slug, version.version, str(rid), safe_cell(email), language]
                 + [captured_at.isoformat()]
                 + _consent_cells(consents, consent_keys)
             )
-            n += 1
-        return n
+        return
     rows = (
         SurveyContact.objects.filter(survey_version=version)
         .order_by("captured_on", "email")
         .values_list("email", "language", "captured_on", "consents")
     )
     for email, language, captured_on, consents in rows.iterator(chunk_size=1000):
-        writer.writerow(
+        yield (
             [version.survey.slug, version.version, safe_cell(email), language]
             + [captured_on.isoformat()]
             + _consent_cells(consents, consent_keys)
         )
+
+
+class _Echo:
+    """A file-like object that returns what it is asked to write, so csv.writer
+    can be used as a generator (Django's own streaming-CSV recipe)."""
+
+    def write(self, value: str) -> str:
+        return value
+
+
+def stream_responses(version: SurveyVersion, *, submitted_only: bool = True) -> Iterator[str]:
+    """The response export as CSV lines, holding one row in memory at a time."""
+    writer = csv.writer(_Echo())
+    yield writer.writerow(response_header(version))
+    qs = version.responses.prefetch_related("answers", "capture_consents").order_by("started_at")
+    if submitted_only:
+        qs = qs.filter(status="submitted")
+    for row in response_rows(version, qs.iterator(chunk_size=500)):
+        yield writer.writerow(row)
+
+
+def stream_contacts(version: SurveyVersion) -> Iterator[str]:
+    """The contact export as CSV lines."""
+    writer = csv.writer(_Echo())
+    yield writer.writerow(contact_header(version))
+    for row in contact_rows(version):
+        yield writer.writerow(row)
+
+
+def write_contacts(version: SurveyVersion, out: IO[str]) -> int:
+    """The addresses of a version, to a file. Unlinked contact capture: one row
+    per address, nothing that reaches a response. Linked contact capture: one
+    row per response that gave one, keyed by ``response_id`` — the join to the
+    response export is deliberate, and the only place it exists."""
+    writer = csv.writer(out)
+    writer.writerow(contact_header(version))
+    n = 0
+    for row in contact_rows(version):
+        writer.writerow(row)
         n += 1
     return n
 

@@ -31,6 +31,9 @@ THROTTLE_RATES: dict[str, str] = {
     "run.capture": "30/hour",
     "run.answer": "600/hour",
     "run.write": "3000/hour",
+    # Sign-in attempts for the report page: low, because the host's own lockout
+    # is the real defence and this only bounds how fast it can be probed.
+    "run.report_login": "20/hour",
 }
 
 # What DRF's ``SimpleRateThrottle.parse_rate`` accepts: an integer, a slash and
@@ -76,6 +79,10 @@ DEFAULTS: dict[str, Any] = {
     "PROLOG_SCHEMA_DIR": str(_default_schema_dir()),
     # Dotted path to an IdentityService class, factory or instance (integrated only).
     "PROLOG_IDENTITY_SERVICE": None,
+    # Dotted path to a callable (email, password) -> ResultsViewer | None: who
+    # may read a survey's results on the report page. PROlog holds no accounts,
+    # so unset means the page offers no way in and says so.
+    "PROLOG_RESULTS_AUTH": None,
     # Dotted path to a callable (request) -> participant pk or None. Default: the
     # authenticated user's pk when PROLOG_PARTICIPANT_MODEL is AUTH_USER_MODEL.
     "PROLOG_PARTICIPANT_RESOLVER": None,

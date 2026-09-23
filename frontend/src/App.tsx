@@ -2,6 +2,7 @@ import { Navigate, Outlet, Route, Routes } from "react-router";
 import { Trans, useTranslation } from "react-i18next";
 import { CompletePage } from "./pages/CompletePage";
 import { LegalPage } from "./pages/LegalPage";
+import { ReportPage } from "./pages/ReportPage";
 import { IntroPage } from "./pages/IntroPage";
 import { WizardPage } from "./pages/WizardPage";
 import { ThemeProvider } from "./theme/ThemeProvider";
@@ -37,6 +38,8 @@ export default function App() {
         {/* A deployment's own pages, inside the survey's theme and origin. */}
         <Route path="privacy" element={<LegalPage page="privacy" />} />
         <Route path="terms" element={<LegalPage page="terms" />} />
+        {/* The survey's own results page: its numbers and its exports, for whoever the deployment says may read them. */}
+        <Route path="report" element={<ReportPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

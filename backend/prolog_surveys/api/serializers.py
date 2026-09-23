@@ -34,6 +34,14 @@ class ContactSerializer(serializers.Serializer):
     receipt = serializers.CharField(required=False, allow_blank=True, max_length=43)
 
 
+class ReportLoginSerializer(serializers.Serializer):
+    """Credentials for the report page. PROlog passes them to the host's own
+    authenticator and keeps neither."""
+
+    email = serializers.EmailField(max_length=254)
+    password = serializers.CharField(max_length=256, trim_whitespace=False)
+
+
 class ReceiptSerializer(serializers.Serializer):
     """The receipt alone: what removing a captured address takes."""
 
