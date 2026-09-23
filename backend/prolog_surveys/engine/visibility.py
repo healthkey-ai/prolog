@@ -119,7 +119,7 @@ def visible_questions(
         for q in section["questions"]:
             if not conditions_hold(q.get("visible_if", []), seen):
                 continue
-            if q["type"] == "matrix" and _dynamic_rows_empty(q, seen, questions):
+            if _dynamic_rows_empty(q, seen, questions):
                 continue
             if q["key"] in answers:
                 seen[q["key"]] = answers[q["key"]]
@@ -139,15 +139,27 @@ def visible_questions(
 def _dynamic_rows_empty(
     question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
 ) -> bool:
-    """A ``rows_from`` matrix has nothing to ask while its source has no
-    selection, so it is hidden rather than left visible with zero rows (which
-    could neither be answered nor, under a hard skip policy, skipped)."""
+    """A question whose rows or options come from an earlier selection has
+    nothing to ask while that selection is empty, so it is hidden rather than
+    left visible with nothing in it (which could neither be answered nor,
+    under a hard skip policy, skipped).
+
+    For ``options_from`` the question's own options do not count: an instrument
+    that offers "I am not sure" beside the sourced ones is not asking anything
+    when the source contributed none.
+    """
     cfg = question.get("config", {})
-    return (
-        bool(cfg.get("rows_from"))
-        and not cfg.get("rows")
-        and not matrix_rows(question, answers, questions)
-    )
+    if cfg.get("rows_from") and not cfg.get("rows"):
+        return not matrix_rows(question, answers, questions)
+    if cfg.get("options_from"):
+        return not sourced_option_keys(question, answers, questions)
+    return False
+
+
+def dynamic_source(question: dict[str, Any]) -> str | None:
+    """The earlier question this one takes its rows or options from, if any."""
+    cfg = question.get("config", {})
+    return cfg.get("options_from") or (cfg.get("rows_from") if not cfg.get("rows") else None)
 
 
 def pending_keys(
@@ -188,11 +200,12 @@ def pending_keys(
             continue
         conditions = [*section.get("visible_if", []), *q.get("visible_if", [])]
         false = [c for c in conditions if not evaluate_condition(c, seen)]
-        # A rows_from matrix hidden for want of rows waits on its source the
+        # A question hidden for want of rows or options waits on its source the
         # same way a condition waits on its question.
-        if not false and q["type"] == "matrix":
-            source = q.get("config", {}).get("rows_from")
-            false = [{"question": source}] if source else []
+        if not false:
+            source = dynamic_source(q)
+            if source:
+                false = [{"question": source}]
         if any(settled(c["question"]) for c in false):
             closed.add(q["key"])
         elif q["type"] in ANSWERABLE:
@@ -209,20 +222,17 @@ def visible_keys(
     return [v.key for v in visible_questions(definition, answers, questions=questions)]
 
 
-def matrix_rows(
-    question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
+def selected_from(
+    source_key: str, answers: Answers, questions: dict[str, dict[str, Any]]
 ) -> list[str]:
-    """Current row keys of a matrix question: fixed rows or the source selection.
+    """What an earlier ``multi`` selected, in its own option order, without its
+    ``exclusive`` options.
 
-    An ``exclusive`` option of the source ("none of these") is never a row:
-    there is nothing to rate about it, so a selection of only exclusive
-    options leaves the matrix with no rows (and hidden, see
-    ``_dynamic_rows_empty``).
+    An exclusive option is "none of these" or "I am not sure": there is nothing
+    to rate about it and nothing to single out from it, so a selection of only
+    exclusive options contributes nothing — which is what leaves the dependent
+    question hidden (see ``_dynamic_rows_empty``).
     """
-    cfg = question.get("config", {})
-    if cfg.get("rows"):
-        return [r["key"] for r in cfg["rows"]]
-    source_key = cfg.get("rows_from", "")
     source = answers.get(source_key)
     if not is_answered(source):
         return []
@@ -230,3 +240,34 @@ def matrix_rows(
     source_question = questions.get(source_key) or {}
     exclusive = {o["key"] for o in source_question.get("options", []) if o.get("exclusive")}
     return [k for k in source.get("options", []) if k not in exclusive]
+
+
+def matrix_rows(
+    question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Current row keys of a matrix question: fixed rows or the source selection."""
+    cfg = question.get("config", {})
+    if cfg.get("rows"):
+        return [r["key"] for r in cfg["rows"]]
+    return selected_from(cfg.get("rows_from", ""), answers, questions)
+
+
+def sourced_option_keys(
+    question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Option keys an ``options_from`` question takes from its source (DEF-11)."""
+    cfg = question.get("config", {})
+    if not cfg.get("options_from"):
+        return []
+    return selected_from(cfg["options_from"], answers, questions)
+
+
+def offered_option_keys(
+    question: dict[str, Any], answers: Answers, questions: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Every option key a question offers now: what its source contributes
+    first, then its own, and never the same key twice — an instrument whose
+    source already offers "I am not sure" must not show it a second time."""
+    sourced = sourced_option_keys(question, answers, questions)
+    own = [o["key"] for o in question.get("options", [])]
+    return sourced + [k for k in own if k not in set(sourced)]

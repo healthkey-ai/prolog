@@ -1,4 +1,4 @@
-import { isAnswered, matrixRows, questionByKey, visibleKeys } from "./visibility";
+import { isAnswered, matrixRows, offeredOptionKeys, questionByKey, visibleKeys } from "./visibility";
 import type { AnswerValue, Answers, Definition, Question } from "./types";
 
 export interface CascadeResult {
@@ -39,7 +39,18 @@ export function applyCascade(def: Definition, answers: Answers): CascadeResult {
     let pruned = false;
     for (const [key, value] of Object.entries(surviving)) {
       const q = questions[key];
-      if (!q || q.type !== "matrix" || !isAnswered(value) || !("ratings" in value)) continue;
+      if (!q || !isAnswered(value)) continue;
+      // A choice taken from an earlier selection (options_from) stands only
+      // while that selection still offers it. Mirrors cascade.py.
+      if (q.config?.options_from && "option" in value) {
+        if (!offeredOptionKeys(q, surviving, questions).includes(value.option)) {
+          delete surviving[key];
+          invalidated.add(key);
+          pruned = true;
+        }
+        continue;
+      }
+      if (q.type !== "matrix" || !("ratings" in value)) continue;
       const rows = matrixRows(q, surviving, questions);
       const ratings = Object.fromEntries(Object.entries(value.ratings).filter(([r]) => rows.includes(r)));
       if (Object.keys(ratings).length !== Object.keys(value.ratings).length) {

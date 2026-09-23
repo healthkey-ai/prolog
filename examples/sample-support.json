@@ -1,0 +1,63 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-support",
+  "version": "1.0",
+  "status": "draft",
+  "title": { "en": "Support you used", "fr": "Soutien utilisé" },
+  "intro": {
+    "en": "Three questions about the support you used in the last month.",
+    "fr": "Trois questions sur le soutien que vous avez utilisé le mois dernier."
+  },
+  "completion": { "en": "Thank you.", "fr": "Merci." },
+  "default_language": "en",
+  "languages": ["en", "fr"],
+  "translation_status": { "fr": "reviewed" },
+  "participation": { "anonymous": true, "resume": "browser_token" },
+  "presentation": { "mode": "question", "skip_policy": "soft", "progress": "bar" },
+  "sections": [
+    {
+      "key": "support",
+      "title": { "en": "Support you used", "fr": "Soutien utilisé" },
+      "questions": [
+        {
+          "key": "used",
+          "type": "multi",
+          "text": {
+            "en": "Which of these did you use in the last month? Select all that apply.",
+            "fr": "Lesquels avez-vous utilisés le mois dernier ? Sélectionnez tout ce qui s'applique."
+          },
+          "options": [
+            { "key": "helpline", "label": { "en": "A telephone helpline", "fr": "Une ligne d'assistance téléphonique" } },
+            { "key": "peer_group", "label": { "en": "A peer support group", "fr": "Un groupe de soutien par les pairs" } },
+            { "key": "counselling", "label": { "en": "Counselling", "fr": "Un accompagnement psychologique" } },
+            { "key": "written", "label": { "en": "Written information", "fr": "De la documentation" } },
+            { "key": "none", "label": { "en": "None of these", "fr": "Aucun de ceux-ci" }, "exclusive": true }
+          ]
+        },
+        {
+          "key": "most_helpful",
+          "type": "single",
+          "required": false,
+          "text": { "en": "Which of those was most helpful?", "fr": "Lequel vous a le plus aidé ?" },
+          "help": {
+            "en": "Only what you selected above is listed.",
+            "fr": "Seuls vos choix ci-dessus sont proposés."
+          },
+          "config": { "options_from": "used" },
+          "options": [
+            { "key": "not_sure", "label": { "en": "I am not sure", "fr": "Je ne sais pas" } }
+          ]
+        },
+        {
+          "key": "why",
+          "type": "text",
+          "required": false,
+          "text": { "en": "What made it helpful?", "fr": "Qu'est-ce qui vous a aidé ?" },
+          "visible_if": [{ "question": "most_helpful", "op": "answered" }],
+          "config": { "max_length": 500, "multiline": true }
+        }
+      ]
+    }
+  ]
+}

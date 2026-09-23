@@ -124,6 +124,7 @@
   "error.order_unknown": "L'un de ces éléments n'est pas disponible.",
   "error.order_incomplete": "Veuillez classer chaque élément.",
   "error.matrix_no_rows": "Il n'y a encore rien à évaluer ici.",
+  "error.options_no_source": "Il n'y a encore rien à choisir ici.",
   "error.rows_unknown": "L'une de ces lignes ne fait plus partie de la question.",
   "error.rows_incomplete": "Veuillez évaluer chaque ligne avant de continuer.",
   "error.rating_not_integer": "Veuillez choisir un point sur l'échelle pour chaque ligne.",

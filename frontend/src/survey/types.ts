@@ -50,6 +50,8 @@ export interface QuestionConfig {
   options_source_priority?: string[];
   scale?: ScaleConfig;
   rows_from?: string;
+  /** single/dropdown: the earlier multi whose selected options become this question's options. */
+  options_from?: string;
   rows?: { key: string; label: Text }[];
   optional_items?: string[];
   max_length?: number;

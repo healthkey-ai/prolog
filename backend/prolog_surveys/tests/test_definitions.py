@@ -250,6 +250,22 @@ def _repeat(**overrides):
             ),
             "consents_missing",
         ),
+        (
+            lambda d: question(d, "overall").update(
+                type="single",
+                options=[{"key": "x", "label": {"en": "x"}}],
+                config={"options_from": "symptoms"},
+            ),
+            "dag_forward",
+        ),
+        (
+            lambda d: question(d, "symptom_impact").update(
+                type="single",
+                options=[{"key": "x", "label": {"en": "x"}}],
+                config={"options_from": "has_symptoms"},
+            ),
+            "options_from_type",
+        ),
         (lambda d: d["translation_status"].pop("fr"), "translation_status"),
         (lambda d: d["translation_status"].update(de="reviewed"), "translation_status"),
         (lambda d: d.update(default_language="de"), "default_language"),

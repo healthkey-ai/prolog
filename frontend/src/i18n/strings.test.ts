@@ -19,6 +19,7 @@ const ISSUE_CODES: Record<AnswerIssueCode, true> = {
   other_text_too_long: true,
   option_required: true,
   option_unknown: true,
+  options_no_source: true,
   options_not_list: true,
   options_duplicate: true,
   options_unknown: true,

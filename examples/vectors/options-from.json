@@ -1,0 +1,39 @@
+{
+  "definition": "sample-support.json",
+  "description": "A single-select whose options come from an earlier multi (options_from): hidden until the source selects something, offering only what it selected plus its own options, and losing its answer when the source stops offering the chosen one.",
+  "initial": { "visible": ["used"] },
+  "steps": [
+    {
+      "answer": { "key": "used", "value": { "options": ["helpline", "counselling"] } },
+      "expect": { "invalidated": [], "visible": ["used", "most_helpful"] }
+    },
+    {
+      "answer": { "key": "most_helpful", "value": { "option": "counselling" } },
+      "expect": { "invalidated": [], "visible": ["used", "most_helpful", "why"] }
+    },
+    {
+      "answer": { "key": "why", "value": { "text": "Someone listened" } },
+      "expect": { "invalidated": [] }
+    },
+    {
+      "answer": { "key": "used", "value": { "options": ["counselling", "written"] } },
+      "expect": {
+        "invalidated": [],
+        "answers_subset": { "most_helpful": { "option": "counselling" } }
+      }
+    },
+    {
+      "answer": { "key": "used", "value": { "options": ["written"] } },
+      "expect": {
+        "invalidated": ["most_helpful", "why"],
+        "visible": ["used", "most_helpful"],
+        "answers": { "used": { "options": ["written"] } }
+      }
+    },
+    {
+      "answer": { "key": "used", "value": { "options": ["none"] } },
+      "expect": { "invalidated": [], "visible": ["used"] }
+    }
+  ],
+  "final": { "progress": { "answered": 3, "total": 3 } }
+}

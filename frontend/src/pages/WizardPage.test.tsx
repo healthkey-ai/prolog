@@ -330,6 +330,22 @@ describe("WizardPage", () => {
     expect(m.$("email-consent-reuse")!.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("offers a single-select only what the earlier multi selected, labelled as that question labels it", async () => {
+    const sourced = definition();
+    sourced.sections[1].questions = [
+      { key: "q3", type: "multi", text: "Which did you use?", options: [{ key: "a", label: "A helpline" }, { key: "b", label: "A peer group" }, { key: "other", label: "Other", free_text: true }, { key: "none", label: "None of these", exclusive: true }] },
+      { key: "q4", type: "single", required: false, text: "Which helped most?", config: { options_from: "q3" }, options: [{ key: "not_sure", label: "I am not sure" }] },
+    ];
+    runnerServer(sourced, response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { options: ["b", "other"], other_text: "My nurse" } }, last_question_key: "q4", visible: ["q1", "q2", "q3", "q4"], missing: [] }));
+    m = mount(`/s/${SLUG}/q/q4`);
+    await m.until("option-b");
+    // what was selected, in the source's order, with the typed text for "Other",
+    // then this question's own option — and nothing the respondent did not pick
+    expect([...m.container.querySelectorAll("[data-testid^='option-']")].map((el) => el.getAttribute("data-testid"))).toEqual(["option-b", "option-other", "option-not_sure"]);
+    expect(m.text()).toContain("My nurse"); // the words the respondent typed, not the generic "Other"
+    expect(m.$("option-a")).toBeNull();
+  });
+
   it("refuses to save an address with too few consents ticked, before anything is sent", async () => {
     const withEmail = definition();
     withEmail.sections[1].questions = [
