@@ -336,7 +336,7 @@ describe("WizardPage", () => {
       { key: "q3", type: "multi", text: "Which did you use?", options: [{ key: "a", label: "A helpline" }, { key: "b", label: "A peer group" }, { key: "other", label: "Other", free_text: true }, { key: "none", label: "None of these", exclusive: true }] },
       { key: "q4", type: "single", required: false, text: "Which helped most?", config: { options_from: "q3" }, options: [{ key: "not_sure", label: "I am not sure" }] },
     ];
-    const server = runnerServer(sourced, response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { options: ["b", "other"], other_text: "My nurse" } }, last_question_key: "q4", visible: ["q1", "q2", "q3", "q4"], missing: [] }));
+    runnerServer(sourced, response({ answers: { q1: { text: "one" }, q2: { text: "two" }, q3: { options: ["b", "other"], other_text: "My nurse" } }, last_question_key: "q4", visible: ["q1", "q2", "q3", "q4"], missing: [] }));
     m = mount(`/s/${SLUG}/q/q4`);
     await m.until("option-b");
     // what was selected, in the source's order, with the typed text for "Other",
