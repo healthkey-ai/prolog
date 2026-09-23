@@ -8,6 +8,7 @@ export interface ReportVersionRow {
   respondents: number;
   completions: number;
   partials: number;
+  contacts: number;
   completion_rate: number | null;
   average_response_time: string;
 }

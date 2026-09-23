@@ -950,6 +950,7 @@ def _report_payload(request, survey, version) -> dict:
         "may_read_contacts": viewer.may_read_contacts,
     }
     rows = stats.basic_stats(survey)
+    contacts = stats.contact_counts(survey)
     payload["stats"] = {
         "versions": [
             {
@@ -957,6 +958,9 @@ def _report_payload(request, survey, version) -> dict:
                 "version": r.version,
                 "respondents": r.respondents,
                 "completions": r.completions,
+                "contacts": contacts.get(
+                    r.version, sum(contacts.values()) if r.version is None else 0
+                ),
                 "partials": r.partials,
                 "completion_rate": r.completion_rate,
                 "average_response_time": stats.format_duration(r.average_response_time),

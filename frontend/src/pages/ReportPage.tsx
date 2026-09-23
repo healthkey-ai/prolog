@@ -101,16 +101,10 @@ export function ReportPage() {
                   .map((v) => (
                     <div key={v.version} className="flex flex-wrap items-center gap-3">
                       <span className="w-24 text-sm text-ink-soft">{t("report.versionLabel", { version: v.version })}</span>
-                      <Button asChild variant="primary" size="runner-sm">
-                        <a href={exportHref(slug, "responses", v.version!)} data-testid={`report-download-responses-${v.version}`}>{t("report.downloadResponses")}</a>
-                      </Button>
-                      <Button asChild variant="surface" size="runner-sm">
-                        <a href={exportHref(slug, "responses", v.version!, true)} data-testid={`report-download-all-${v.version}`}>{t("report.downloadAll")}</a>
-                      </Button>
+                      <Download slug={slug} kind="responses" version={v.version!} count={v.completions} label={t("report.downloadResponses", { count: v.completions })} variant="primary" testId={`report-download-responses-${v.version}`} />
+                      <Download slug={slug} kind="responses" version={v.version!} includeInProgress count={v.respondents} label={t("report.downloadAll", { count: v.respondents })} variant="surface" testId={`report-download-all-${v.version}`} />
                       {viewer.may_read_contacts && (
-                        <Button asChild variant="surface" size="runner-sm">
-                          <a href={exportHref(slug, "contacts", v.version!)} data-testid={`report-download-contacts-${v.version}`}>{t("report.downloadContacts")}</a>
-                        </Button>
+                        <Download slug={slug} kind="contacts" version={v.version!} count={v.contacts} label={t("report.downloadContacts", { count: v.contacts })} variant="surface" testId={`report-download-contacts-${v.version}`} />
                       )}
                     </div>
                   ))
@@ -149,6 +143,27 @@ export function ReportPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A download, with how many rows are behind it. Nothing to download is not a
+ * link: an empty file tells a reader less than a button that says "0" and does
+ * not respond.
+ */
+function Download({ slug, kind, version, includeInProgress = false, count, label, variant, testId }: { slug: string; kind: "responses" | "contacts"; version: string; includeInProgress?: boolean; count: number; label: string; variant: "primary" | "surface"; testId: string }) {
+  if (count === 0)
+    return (
+      <Button variant={variant} size="runner-sm" disabled data-testid={testId}>
+        {label}
+      </Button>
+    );
+  return (
+    <Button asChild variant={variant} size="runner-sm">
+      <a href={exportHref(slug, kind, version, includeInProgress)} data-testid={testId}>
+        {label}
+      </a>
+    </Button>
   );
 }
 

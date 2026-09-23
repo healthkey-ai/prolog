@@ -36,7 +36,14 @@ from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.db.models.functions import TruncDate
 
 from .engine.visibility import iter_questions
-from .models import LifecycleStatus, ResponseStatus, Survey, SurveyResponse
+from .models import (
+    LifecycleStatus,
+    ResponseStatus,
+    Survey,
+    SurveyContact,
+    SurveyLinkedContact,
+    SurveyResponse,
+)
 
 
 @dataclass(frozen=True)
@@ -117,6 +124,28 @@ def basic_stats(survey: Survey) -> list[BasicStats]:
     if len(rows) != 1:
         rows.append(BasicStats("All versions", **responses.aggregate(**_AGGREGATES)))
     return rows
+
+
+def contact_counts(survey: Survey) -> dict[str, int]:
+    """How many addresses each version holds, by version string.
+
+    Whichever table the instrument's capture mode fills: an unlinked contact
+    row belongs to the version, a linked one to a response of it.
+    """
+    counts: dict[str, int] = {}
+    for version, n in (
+        SurveyContact.objects.filter(survey_version__survey=survey)
+        .values_list("survey_version__version")
+        .annotate(n=Count("id"))
+    ):
+        counts[version] = counts.get(version, 0) + n
+    for version, n in (
+        SurveyLinkedContact.objects.filter(response__survey_version__survey=survey)
+        .values_list("response__survey_version__version")
+        .annotate(n=Count("id"))
+    ):
+        counts[version] = counts.get(version, 0) + n
+    return counts
 
 
 def by_day(survey: Survey, *, limit: int = 60) -> list[DayRow]:
