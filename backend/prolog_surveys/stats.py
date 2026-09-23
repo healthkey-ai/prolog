@@ -36,7 +36,7 @@ from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.db.models.functions import TruncDate
 
 from .engine.visibility import iter_questions
-from .models import ResponseStatus, Survey, SurveyResponse, SurveyVersion
+from .models import LifecycleStatus, ResponseStatus, Survey, SurveyResponse
 
 
 @dataclass(frozen=True)
@@ -111,9 +111,13 @@ def basic_stats(survey: Survey) -> list[BasicStats]:
     return rows
 
 
-def by_day(version: SurveyVersion, *, limit: int = 60) -> list[DayRow]:
-    """Starts and completions per day, most recent last, at most ``limit`` days."""
-    responses = SurveyResponse.objects.filter(survey_version=version)
+def by_day(survey: Survey, *, limit: int = 60) -> list[DayRow]:
+    """Starts and completions per day, most recent last, at most ``limit`` days.
+
+    Over the whole survey, not one version: fieldwork does not restart when a
+    typo is corrected, and a reader asking "how is it going" means the survey.
+    """
+    responses = SurveyResponse.objects.filter(survey_version__survey=survey)
     started = dict(
         responses.annotate(d=TruncDate("started_at"))
         .values_list("d")
@@ -131,10 +135,10 @@ def by_day(version: SurveyVersion, *, limit: int = 60) -> list[DayRow]:
     return [DayRow(d.isoformat(), started.get(d, 0), completed.get(d, 0)) for d in days]
 
 
-def by_language(version: SurveyVersion) -> list[LanguageRow]:
+def by_language(survey: Survey) -> list[LanguageRow]:
     """One row per language answered in, most respondents first."""
     rows = (
-        SurveyResponse.objects.filter(survey_version=version)
+        SurveyResponse.objects.filter(survey_version__survey=survey)
         .values("language")
         .annotate(respondents=Count("id"), completions=Count("id", filter=_SUBMITTED))
         .order_by("-respondents", "language")
@@ -142,25 +146,35 @@ def by_language(version: SurveyVersion) -> list[LanguageRow]:
     return [LanguageRow(r["language"] or "—", r["respondents"], r["completions"]) for r in rows]
 
 
-def drop_off(version: SurveyVersion, *, limit: int = 10) -> list[DropOffRow]:
+def drop_off(survey: Survey, *, limit: int = 10) -> list[DropOffRow]:
     """Where unfinished responses stopped, most common first.
 
     A response with no ``last_question_key`` never reached a question — it was
     opened and abandoned on the intro — and is reported as such rather than
     dropped, because "they never started" is the most actionable answer of all.
     """
+    version = (
+        survey.versions.filter(status=LifecycleStatus.ACTIVE).first()
+        or survey.versions.order_by("-created_at").first()
+    )
     counts = (
-        SurveyResponse.objects.filter(survey_version=version)
+        SurveyResponse.objects.filter(survey_version__survey=survey)
         .exclude(status=ResponseStatus.SUBMITTED)
         .values("last_question_key")
         .annotate(n=Count("id"))
         .order_by("-n")
     )
-    labels = {
-        q["key"]: str((q.get("text") or {}).get(version.definition.get("default_language"), ""))
-        or q["key"]
-        for _, _, q in iter_questions(version.definition)
-    }
+    # Labelled from the version a reader is looking at now; a question only an
+    # older version had keeps its key, which is still where people stopped.
+    labels = (
+        {
+            q["key"]: str((q.get("text") or {}).get(version.definition.get("default_language"), ""))
+            or q["key"]
+            for _, _, q in iter_questions(version.definition)
+        }
+        if version
+        else {}
+    )
     rows = [
         DropOffRow(
             r["last_question_key"] or "", labels.get(r["last_question_key"] or "", ""), r["n"]
