@@ -14,6 +14,7 @@ from .visibility import (
     VisibleQuestion,
     is_answered,
     matrix_rows,
+    offered_option_keys,
     question_by_key,
     visible_questions,
 )
@@ -60,7 +61,18 @@ def apply_cascade(
         pruned = False
         for key, value in list(surviving.items()):
             q = questions[key]
-            if q["type"] != "matrix" or not is_answered(value):
+            if not is_answered(value):
+                continue
+            # A choice taken from an earlier selection (options_from) stands
+            # only while that selection still offers it: unpick the treatment
+            # somebody named as their most recent one and the naming goes too.
+            if q.get("config", {}).get("options_from") and "option" in value:
+                if value["option"] not in offered_option_keys(q, surviving, questions):
+                    del surviving[key]
+                    invalidated.add(key)
+                    pruned = True
+                continue
+            if q["type"] != "matrix":
                 continue
             rows = matrix_rows(q, surviving, questions)
             ratings = {r: v for r, v in value.get("ratings", {}).items() if r in rows}

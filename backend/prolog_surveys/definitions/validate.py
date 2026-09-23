@@ -4,7 +4,8 @@ Runs after structural validation. Every rule produces an ``Issue`` with a
 JSON path; errors block loading, warnings are reported only.
 
 The central rule is the DAG rule (DEF-10): questions are nodes, every
-``visible_if`` condition and ``rows_from`` reference is an edge, and an edge
+``visible_if`` condition and every ``rows_from`` / ``options_from`` reference
+is an edge, and an edge
 may only point to a question that appears *earlier* in presentation order.
 Because all edges point backward the graph is acyclic by construction and
 presentation order is the topological order the engine evaluates.
@@ -31,8 +32,12 @@ MAX_SCALE_POINTS = 101
 
 CONFIG_BY_TYPE: dict[str, set[str]] = {
     "info": set(),
-    "single": set(),
-    "dropdown": {"options_source", "options_source_include", "options_source_priority"},
+    "single": {"options_from"},
+    "dropdown": {
+        "options_source",
+        "options_source_include",
+        "options_source_priority",
+    },
     "multi": {"max_selections", "min_selections"},
     "scale": {"scale"},
     "ranking": {"optional_items"},
@@ -526,14 +531,17 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
         for ci, cond in enumerate(info.question.get("visible_if", [])):
             cp = f"{qp}.visible_if[{ci}]"
             check_condition(cp, cond, check_edge(cp, info, cond["question"]))
-        rows_from = (info.question.get("config") or {}).get("rows_from")
-        if rows_from:
-            target = check_edge(f"{qp}.config.rows_from", info, rows_from)
+        cfg = info.question.get("config") or {}
+        for setting in ("rows_from", "options_from"):
+            source = cfg.get(setting)
+            if not source:
+                continue
+            target = check_edge(f"{qp}.config.{setting}", info, source)
             if target is not None and target.type != "multi":
                 err(
-                    "rows_from_type",
-                    f"{qp}.config.rows_from",
-                    f"rows_from must reference a multi question, '{rows_from}' is {target.type}",
+                    f"{setting}_type",
+                    f"{qp}.config.{setting}",
+                    f"{setting} must reference a multi question, '{source}' is {target.type}",
                 )
 
     # --- reachability (warning) -----------------------------------------

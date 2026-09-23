@@ -13,7 +13,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .visibility import Answers, matrix_rows
+from .visibility import (
+    Answers,
+    matrix_rows,
+    offered_option_keys,
+    sourced_option_keys,
+)
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MAX_OTHER_TEXT = 500
@@ -55,6 +60,7 @@ MESSAGES: dict[str, str] = {
     "order_incomplete": "every item must be ranked; missing {missing}",
     "ratings_not_object": "ratings must be an object of row -> value",
     "matrix_no_rows": "this matrix currently has no rows",
+    "options_no_source": "this question's source has selected nothing to choose from",
     "rows_unknown": "unknown rows {rows}",
     "rows_incomplete": "every row must be rated; missing {missing}",
     "rating_not_integer": "rating for '{row}' must be an integer",
@@ -204,7 +210,19 @@ def validate_answer(
         option = raw.get("option")
         if not isinstance(option, str) or not option:
             _fail("option_required")
-        allowed = set(_option_keys(question))
+        options_from = cfg.get("options_from")
+        if options_from and options_from not in questions:
+            # Without the source question its exclusive flags and its selection
+            # are invisible, and an option it never offered would be accepted:
+            # a caller bug, not a participant error, so not an AnswerError.
+            raise ValueError("validate_answer: options_from question needs the questions map")
+        if options_from:
+            offered = offered_option_keys(question, answers, questions)
+            if not sourced_option_keys(question, answers, questions):
+                _fail("options_no_source")
+            allowed = set(offered)
+        else:
+            allowed = set(_option_keys(question))
         if t == "dropdown" and cfg.get("options_source"):
             allowed |= source_keys(cfg, source_options)
         if option not in allowed:

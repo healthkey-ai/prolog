@@ -221,8 +221,17 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "type": { "enum": ["single", "multi", "ranking"] } } },
+          "if": { "properties": { "type": { "enum": ["multi", "ranking"] } } },
           "then": { "required": ["options"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "single" } } },
+          "then": {
+            "anyOf": [
+              { "required": ["options"] },
+              { "properties": { "config": { "required": ["options_from"] } } }
+            ]
+          }
         },
         {
           "if": { "properties": { "type": { "const": "scale" } } },
@@ -339,6 +348,10 @@
               "$ref": "#/$defs/i18n"
             }
           }
+        },
+        "options_from": {
+          "description": "single: question key whose SELECTED options become this question's options — \"of the things you just chose, which one…\". The source's exclusive options ('none of these') are never offered, and a source that selected only those leaves this question hidden, as an empty rows_from matrix is. This question's own options, if any, follow the sourced ones (an 'I am not sure' escape hatch), and a key the source already contributes is not repeated. DAG rule: must be a `multi` question that appears EARLIER in presentation order.",
+          "$ref": "#/$defs/key"
         },
         "rows_from": {
           "description": "matrix: question key whose selected option keys become this question's rows (dynamic rows). DAG rule: must be a `multi` question that appears EARLIER in presentation order.",

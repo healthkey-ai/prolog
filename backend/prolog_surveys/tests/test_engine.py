@@ -17,6 +17,8 @@ from prolog_surveys.engine.visibility import (
     evaluate_condition,
     is_answered,
     iter_questions,
+    offered_option_keys,
+    pending_keys,
     question_by_key,
     visible_keys,
 )
@@ -240,6 +242,65 @@ def test_rows_from_matrix_hidden_until_its_source_has_a_selection():
     assert "symptom_impact" not in visible_keys(definition, answers)
     assert result.invalidated == ["symptom_impact"]
     assert "symptom_impact" not in answers
+
+
+def test_options_from_offers_what_the_source_selected_and_nothing_else():
+    """A single-select sourced from an earlier multi offers exactly what that
+    multi selected — its exclusive options excluded — followed by its own, and
+    refuses anything else however plausible it looks."""
+    definition = load_definition("sample-support.json")
+    questions = question_by_key(definition)
+    most = questions["most_helpful"]
+    answers: dict = {}
+    store(definition, answers, "used", {"options": ["helpline", "counselling"]})
+    assert offered_option_keys(most, answers, questions) == ["helpline", "counselling", "not_sure"]
+    # something the respondent did not select is not on offer, and the server says so
+    with pytest.raises(AnswerError) as exc:
+        store(definition, answers, "most_helpful", {"option": "written"})
+    assert exc.value.codes == ["option_unknown"]
+    # the question's own escape hatch is
+    store(definition, answers, "most_helpful", {"option": "not_sure"})
+    assert answers["most_helpful"] == {"option": "not_sure"}
+
+
+def test_options_from_is_hidden_while_its_source_offers_nothing():
+    """Nothing to choose between is not a question: an exclusive-only selection
+    contributes no options, and the question's own options do not make one."""
+    definition = load_definition("sample-support.json")
+    definition["presentation"]["skip_policy"] = "hard"
+    answers: dict = {}
+    assert "most_helpful" not in visible_keys(definition, answers)
+    # ...and it is *pending*, not closed: the source has not been answered yet
+    assert "most_helpful" in pending_keys(definition, answers)
+    store(definition, answers, "used", {"options": ["none"]})
+    assert "most_helpful" not in visible_keys(definition, answers)
+    assert "most_helpful" not in missing_keys(definition, answers)
+    # the source settled it, so it is closed rather than still to come
+    assert "most_helpful" not in pending_keys(definition, answers)
+
+
+def test_options_from_answer_falls_away_when_the_source_stops_offering_it():
+    definition = load_definition("sample-support.json")
+    answers: dict = {}
+    store(definition, answers, "used", {"options": ["helpline", "counselling"]})
+    store(definition, answers, "most_helpful", {"option": "counselling"})
+    # unpicking something else leaves the choice standing
+    result = store(definition, answers, "used", {"options": ["counselling", "written"]})
+    assert "most_helpful" not in result.invalidated
+    assert answers["most_helpful"] == {"option": "counselling"}
+    # unpicking the chosen one does not
+    result = store(definition, answers, "used", {"options": ["written"]})
+    assert "most_helpful" in result.invalidated
+    assert "most_helpful" not in answers
+
+
+def test_options_from_needs_the_questions_map():
+    """Without the source question the engine cannot know what was offered;
+    a caller bug, not a participant error."""
+    definition = load_definition("sample-support.json")
+    most = question_by_key(definition)["most_helpful"]
+    with pytest.raises(ValueError, match="options_from"):
+        validate_answer(most, {"option": "helpline"}, {"used": {"options": ["helpline"]}})
 
 
 def test_progress_agrees_with_missing_after_pruning():

@@ -80,7 +80,7 @@ export function visibleQuestions(def: Definition, answers: Answers): VisibleQues
     if (!conditionsHold(section.visible_if, seen)) return;
     for (const q of section.questions) {
       if (!conditionsHold(q.visible_if, seen)) continue;
-      if (q.type === "matrix" && dynamicRowsEmpty(q, seen, questions)) continue;
+      if (dynamicRowsEmpty(q, seen, questions)) continue;
       if (q.key in answers) seen[q.key] = answers[q.key];
       out.push({
         key: q.key,
@@ -97,13 +97,23 @@ export function visibleQuestions(def: Definition, answers: Answers): VisibleQues
 }
 
 /**
- * A `rows_from` matrix has nothing to ask while its source has no selection, so
- * it is hidden rather than left visible with zero rows (which could neither be
- * answered nor, under a hard skip policy, skipped). Mirrors visibility.py.
+ * A question whose rows or options come from an earlier selection has nothing
+ * to ask while that selection is empty, so it is hidden rather than left
+ * visible with nothing in it (which could neither be answered nor, under a hard
+ * skip policy, skipped). For `options_from` the question's own options do not
+ * count. Mirrors visibility.py.
  */
 function dynamicRowsEmpty(q: Question, answers: Answers, questions: Record<string, Question>): boolean {
   const cfg = questionConfig(q);
-  return Boolean(cfg.rows_from) && !(cfg.rows && cfg.rows.length) && matrixRows(q, answers, questions).length === 0;
+  if (cfg.rows_from && !(cfg.rows && cfg.rows.length)) return matrixRows(q, answers, questions).length === 0;
+  if (cfg.options_from) return sourcedOptionKeys(q, answers, questions).length === 0;
+  return false;
+}
+
+/** The earlier question this one takes its rows or options from, if any. Mirrors visibility.py. */
+export function dynamicSource(q: Question): string | undefined {
+  const cfg = questionConfig(q);
+  return cfg.options_from ?? (cfg.rows && cfg.rows.length ? undefined : cfg.rows_from);
 }
 
 /**
@@ -126,11 +136,11 @@ export function pendingKeys(def: Definition, answers: Answers): string[] {
       if (shown.has(q.key)) continue;
       const conditions = [...(section.visible_if ?? []), ...(q.visible_if ?? [])];
       let falseConditions = conditions.filter((c) => !evaluateCondition(c, seen)).map((c) => c.question);
-      // A rows_from matrix hidden for want of rows waits on its source the
+      // A question hidden for want of rows or options waits on its source the
       // same way a condition waits on its question.
-      if (!falseConditions.length && q.type === "matrix") {
-        const source = questionConfig(q).rows_from;
-        falseConditions = source ? [source] : [];
+      if (!falseConditions.length) {
+        const source = dynamicSource(q);
+        if (source) falseConditions = [source];
       }
       if (falseConditions.some(settled)) closed.add(q.key);
       else if (ANSWERABLE.has(q.type)) pending.push(q.key);
@@ -152,11 +162,35 @@ export function visibleKeys(def: Definition, answers: Answers): string[] {
 export function matrixRows(q: Question, answers: Answers, questions: Record<string, Question>): string[] {
   const cfg = questionConfig(q);
   if (cfg.rows && cfg.rows.length) return cfg.rows.map((r) => r.key);
-  const sourceKey = cfg.rows_from ?? "";
+  return selectedFrom(cfg.rows_from ?? "", answers, questions);
+}
+
+/**
+ * What an earlier `multi` selected, in its own option order, without its
+ * `exclusive` options — there is nothing to rate about "none of these" and
+ * nothing to single out from it. Mirrors visibility.py.
+ */
+export function selectedFrom(sourceKey: string, answers: Answers, questions: Record<string, Question>): string[] {
   const source = answers[sourceKey];
   if (!isAnswered(source)) return [];
   if (!source || !("options" in source)) return [];
   const sourceQuestion = questions[sourceKey];
   const exclusive = sourceQuestion ? exclusiveKeys(sourceQuestion) : new Set<string>();
   return source.options.filter((k) => !exclusive.has(k));
+}
+
+/** Option keys an `options_from` question takes from its source. Mirrors visibility.py. */
+export function sourcedOptionKeys(q: Question, answers: Answers, questions: Record<string, Question>): string[] {
+  const cfg = questionConfig(q);
+  return cfg.options_from ? selectedFrom(cfg.options_from, answers, questions) : [];
+}
+
+/**
+ * Every option key a question offers now: what its source contributes first,
+ * then its own, never the same key twice. Mirrors visibility.py.
+ */
+export function offeredOptionKeys(q: Question, answers: Answers, questions: Record<string, Question>): string[] {
+  const sourced = sourcedOptionKeys(q, answers, questions);
+  const own = (q.options ?? []).map((o) => o.key);
+  return [...sourced, ...own.filter((k) => !sourced.includes(k))];
 }

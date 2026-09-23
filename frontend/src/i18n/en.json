@@ -124,6 +124,7 @@
   "error.order_unknown": "One of those items is not available.",
   "error.order_incomplete": "Please rank every item.",
   "error.matrix_no_rows": "There is nothing to rate here yet.",
+  "error.options_no_source": "There is nothing to choose from here yet.",
   "error.rows_unknown": "One of those rows is no longer part of the question.",
   "error.rows_incomplete": "Please rate every row before continuing.",
   "error.rating_not_integer": "Please choose a point on the scale for every row.",
