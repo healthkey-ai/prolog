@@ -159,7 +159,8 @@ identity capture and the participant opts in.
 | DEF-7 | A `load_definition` management command registers or updates a definition file idempotently (draft) and can activate it; `validate_definition` runs DEF-6 without writing. |
 | DEF-8 | The definition stored on `SurveyVersion.definition` is byte-equivalent to the validated file (normalised JSON), so the runner, exports and mappings all read the same snapshot. |
 | DEF-9 | The schema is versioned (`schema_version`); the runner supports the current version and documents migrations for earlier ones. |
-| DEF-10 | **A survey is a directed acyclic graph (DAG).** Questions are nodes; every `visible_if` condition (on a question or a section) and every `rows_from` reference is a directed edge from the dependent element to the question it depends on. An edge may only point to a question that appears **earlier** in presentation order (sections in array order, then questions in array order). Self-references, forward references, and therefore cycles are rejected at validation. |
+| DEF-10 | **A survey is a directed acyclic graph (DAG).** Questions are nodes; every `visible_if` condition (on a question or a section) and every `rows_from` / `options_from` reference is a directed edge from the dependent element to the question it depends on. An edge may only point to a question that appears **earlier** in presentation order (sections in array order, then questions in array order). Self-references, forward references, and therefore cycles are rejected at validation. |
+| DEF-11 | **Options taken from an earlier selection.** A `single` question may set `config.options_from` to an earlier `multi`: its options are that question's *selected* options, in its order and with its labels (a `free_text` option shows the participant's own text), followed by the question's own options with no key repeated. The source's `exclusive` options are never offered, and a source that selected only those leaves the question hidden — as an empty `rows_from` matrix is — and closed for progress purposes once the source is answered. The server accepts only what the source currently offers; unpicking the chosen option invalidates the answer (RUN-16). |
 
 ### Survey graph
 
@@ -229,7 +230,7 @@ changed answer.
 | ID | Type | Control | Stored `value` |
 | --- | --- | --- | --- |
 | Q-1 | `info` | read-only text block | none |
-| Q-2 | `single` | radio cards; `free_text` option reveals inline input | `{"option": k, "other_text"?: s}` |
+| Q-2 | `single` | radio cards; `free_text` option reveals inline input; `config.options_from` lists what an earlier `multi` selected, labelled as that question labels it (DEF-11) | `{"option": k, "other_text"?: s}` |
 | Q-3 | `dropdown` | searchable combobox; `options_source: iso3166_countries` provides a localized ISO 3166 list, inline options appended (e.g. "Prefer not to say") | `{"option": k}` |
 | Q-4 | `multi` | checkbox cards; counter for `max_selections`; at the limit remaining cards are inert; `exclusive` options clear others | `{"options": [k…], "other_text"?: s}` |
 | Q-5 | `scale` | segmented buttons `min..max` with endpoint or point labels | `{"value": n}` |

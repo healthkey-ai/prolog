@@ -153,6 +153,7 @@ selected/ranked, and it is limited to 500 characters.
 | Type | Keys | Notes |
 | --- | --- | --- |
 | `multi` | `max_selections` (int ≥ 1), `min_selections` (int ≥ 1, default 1) | "Select up to N" counter; at the limit the remaining cards become inert. Fewer than `min_selections` picks are rejected (`min_selections`), except an `exclusive` option selected on its own, which is a complete answer. `max_selections` ≤ number of options; `min` ≤ `max`. |
+| `single` | `options_from` (key of an earlier `multi` question) | **"Of the things you just chose, which one…"** — the source's *selected* options become this question's options, in the source's own order and with its labels (a `free_text` option shows what the participant typed). An `exclusive` source option ("none of these", "I am not sure") is never offered, and a source that selected only those leaves this question **hidden**, exactly as an empty `rows_from` matrix is. The question's own `options` follow the sourced ones — an "I am not sure" escape hatch — and a key the source already contributes is not repeated. The server accepts only what the source currently offers, so unpicking the chosen option invalidates this answer. |
 | `dropdown` | `options_source` (`iso3166_countries`) | A built-in, localised list served by `GET /api/run/options/iso3166_countries/?lang=`; inline `options` are appended after it (e.g. "Prefer not to say"). A dropdown needs `options`, `options_source`, or both. |
 | `dropdown` | `options_source_include` | Restrict `options_source` to these keys — a survey that only covers some countries lists them here (`["DE", "FR", "GB", "US"]`). Every key must exist in the source or the definition is refused at load. The runner offers no others and both engines reject an excluded key, so it is a real restriction, not a display filter. Inline `options` are unaffected. |
 | `dropdown` | `options_source_priority` | Order these keys first, in this order, with the rest of the source following in its own order (`["GB", "US", "DE"]`) — a long list whose respondents cluster in a few places. **Ordering only:** every other option stays offered and stays accepted, which is what makes it different from `options_source_include`. Keys must exist in the source, and in `options_source_include` where that is set too; the runner separates the pinned group visually so the order does not read as an alphabetical list gone wrong. |
@@ -215,7 +216,8 @@ accept any value.
 
 ### The DAG rule (DEF-10)
 
-Questions are nodes; every `visible_if` condition and every `rows_from` is a
+Questions are nodes; every `visible_if` condition and every `rows_from` /
+`options_from` reference is a
 directed edge from the dependent question (or section) to the question it
 depends on. **An edge may only point to a question that appears earlier in
 presentation order** — never to itself, never forward — and a section may
@@ -417,7 +419,8 @@ the **active** version; loading a draft cannot retarget a live survey.
   identifier lengths (`slug` ≤ 120, `version` ≤ 32, `theme` ≤ 64, keys ≤ 128,
   `consent.version` ≤ 64 — the database columns behind them).
 - **Semantics** (`validate_definition`): unique keys; the DAG rule; condition
-  operators/values fit the referenced question type; `rows_from` targets a
+  operators/values fit the referenced question type; `rows_from` and
+  `options_from` target a
   `multi`; `max_selections` ≤ options; `min` ≤ `max`; `optional_items` are
   options; scale `min < max` and label counts; one `email` question, and
   it declares exactly one capture mode (`store_separately`, `link_response`

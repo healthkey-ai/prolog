@@ -2,7 +2,7 @@
  * Client-side mirror of the server's per-type answer validation. Used for
  * immediate feedback only; the server remains authoritative (RUN-15).
  */
-import { matrixRows } from "./visibility";
+import { matrixRows, offeredOptionKeys, sourcedOptionKeys } from "./visibility";
 import {
   type AnswerIssue,
   type AnswerValue,
@@ -31,6 +31,7 @@ export type AnswerIssueCode =
   | "other_text_too_long"
   | "option_required"
   | "option_unknown"
+  | "options_no_source"
   | "options_not_list"
   | "options_duplicate"
   | "options_unknown"
@@ -237,7 +238,18 @@ export function validateAnswer(
   if (q.type === "single" || q.type === "dropdown") {
     const option = raw.option;
     if (typeof option !== "string" || !option) fail("option_required");
-    const allowed = new Set(optionKeys(q));
+    // Without the source question its exclusive flags and its selection are
+    // invisible, and an option it never offered would be accepted: a caller
+    // bug, not a participant error (mirrors answers.py).
+    if (cfg.options_from && !(opts.questions && Object.hasOwn(opts.questions, cfg.options_from)))
+      throw new Error("validateAnswer: options_from question needs the questions map");
+    let allowed: Set<string>;
+    if (cfg.options_from) {
+      if (!sourcedOptionKeys(q, answers, opts.questions ?? {}).length) fail("options_no_source");
+      allowed = new Set(offeredOptionKeys(q, answers, opts.questions ?? {}));
+    } else {
+      allowed = new Set(optionKeys(q));
+    }
     if (q.type === "dropdown" && cfg.options_source) for (const k of sourceKeys(cfg, opts.sourceOptions)) allowed.add(k);
     if (!allowed.has(option)) fail("option_unknown", { option });
     return { option, ...otherText(raw, q, [option]) };

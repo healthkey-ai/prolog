@@ -124,6 +124,7 @@
   "error.order_unknown": "Um desses itens não está disponível.",
   "error.order_incomplete": "Ordene todos os itens.",
   "error.matrix_no_rows": "Ainda não há nada para avaliar aqui.",
+  "error.options_no_source": "Ainda não há nada para escolher aqui.",
   "error.rows_unknown": "Uma dessas linhas já não faz parte da pergunta.",
   "error.rows_incomplete": "Avalie todas as linhas antes de continuar.",
   "error.rating_not_integer": "Escolha um ponto da escala em cada linha.",
