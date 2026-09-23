@@ -991,6 +991,7 @@ def _reader(request, *, contacts: bool = False):
     return viewer
 
 
+@method_decorator(sensitive_post_parameters("password"), name="dispatch")
 class ReportLoginView(RunnerView):
     """Sign in to a survey's report page.
 
@@ -1003,7 +1004,6 @@ class ReportLoginView(RunnerView):
 
     throttle_classes = [ReportLoginThrottle]
 
-    @method_decorator(sensitive_post_parameters("password"))
     @method_decorator(ensure_csrf_cookie)
     @sensitive_variables()
     def post(self, request, slug: str):
