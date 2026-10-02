@@ -246,6 +246,10 @@ export function WizardPage() {
   // "no answer" state) without asking; soft/hard required ones go through the prompt / block.
   const skippable = !required || policy === "none";
   const section = def.sections[current.sectionIndex];
+  // The first *visible* question of its section: where a section that declined
+  // its interstitial shows its description instead.
+  const isSectionsFirstVisible =
+    pos.visible.find((v) => v.sectionIndex === current.sectionIndex)?.key === current.key;
 
   /** Client-side check of a value against the same rules the server applies; the messages are chrome strings. */
   const localIssues = (q: Question, value: AnswerValue): string[] => {
@@ -327,7 +331,14 @@ export function WizardPage() {
     }
     const next = p.visible[p.index + 1];
     if (!next) return; // the URL question is no longer visible; the redirect effect relocates
-    if (def.presentation?.section_interstitials !== false && next.sectionIndex !== current.sectionIndex) {
+    // A section may decline its own interstitial (`interstitial: false`): the
+    // respondent goes straight to its first question, and the section's
+    // description is shown there instead — see QuestionScreen.
+    if (
+      def.presentation?.section_interstitials !== false &&
+      def.sections[next.sectionIndex]?.interstitial !== false &&
+      next.sectionIndex !== current.sectionIndex
+    ) {
       setInterstitial(next.sectionIndex);
       return;
     }
@@ -485,6 +496,7 @@ export function WizardPage() {
             language={def.language}
             questionNumber={pos.questionNumber}
             questionTotal={pos.questionTotal}
+            sectionDescription={isSectionsFirstVisible && section.interstitial === false ? (section.description as string | undefined) : undefined}
             answers={answers}
             questions={questions}
             onSubmitEmail={async (email, consents, receipt) => {

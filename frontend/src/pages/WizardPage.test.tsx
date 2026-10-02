@@ -394,6 +394,37 @@ describe("WizardPage", () => {
     expect(server.of("PATCH")).toHaveLength(1); // the retry refetches the definition; it does not PATCH again
   });
 
+  it("lets a section decline its interstitial, and shows its description on the first question instead", async () => {
+    const def = definition();
+    def.presentation = { section_interstitials: true };
+    def.sections[1].description = "Thank you for sharing your experiences.";
+    def.sections[1].interstitial = false;
+    const server = runnerServer(def, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q2", missing: ["q3"] }));
+    server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value, "q2"));
+    m = mount(`/s/${SLUG}/q/q2`);
+    await m.until("text-input");
+    click(NEXT(m));
+    await m.flush(3);
+    // straight to the section's first question, no interstitial in between
+    expect(m.$("interstitial")).toBeNull();
+    expect(m.pathname()).toBe(`/s/${SLUG}/q/q3`);
+    expect(m.$("section-description")!.textContent).toBe("Thank you for sharing your experiences.");
+  });
+
+  it("still shows the interstitial for a section that has not declined it", async () => {
+    const def = definition();
+    def.presentation = { section_interstitials: true };
+    def.sections[1].description = "About the second part";
+    const server = runnerServer(def, response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q2", missing: ["q3"] }));
+    server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value, "q2"));
+    m = mount(`/s/${SLUG}/q/q2`);
+    await m.until("text-input");
+    click(NEXT(m));
+    await m.flush(3);
+    expect(m.$("interstitial")).not.toBeNull();
+    expect(m.$("section-description")).toBeNull();
+  });
+
   it("renders a step counter instead of the bar for presentation.progress: steps", async () => {
     runnerServer(definition({ presentation: { section_interstitials: false, progress: "steps" } }));
     m = mount(`/s/${SLUG}/q/q2`);

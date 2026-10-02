@@ -103,7 +103,10 @@ export interface Question {
 export interface Section {
   key: string;
   title: Text;
+  /** Shown on the interstitial, or above the section's first question when `interstitial` is false. */
   description?: Text;
+  /** false: no interstitial for this section; its description moves onto the first question. */
+  interstitial?: boolean;
   visible_if?: Condition[];
   questions: Question[];
 }

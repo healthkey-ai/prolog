@@ -94,6 +94,12 @@ The runner shows a data-free **interstitial** (section number, title,
 description) when a participant enters a new section
 (`presentation.section_interstitials`).
 
+A single section may decline it with `"interstitial": false` — the respondent
+goes straight to its first question — and its `description` is then shown
+above that question, in its own panel. A section's lead-in belongs somewhere,
+and a section whose first question says the same thing as its title ("Stay
+involved") gains nothing from a screen that says it twice.
+
 ---
 
 ## 3. Questions
