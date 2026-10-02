@@ -17,6 +17,13 @@ import { questionRequired, type AnswerValue, type Question } from "@/survey/type
 interface Props extends RendererProps {
   questionNumber: number;
   questionTotal: number;
+  /**
+   * The section's description, when the section declined its interstitial
+   * (`interstitial: false`) and this is its first question: the words the
+   * interstitial would have carried, in their own panel above the question's
+   * own help — a section's lead-in belongs somewhere, and that is here.
+   */
+  sectionDescription?: string;
   onSubmitEmail?: (email: string, consents: string[], receipt?: string) => Promise<string | undefined>;
   onRemoveEmail?: (receipt: string) => Promise<void>;
   answers: Record<string, AnswerValue>;
@@ -25,7 +32,7 @@ interface Props extends RendererProps {
 
 export function QuestionScreen(props: Props) {
   const { t } = useTranslation();
-  const { question, questionNumber, questionTotal } = props;
+  const { question, questionNumber, questionTotal, sectionDescription } = props;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
@@ -45,6 +52,11 @@ export function QuestionScreen(props: Props) {
             {question.text as string}
           </h1>
         </legend>
+        {sectionDescription && (
+          <p className="mt-4 rounded-[var(--p-radius-card)] bg-surface p-4 text-[0.95rem] text-ink" data-testid="section-description">
+            {sectionDescription}
+          </p>
+        )}
         {/* QuestionScreen owns the help text for every type; the email renderer alone shows its own notice (the privacy alert, per spec). */}
         {question.help && question.type !== "email" && <p className="mt-2 text-ink-soft">{question.help as string}</p>}
         {/* The boundary catches a code-split renderer whose chunk failed to load (a stale deploy); QuestionScreen is keyed per question, so it resets with the question. */}

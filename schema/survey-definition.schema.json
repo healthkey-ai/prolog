@@ -171,7 +171,15 @@
       "properties": {
         "key": { "$ref": "#/$defs/key" },
         "title": { "$ref": "#/$defs/i18n" },
-        "description": { "$ref": "#/$defs/i18n" },
+        "description": {
+          "description": "Shown on the section's interstitial, or — when this section sets `interstitial: false` — above the first question of the section, in its own panel.",
+          "$ref": "#/$defs/i18n"
+        },
+        "interstitial": {
+          "description": "false: enter this section without its interstitial screen, going straight to its first question; the section's `description`, if any, is shown above that question instead. Ignored when presentation.section_interstitials is false, which already shows none. Default true.",
+          "type": "boolean",
+          "default": true
+        },
         "visible_if": {
           "description": "All conditions must hold (AND) for the whole section to be shown. DAG rule: each condition may reference only a question in an EARLIER section.",
           "type": "array",
