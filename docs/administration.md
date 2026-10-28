@@ -553,3 +553,80 @@ what they did.
 4. **Keep definitions and themes in version control** where they can be reviewed
    and diffed like anything else you ship.
 5. **Schedule the purge.** Nothing else cleans up abandoned responses.
+
+## Patient answer mappings
+
+On a survey's admin page, choose **Patient answer mappings**, select an option
+question, and map its raw answer keys to patient field/value pairs. Save the
+rules, then choose **Preview and apply saved mappings** to see the number of
+eligible responses, changed patients and changed fields before applying them.
+The editor adds three empty rows each time it is opened; save and reopen to add
+more. Remove a rule with its Remove checkbox. Rules are stored separately from
+the immutable survey definition in `SurveyAnswerMapping`
+(`prolog_surveys_surveyanswermap`).
+
+Mapping permissions are separate from editing survey content: grant
+`view_surveyanswermapping` to inspect and preview and
+`change_surveyanswermapping` to save rules. Saving forward-active rules and applying existing responses also
+require change permission on the configured host patient model. The admin log
+records saves and applications without patient identifiers or addresses.
+
+Supported targets are `disease`, `stage`, `gender`, `country`, `region`,
+`first_line_therapy`, `second_line_therapy`, `later_therapy`, `diagnosis_date`,
+and `ecog_performance_status`. Dates use `YYYY-MM-DD`; ECOG values are 0–5.
+The host model's choices and length limits also apply (for example gender uses
+the host's stored code). The editor accepts only keys actually offered by the
+survey, including built-in country sources. Only option questions are mapped;
+free text is never interpreted as a clinical value.
+
+Rules take effect for future submitted responses after patient linkage and can
+be applied to existing submitted, patient-linked responses. Unlinked mailing
+lists, missing contacts, in-progress responses and skipped answers never write
+patient fields. Reapplying unchanged rules is a no-op. Conflicting assignments
+to the same field within one response are skipped, and the preview reports
+that count. Across repeat submissions, the most recently submitted matching
+answer wins for each field. Existing values can be overwritten: review the
+preview and the host's clinical persistence policy before applying rules.
+Rules are scoped to a survey across all its versions; review reused question
+and option keys before publishing a new version. Deleting a rule does not undo
+previous patient writes.
+
+The preview expires after 30 minutes. If rules, matching submissions, linked
+patients or affected patient values change, applying shows a fresh preview and
+requires another Apply. Patient changes are atomic: a rejected host write rolls
+back the entire application.
+
+### Host clinical writer
+
+PROlog never directly updates PROMOP's derived clinical projection. Its default
+writer calls `omop_core.services.field_write_service.apply_field_writes` and
+rejects fields the host cannot durably persist. A host may provide
+`PROLOG_PATIENT_MAPPING_WRITER = "my_app.surveys.write_patient_fields"` naming a
+callable with this signature:
+
+```python
+def write_patient_fields(patient, changes, *, submitted_at):
+    # changes is an allowlisted dict with typed date/ECOG values.
+    # Persist through the host's governed, patient-reported clinical service.
+    # Raise django.core.exceptions.ValidationError for unsupported targets.
+    ...
+```
+
+The callable receives the original winning submission timestamp for each field
+(fields from different submissions are grouped into separate calls). It runs
+inside a database transaction with the patient locked. It must
+be transactional and idempotent, preserve patient-reported provenance and the
+host's conflict policy, and raise rather than silently discard any field. It
+must not trigger irreversible external work before transaction commit.
+
+In current PROMOP, therapy line fields are derived from clinical episodes and
+cannot be durably authored with a text label alone. They remain available
+mapping targets, but saving or applying them requires a host adapter with the necessary
+episode/regimen context. Other fields require the host's reviewed writable
+concept mappings. Unsupported targets produce an explicit rejection and no
+partial patient updates; the application never bypasses these host rules.
+
+Host backfills may call
+`prolog_surveys.answer_mappings.apply_response_mappings(response)` after
+linking a submitted response to its patient. Use `plan_mappings(survey)` to
+preview a whole survey before applying its saved rules.

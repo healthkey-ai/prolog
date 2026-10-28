@@ -1,0 +1,10 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p><a href="{% url 'admin:prolog_surveys_survey_mappings' survey.pk %}">Back to mappings</a></p>
+{% if error %}<p class="errornote">{{ error }}</p>{% endif %}
+{% if not patient_model %}<p>No patient model is configured. No patient records can be updated.</p>{% endif %}
+<p>{{ rules|length }} saved rule(s); {{ plan.matched_responses }} eligible response(s); {{ plan.patient_count }} patient(s) would change across {{ plan.field_count }} field(s).</p>
+<p>{{ plan.unlinked_responses }} matching response(s) have no linked patient and will be skipped. {{ plan.conflicts }} conflicting field assignment(s) within a response will be skipped.</p>
+<p>Existing patient values will be overwritten. For repeat submissions, the latest submitted matching answer wins for each field. Skipped answers never clear a field. The host's clinical writer may reject unsupported mappings; the entire batch then rolls back.</p>
+{% if plan.patient_count %}<form method="post">{% csrf_token %}<input type="hidden" name="preview" value="{{ preview }}"><input type="submit" value="Apply saved mappings to existing patients"></form>{% endif %}
+{% endblock %}

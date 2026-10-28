@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p><a href="{% url 'admin:prolog_surveys_survey_change' survey.pk %}">Back to survey</a> · <a href="{% url 'admin:prolog_surveys_survey_mapping_preview' survey.pk %}">Preview and apply saved mappings</a></p>
+<p>Map raw option keys to patient fields. Rules apply across this survey's versions. Review reused keys when publishing a new version. Only submitted responses with a linked patient are eligible; unlinked contact lists stay separate.</p>
+<form method="get"><label for="question">Question</label> <select name="question" id="question"><option value="">Choose a question</option>{% for key, label in questions %}<option value="{{ key }}"{% if key == question_key %} selected{% endif %}>{{ key }} — {{ label }}</option>{% endfor %}</select> <button type="submit">Select</button></form>
+{% if formset %}
+<form method="post">{% csrf_token %}{{ formset.management_form }}{{ formset.non_form_errors }}
+<table><caption>Mappings for {{ question_key }}</caption><thead><tr><th>Answer key</th><th>Patient field</th><th>Mapped value</th><th>Remove</th></tr></thead><tbody>
+{% for form in formset %}<tr><td>{{ form.non_field_errors }}{{ form.answer_value.errors }}{{ form.answer_value }}</td><td>{{ form.patient_field.errors }}{{ form.patient_field }}</td><td>{{ form.mapped_value.errors }}{{ form.mapped_value }}</td><td><label>{{ form.DELETE }} Remove mapping</label></td></tr>{% endfor %}
+</tbody></table>
+<p>Dates use YYYY-MM-DD; ECOG scores use 0–5. Values must meet the host model's field constraints. Therapy projections require a host adapter that authors their underlying clinical resources.</p>
+{% if can_edit %}<input type="submit" value="Save mappings">{% endif %}
+</form>{% endif %}
+<h2>Saved rules</h2><table><thead><tr><th>Question</th><th>Answer key</th><th>Patient field</th><th>Mapped value</th></tr></thead><tbody>{% for rule in rules %}<tr><td>{{ rule.question_key }}</td><td>{{ rule.answer_value }}</td><td>{{ rule.patient_field }}</td><td>{{ rule.mapped_value }}</td></tr>{% empty %}<tr><td colspan="4">No mappings saved.</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

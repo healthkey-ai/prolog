@@ -582,3 +582,35 @@ class SurveyAdministration(models.Model):
 
     def __str__(self) -> str:
         return f"administration {self.due_at} of {self.invitation_id}"
+
+
+class SurveyAnswerMapping(models.Model):
+    """A staff-approved raw option key to patient field/value rule."""
+
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name="answer_mappings")
+    question_key = models.CharField(max_length=128)
+    answer_value = models.TextField(help_text="Raw option key, never a translated label.")
+    patient_field = models.CharField(max_length=64)
+    mapped_value = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "prolog_surveys_surveyanswermap"
+        ordering = ["survey", "question_key", "answer_value", "patient_field"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["survey", "question_key", "answer_value", "patient_field"],
+                name="prolog_answer_mapping_unique",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.question_key}:{self.answer_value} → {self.patient_field}"
+
+    def clean(self):
+        super().clean()
+        from .answer_mappings import validate_rule
+
+        if self.survey_id:
+            validate_rule(self)
