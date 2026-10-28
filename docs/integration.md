@@ -191,3 +191,48 @@ The packaged migration `0001_initial` builds the schema, so
 the chain is exercised exactly as a host would run it; a separate database
 name keeps it apart from the standalone test database. CI runs both
 configurations.
+
+## Linking submitted contacts to patient records
+
+For `link_response` contact capture, submission now attaches a nullable
+`SurveyLinkedContact.patient` foreign key for cohort analytics. PRomop is detected
+when `omop_core` is installed: its `PatientRecord` and `patient_portal.PatientUser`
+are used without additional settings. Migration `0004_linked_contact_patient`
+depends on PRomop's `0104_rename_patientinfo_to_patientrecord` and adds the nullable
+FK with `SET_NULL`; existing contacts remain unlinked until a separate backfill.
+The submission date is available from `linked_contact.response.submitted_at`.
+
+The adapter first resolves the case-insensitive address through an active patient
+account. Otherwise it reuses an unambiguous same-organization patient with that
+email, including one created by a prior contact-only submission. If none exists,
+it uses the response's already-minted person and creates its minimal patient
+projection if needed. A newly filled projection email is marked in PRomop's
+`user_edited_fields` so derivation preserves the self-report without putting an
+unverified address on `Person`. Existing patient email is never replaced.
+
+Ambiguous matches, cross-organization account owners and host failures roll back
+submission and allow a retry. Lookup and creation are serialized per normalized
+email and organization using a salted PostgreSQL transaction advisory lock. This
+avoids duplicate patient linkage when two new submissions arrive simultaneously.
+
+The patient FK is an analytics join. It creates no account, grants no clinical
+access and never re-parents the response's participant. `MintedParticipant` remains
+an account-identity lifecycle marker; a contact-only submission does not mark an
+account as identified. Neither the patient key nor email is returned by the runner
+or response export. Unlinked `store_separately` capture and identity capture keep
+their existing behavior. Consent erasure removes survey/contact records; a host
+patient record has its own lifecycle and is not deleted by survey erasure.
+
+Other hosts opt in before the first migration:
+
+```python
+PROLOG_PATIENT_MODEL = "myhost.Patient"  # model must exist in its app's first migration
+PROLOG_PATIENT_LINKER = "myhost.prolog.link_patient"
+```
+
+`link_patient(response, contact)` returns a saved instance of that patient model.
+It runs inside the submission transaction and must be idempotent and follow the
+host's locking and tenancy rules. Configure it at startup, rather than enabling
+it after migration `0004` has already run without a model; database check
+`prolog_surveys.E003` detects that missing-column configuration and requires an
+explicit host migration to add the foreign key.

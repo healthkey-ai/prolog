@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from django.apps import apps
+from django.db import connection
 from django.utils.module_loading import import_string
 from django.views.decorators.debug import sensitive_variables
 
@@ -76,6 +77,16 @@ def link_promop_patient(response, contact):
         raise PatientLinkError("PRomop linkage requires a Person participant")
     source = PatientRecord.objects.filter(person_id=participant_id).first()
     organization_id = source.organization_id if source else None
+    # There is no row to lock on the first occurrence of an address. A stable,
+    # salted PostgreSQL transaction lock serializes that gap across responses
+    # and workers, without persisting or exposing the address in a lock key.
+    lock_key = int(
+        conf.salted_hash("patient-email", str(organization_id), contact.email.casefold())[:16], 16
+    )
+    if lock_key >= 2**63:
+        lock_key -= 2**64
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_key])
     holders = list(
         PatientUser.objects.filter(
             identity__email__iexact=contact.email, is_active=True
@@ -104,6 +115,10 @@ def link_promop_patient(response, contact):
         .filter(person_id__in={participant_id, target_person_id})
         .order_by("pk")
     )
+    locked_source = next((p for p in locked if p.person_id == participant_id), None)
+    current_organization_id = locked_source.organization_id if locked_source else None
+    if current_organization_id != organization_id:
+        raise PatientLinkError("source organization changed; retry submission")
     target = next((p for p in locked if p.person_id == target_person_id), None)
     if target and target.organization_id != organization_id:
         raise PatientLinkError("account owner belongs to another organization")

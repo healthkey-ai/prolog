@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from prolog_surveys import conf
 from prolog_surveys.definitions.loader import load_definition
-from prolog_surveys.models import ResponseStatus, SurveyLinkedContact
+from prolog_surveys.models import ResponseStatus, SurveyAnswer, SurveyLinkedContact
 from prolog_surveys.patients import link_submitted_response
 from prolog_surveys.tests.conftest import make_response
 
@@ -50,6 +50,9 @@ def attempt(example, settings):
     version = load_definition(example, activate=True).version
     response = make_response(version, language="en")
     contact = SurveyLinkedContact.objects.create(response=response, email="person@example.org")
+    SurveyAnswer.objects.create(
+        response=response, question_key=email["key"], value={"provided": True}
+    )
     return response, contact
 
 
