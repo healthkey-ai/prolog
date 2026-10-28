@@ -92,6 +92,11 @@ jobs:
       - run: uv sync --locked
       - run: uv run python manage.py makemigrations --check --dry-run
       - run: uv run pytest --create-db
+      - name: Patient-linkage foreign-key harness
+        run: uv run pytest prolog_surveys/tests/test_patients.py --create-db
+        env:
+          POSTGRES_DB: prolog_patients
+          PROLOG_PATIENT_MODEL: auth.User
 
   # The image is the only deployment artifact (DEP-5): build it and start it
   # once against PostgreSQL so the deployment-only paths (uv sync without dev

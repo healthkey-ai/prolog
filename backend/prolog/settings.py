@@ -187,6 +187,8 @@ CACHES = {
 # --- PROlog settings (see prolog_surveys/conf.py for defaults and docs) -----
 PROLOG_PROFILE = os.environ.get("PROLOG_PROFILE", "standalone")
 PROLOG_PARTICIPANT_MODEL = os.environ.get("PROLOG_PARTICIPANT_MODEL") or None
+PROLOG_PATIENT_MODEL = os.environ.get("PROLOG_PATIENT_MODEL") or None
+PROLOG_PATIENT_LINKER = os.environ.get("PROLOG_PATIENT_LINKER") or None
 PROLOG_DEFINITION_DIRS = _env_list("PROLOG_DEFINITION_DIRS", [])
 PROLOG_THEME_DIRS = _env_list("PROLOG_THEME_DIRS", [str(REPO_ROOT / "themes")])
 PROLOG_SCHEMA_DIR = os.environ.get("PROLOG_SCHEMA_DIR", str(REPO_ROOT / "schema"))

@@ -67,6 +67,10 @@ DEFAULTS: dict[str, Any] = {
     "PROLOG_PROFILE": "standalone",
     # Dotted "app_label.ModelName" a response may link to (integrated only).
     "PROLOG_PARTICIPANT_MODEL": None,
+    # Optional host patient projection and override for its linkage service.
+    # PRomop is detected automatically; other hosts opt in explicitly.
+    "PROLOG_PATIENT_MODEL": None,
+    "PROLOG_PATIENT_LINKER": None,
     # Directories scanned for survey definition JSON files (loaded as drafts).
     "PROLOG_DEFINITION_DIRS": [],
     # Directories whose subdirectories contain theme.json + assets.
@@ -151,6 +155,18 @@ def participant_model() -> str | None:
     return get("PROLOG_PARTICIPANT_MODEL")
 
 
+def patient_model() -> str | None:
+    """Host patient projection label; PRomop works without extra wiring."""
+    from django.apps import apps
+
+    configured = get("PROLOG_PATIENT_MODEL")
+    if configured:
+        return configured
+    if apps.is_installed("omop_core"):
+        return "omop_core.PatientRecord"
+    return None
+
+
 def schema_dir() -> Path:
     return Path(get("PROLOG_SCHEMA_DIR"))
 
@@ -215,6 +231,22 @@ def validate() -> None:
             ) from exc
         if not callable(resolver):
             raise ImproperlyConfigured("PROLOG_PARTICIPANT_RESOLVER must name a callable")
+    if patient_model():
+        from django.apps import apps
+        from django.utils.module_loading import import_string
+
+        try:
+            apps.get_model(patient_model())
+        except (LookupError, ValueError) as exc:
+            raise ImproperlyConfigured("PROLOG_PATIENT_MODEL must name an installed model") from exc
+        path = get("PROLOG_PATIENT_LINKER")
+        if path:
+            try:
+                linker = import_string(path)
+            except (ImportError, AttributeError) as exc:
+                raise ImproperlyConfigured("PROLOG_PATIENT_LINKER could not be resolved") from exc
+            if not callable(linker):
+                raise ImproperlyConfigured("PROLOG_PATIENT_LINKER must name a callable")
     if prof == "integrated":
         if get("PROLOG_IDENTITY_SERVICE"):
             from .identity import get_identity_service

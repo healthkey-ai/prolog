@@ -75,3 +75,34 @@ def check_participant_columns(app_configs, databases=None, **kwargs):
                         )
                     )
     return errors
+
+
+@register(Tags.database)
+def check_patient_column(app_configs, databases=None, **kwargs):
+    """Detect enabling patient linkage after 0004 ran without a host model."""
+    if not conf.patient_model() or not databases:
+        return []
+    from .models import SurveyLinkedContact
+
+    errors = []
+    for alias in databases:
+        connection = connections[alias]
+        applied = MigrationRecorder(connection).applied_migrations()
+        if ("prolog_surveys", "0004_linked_contact_patient") not in applied:
+            continue
+        with connection.cursor() as cursor:
+            table = SurveyLinkedContact._meta.db_table
+            if table not in connection.introspection.table_names(cursor):
+                continue
+            columns = connection.introspection.get_table_description(cursor, table)
+            if "patient_id" not in {column.name for column in columns}:
+                errors.append(
+                    Error(
+                        f"{table} has no patient_id column although patient linkage is enabled.",
+                        hint="Add the nullable patient FK in a host migration before enabling linkage; "
+                        "0004_linked_contact_patient previously ran without a patient model.",
+                        obj=alias,
+                        id="prolog_surveys.E003",
+                    )
+                )
+    return errors
