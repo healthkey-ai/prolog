@@ -62,6 +62,8 @@ def _default_schema_dir() -> Path:
 
 
 DEFAULTS: dict[str, Any] = {
+    # Host-owned transactional patient writes for approved answer mappings.
+    "PROLOG_PATIENT_MAPPING_WRITER": None,
     # "standalone": own database, no participant model, no identity service.
     # "integrated": installed in a host platform that provides both.
     "PROLOG_PROFILE": "standalone",

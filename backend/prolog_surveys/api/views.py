@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .. import conf, exports, legal, results, stats
+from ..answer_mappings import apply_response_mappings
 from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade, retained_when_hidden
 from ..engine.completion import missing_keys, progress
@@ -54,6 +55,7 @@ from ..models import (
     SurveyVersion,
 )
 from ..options import iso3166
+from ..patients import PatientLinkError, link_submitted_response
 from ..themes import registry as theme_registry
 from .serializers import (
     AnswerSerializer,
@@ -641,6 +643,11 @@ class AnswerView(ResponseMixin, RunnerView):
         )
 
 
+class PatientMappingUnavailable(APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "patient mapping unavailable; please retry submission"
+
+
 class SubmitView(ResponseMixin, RunnerView):
     throttle_classes = [ResponseThrottle, WriteThrottle]
 
@@ -652,15 +659,21 @@ class SubmitView(ResponseMixin, RunnerView):
         state = _state(definition, answers)
         if state["missing"]:
             return Response({"missing": state["missing"]}, status=status.HTTP_400_BAD_REQUEST)
+        # Rules are published under this same lock. Acquire it before any
+        # clinical patient locks so admin applications and submissions agree.
+        Survey.objects.select_for_update().get(pk=response.survey_version.survey_id)
         response.status = ResponseStatus.SUBMITTED
         response.submitted_at = timezone.now()
         response.save(update_fields=["status", "submitted_at", "updated_at"])
-        from ..patients import PatientLinkError, link_submitted_response
-
         try:
             link_submitted_response(response)
         except PatientLinkError:
             raise APIException("patient linkage unavailable; please retry submission") from None
+        try:
+            apply_response_mappings(response)
+        except Exception as exc:
+            log.error("patient mapping failed with %s", type(exc).__name__)
+            raise PatientMappingUnavailable from None
         return Response(_response_payload(response, answers=answers, state=state))
 
 

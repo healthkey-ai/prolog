@@ -17,6 +17,7 @@
 {% endblock %}
 {% block object-tools-items %}
   {% if original %}
+    <li><a href="{% url 'admin:prolog_surveys_survey_mappings' original.pk %}">Patient answer mappings</a></li>
     <li>
       <a href="{% url 'admin:prolog_surveys_survey_verify' %}?survey={{ original.slug }}" class="addlink">
         Add another version

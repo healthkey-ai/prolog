@@ -46,6 +46,7 @@ from .models import (
     ResponseStatus,
     Survey,
     SurveyAdministration,
+    SurveyAnswerMapping,
     SurveyConsent,
     SurveyContact,
     SurveyInvitation,
@@ -248,7 +249,23 @@ class SurveyAdmin(admin.ModelAdmin):
     change_form_template = "admin/prolog_surveys/survey/change_form.html"
 
     def get_urls(self):
+        from . import mapping_admin
+
         return [
+            path(
+                "<uuid:survey_id>/patient-mappings/",
+                self.admin_site.admin_view(
+                    lambda request, survey_id: mapping_admin.editor(self, request, survey_id)
+                ),
+                name="prolog_surveys_survey_mappings",
+            ),
+            path(
+                "<uuid:survey_id>/patient-mappings/preview/",
+                self.admin_site.admin_view(
+                    lambda request, survey_id: mapping_admin.preview(self, request, survey_id)
+                ),
+                name="prolog_surveys_survey_mapping_preview",
+            ),
             path(
                 "verify/",
                 self.admin_site.admin_view(self.verify_view),
@@ -935,3 +952,14 @@ class InvitationAdmin(admin.ModelAdmin):
     list_display = ("id", "survey", "language", "active", "created_at")
     list_filter = ("survey", "active")
     inlines = [AdministrationInline]
+
+
+@admin.register(SurveyAnswerMapping)
+class AnswerMappingAdmin(ReadOnlyMixin, admin.ModelAdmin):
+    """Rules are edited in survey context with definition-backed choices."""
+
+    list_display = ("survey", "question_key", "answer_value", "patient_field", "mapped_value")
+    list_filter = ("survey", "patient_field")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
