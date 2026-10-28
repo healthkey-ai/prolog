@@ -655,6 +655,12 @@ class SubmitView(ResponseMixin, RunnerView):
         response.status = ResponseStatus.SUBMITTED
         response.submitted_at = timezone.now()
         response.save(update_fields=["status", "submitted_at", "updated_at"])
+        from ..patients import PatientLinkError, link_submitted_response
+
+        try:
+            link_submitted_response(response)
+        except PatientLinkError:
+            raise APIException("patient linkage unavailable; please retry submission") from None
         return Response(_response_payload(response, answers=answers, state=state))
 
 

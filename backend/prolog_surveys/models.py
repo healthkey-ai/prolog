@@ -17,9 +17,11 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from . import conf
 from .engine.localize import localize, resolve_language
 
 PARTICIPANT_MODEL = getattr(settings, "PROLOG_PARTICIPANT_MODEL", None)
+PATIENT_MODEL = conf.patient_model()
 
 
 class LifecycleStatus(models.TextChoices):
@@ -468,6 +470,14 @@ class SurveyLinkedContact(models.Model):
     response = models.OneToOneField(
         SurveyResponse, on_delete=models.CASCADE, related_name="linked_contact"
     )
+    if PATIENT_MODEL:
+        patient = models.ForeignKey(
+            PATIENT_MODEL,
+            null=True,
+            blank=True,
+            on_delete=models.SET_NULL,
+            related_name="prolog_linked_contacts",
+        )
     email = models.EmailField()
     language = models.CharField(max_length=12, blank=True, default="")
     consent_text = models.TextField(help_text="The notice shown when the address was given.")
