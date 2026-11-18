@@ -61,6 +61,8 @@ export interface QuestionConfig {
   integer?: boolean;
   min_date?: string;
   max_date?: string;
+  /** date: the precisions accepted (default ["day"]); with "year" the month may be left out. */
+  precision?: DatePrecision[];
   store_separately?: boolean;
   /** The address is kept beside the response — findable both ways — with no account. */
   link_response?: boolean;
@@ -82,12 +84,19 @@ export interface CaptureConsent {
 
 export type ConditionOp = "eq" | "neq" | "in" | "contains" | "not_contains" | "answered";
 
-export interface Condition {
+export interface SimpleCondition {
   question: string;
   op: ConditionOp;
   value?: string;
   values?: string[];
 }
+
+/** Holds when any of its conditions does (an OR inside visible_if's AND). */
+export interface AnyCondition {
+  any: SimpleCondition[];
+}
+
+export type Condition = SimpleCondition | AnyCondition;
 
 export interface Question {
   key: string;
@@ -160,7 +169,9 @@ export type RankingValue = { order: string[]; other_text?: string };
 export type MatrixValue = { ratings: Record<string, Rating> };
 export type TextValue = { text: string };
 export type NumberValue = { number: number };
-export type DateValue = { date: string };
+export type DatePrecision = "day" | "month" | "year";
+/** A date (YYYY-MM-DD, YYYY-MM or YYYY, as config.precision allows), or one of the question's own options instead. */
+export type DateValue = { date: string } | OptionValue;
 /** `consents` lists the keys ticked with the address — the marker is all the response holds. */
 export type EmailValue = { provided: boolean; consents?: string[] };
 

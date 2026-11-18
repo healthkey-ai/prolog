@@ -5,6 +5,7 @@ import { useMediaQuery } from "@/lib/useMediaQuery";
 import type { OverviewSection, QuestionStatus } from "@/survey/navigation";
 import { NOT_APPLICABLE, optionLabel, type AnswerValue, type Question, type Section } from "@/survey/types";
 import { Eyebrow } from "./Eyebrow";
+import { displayDate } from "./renderers/DateInput";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -20,7 +21,7 @@ interface Props {
 
 const GLYPH: Record<QuestionStatus, string> = { answered: "✓", skipped: "–", current: "●", unanswered: "○", unreachable: "○" };
 
-function summarize(q: Question, value: AnswerValue | undefined, sourceLabels?: Record<string, Record<string, string>>): string {
+function summarize(q: Question, value: AnswerValue | undefined, language: string, sourceLabels?: Record<string, Record<string, string>>): string {
   if (!value) return "";
   if ("skipped" in value) return "";
   const labelOf = (k: string) => optionLabel(q, k);
@@ -32,13 +33,13 @@ function summarize(q: Question, value: AnswerValue | undefined, sourceLabels?: R
   if ("ratings" in value) return Object.values(value.ratings).map((r) => (r === NOT_APPLICABLE ? "—" : r)).join(" · ");
   if ("text" in value) return value.text;
   if ("number" in value) return String(value.number);
-  if ("date" in value) return value.date;
+  if ("date" in value) return displayDate(value.date, language);
   if ("provided" in value) return value.provided ? "✓" : "";
   return "";
 }
 
 export function OverviewPanel({ open, onClose, sections, definitionSections, answers, onNavigate, sourceLabels }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const statusLabel: Record<QuestionStatus, string> = {
     answered: t("overview.answered"),
     skipped: t("overview.skipped"),
@@ -90,7 +91,7 @@ export function OverviewPanel({ open, onClose, sections, definitionSections, ans
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{row.question.text as string}</span>
                       <span className="block truncate text-sm text-ink-soft">
-                        {row.status === "skipped" ? t("overview.skipped") : summarize(row.question, answers[row.key], sourceLabels) || t("overview.noAnswer")}
+                        {row.status === "skipped" ? t("overview.skipped") : summarize(row.question, answers[row.key], i18n.language, sourceLabels) || t("overview.noAnswer")}
                       </span>
                     </span>
                     <span className="sr-only">{statusLabel[row.status]}</span>
