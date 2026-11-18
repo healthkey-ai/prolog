@@ -6,6 +6,7 @@ import { matrixRows, offeredOptionKeys, sourcedOptionKeys } from "./visibility";
 import {
   type AnswerIssue,
   type AnswerValue,
+  type DatePrecision,
   type Answers,
   type Question,
   type QuestionConfig,
@@ -58,6 +59,7 @@ export type AnswerIssueCode =
   | "number_too_small"
   | "number_too_large"
   | "date_format"
+  | "date_precision"
   | "date_invalid"
   | "date_too_early"
   | "date_too_late"
@@ -89,7 +91,20 @@ export class AnswerError extends Error {
   }
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** A date at each precision a definition may accept (config.precision). Mirrors answers.py. */
+const DATE_PATTERNS: Record<DatePrecision, RegExp> = {
+  day: /^\d{4}-\d{2}-\d{2}$/,
+  month: /^\d{4}-\d{2}$/,
+  year: /^\d{4}$/,
+};
+export const DEFAULT_PRECISION: readonly DatePrecision[] = ["day"];
+
+/** The precision a date answer is given at, or null when it is not a date. */
+export function datePrecision(value: unknown): DatePrecision | null {
+  if (typeof value !== "string") return null;
+  for (const p of ["day", "month", "year"] as const) if (DATE_PATTERNS[p].test(value)) return p;
+  return null;
+}
 export const MAX_OTHER_TEXT = 500;
 /** Absolute cap on a text answer (code points), whatever the definition says; mirrors answers.py. */
 export const MAX_TEXT_LENGTH = 10_000;
@@ -351,14 +366,28 @@ export function validateAnswer(
   }
 
   if (q.type === "date") {
+    // An answer other than a date ("not sure", "still ongoing"), when the definition offers one.
+    if ("option" in raw) {
+      const option = raw.option;
+      if (typeof option !== "string" || !option) fail("option_required");
+      if (!questionOptions(q).some((o) => o.key === option)) fail("option_unknown", { option });
+      return { option };
+    }
     const d = raw.date;
-    if (typeof d !== "string" || !DATE_RE.test(d)) fail("date_format");
-    const parsed = new Date(`${d}T00:00:00Z`);
+    const precision = datePrecision(d);
+    if (precision === null) fail("date_format");
+    const date = d as string;
+    const allowed = cfg.precision ?? DEFAULT_PRECISION;
+    if (!allowed.includes(precision)) fail("date_precision", { allowed: [...allowed] });
+    // The first day of the period: a month or a year is valid when its first day is (month 13 and year 0 are not).
+    const first = `${date}-01-01`.slice(0, 10);
+    const parsed = new Date(`${first}T00:00:00Z`);
     // Year 0 round-trips in JS but not in Python (`date.MINYEAR` is 1): both engines refuse it.
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== d || parsed.getUTCFullYear() < 1) fail("date_invalid");
-    if (cfg.min_date && d < cfg.min_date) fail("date_too_early", { min: cfg.min_date });
-    if (cfg.max_date && d > cfg.max_date) fail("date_too_late", { max: cfg.max_date });
-    return { date: d };
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== first || parsed.getUTCFullYear() < 1) fail("date_invalid");
+    // A partial date is a period, within bounds when the period meets them; ISO strings compare at the date's own length.
+    if (cfg.min_date && date < cfg.min_date.slice(0, date.length)) fail("date_too_early", { min: cfg.min_date });
+    if (cfg.max_date && date > cfg.max_date.slice(0, date.length)) fail("date_too_late", { max: cfg.max_date });
+    return { date };
   }
 
   if (q.type === "email") {

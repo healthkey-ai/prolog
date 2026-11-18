@@ -181,7 +181,7 @@
           "default": true
         },
         "visible_if": {
-          "description": "All conditions must hold (AND) for the whole section to be shown. DAG rule: each condition may reference only a question in an EARLIER section.",
+          "description": "All conditions must hold (AND; an `any` group inside is an OR) for the whole section to be shown. DAG rule: each condition may reference only a question in an EARLIER section.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/condition" }
@@ -215,12 +215,13 @@
           "default": true
         },
         "options": {
+          "description": "The choices of single, dropdown, multi and ranking questions. On a date question, answers given instead of a date (for example \"Not sure\" or \"Still ongoing\"), stored as {\"option\": key}; conditions can test them with eq, neq and in.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/option" }
         },
         "visible_if": {
-          "description": "All conditions must hold (AND) for the question to be shown. Hiding a question invalidates its stored answer. DAG rule: each condition may reference only a question that appears EARLIER in presentation order (never itself, never a later question).",
+          "description": "All conditions must hold (AND; an `any` group inside is an OR) for the question to be shown. Hiding a question invalidates its stored answer. DAG rule: each condition may reference only a question that appears EARLIER in presentation order (never itself, never a later question).",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/condition" }
@@ -288,6 +289,23 @@
       }
     },
     "condition": {
+      "description": "One visible_if entry: a simple condition on one earlier question, or an `any` group that holds when at least one of its simple conditions does (an OR inside visible_if's AND).",
+      "oneOf": [{ "$ref": "#/$defs/simple_condition" }, { "$ref": "#/$defs/any_condition" }]
+    },
+    "any_condition": {
+      "type": "object",
+      "required": ["any"],
+      "additionalProperties": false,
+      "properties": {
+        "any": {
+          "description": "Holds when at least one of these conditions holds. Each is a DAG edge like any other condition. Groups do not nest.",
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/simple_condition" }
+        }
+      }
+    },
+    "simple_condition": {
       "type": "object",
       "required": ["question", "op"],
       "additionalProperties": false,
@@ -398,6 +416,13 @@
         "integer": { "description": "number: whole numbers only.", "type": "boolean" },
         "min_date": { "description": "date: inclusive lower bound, ISO 8601 date.", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
         "max_date": { "description": "date: inclusive upper bound, ISO 8601 date.", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "precision": {
+          "description": "date: the precisions an answer may be given at. day = YYYY-MM-DD, month = YYYY-MM, year = YYYY. Default [\"day\"]. With more than one, the runner asks for the parts separately and the respondent may leave out the finer ones (for example [\"month\", \"year\"]: the month if they know it). A partial date is a period, within min_date and max_date when the period meets them.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["day", "month", "year"] }
+        },
         "store_separately": {
           "description": "email: contact capture. The address is persisted in a separate contact table with no link to the response, and is never returned by the API or included in answer exports.",
           "type": "boolean"

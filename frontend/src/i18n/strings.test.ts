@@ -46,6 +46,7 @@ const ISSUE_CODES: Record<AnswerIssueCode, true> = {
   number_too_small: true,
   number_too_large: true,
   date_format: true,
+  date_precision: true,
   date_invalid: true,
   date_too_early: true,
   date_too_late: true,
