@@ -1,0 +1,223 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-history",
+  "version": "1.0",
+  "status": "draft",
+  "default_language": "en",
+  "languages": [
+    "en"
+  ],
+  "title": {
+    "en": "Medicine history"
+  },
+  "intro": {
+    "en": "A few questions about a regular medicine and your condition. Dates can be as rough as you remember them. Your answers are anonymous."
+  },
+  "completion": {
+    "en": "Thank you. Your answers have been recorded."
+  },
+  "theme": "default",
+  "participation": {
+    "anonymous": true,
+    "resume": "browser_token"
+  },
+  "presentation": {
+    "mode": "question",
+    "overview": true,
+    "section_interstitials": false,
+    "skip_policy": "soft",
+    "progress": "bar"
+  },
+  "sections": [
+    {
+      "key": "medicine",
+      "title": {
+        "en": "Your medicine"
+      },
+      "questions": [
+        {
+          "key": "taking",
+          "type": "single",
+          "text": {
+            "en": "Do you take a regular medicine for your condition?"
+          },
+          "options": [
+            {
+              "key": "yes_now",
+              "label": {
+                "en": "Yes, I take one now"
+              }
+            },
+            {
+              "key": "stopped",
+              "label": {
+                "en": "I took one, and have stopped"
+              }
+            },
+            {
+              "key": "never",
+              "label": {
+                "en": "No, never"
+              }
+            }
+          ]
+        },
+        {
+          "key": "started",
+          "type": "date",
+          "text": {
+            "en": "When did you start it?"
+          },
+          "help": {
+            "en": "The month and year, or the year alone if that is all you remember."
+          },
+          "visible_if": [
+            {
+              "question": "taking",
+              "op": "in",
+              "values": [
+                "yes_now",
+                "stopped"
+              ]
+            }
+          ],
+          "config": {
+            "precision": [
+              "month",
+              "year"
+            ],
+            "min_date": "1950-01-01",
+            "max_date": "2099-12-31"
+          },
+          "options": [
+            {
+              "key": "not_sure",
+              "label": {
+                "en": "I am not sure"
+              }
+            }
+          ]
+        },
+        {
+          "key": "ended",
+          "type": "date",
+          "text": {
+            "en": "When did you stop it?"
+          },
+          "visible_if": [
+            {
+              "question": "taking",
+              "op": "eq",
+              "value": "stopped"
+            }
+          ],
+          "config": {
+            "precision": [
+              "month",
+              "year"
+            ],
+            "min_date": "1950-01-01",
+            "max_date": "2099-12-31"
+          },
+          "options": [
+            {
+              "key": "not_sure",
+              "label": {
+                "en": "I am not sure"
+              }
+            }
+          ]
+        },
+        {
+          "key": "review",
+          "type": "single",
+          "text": {
+            "en": "Is a review of this medicine planned?"
+          },
+          "help": {
+            "en": "Asked while you still take it, or when you are not sure when it stopped."
+          },
+          "visible_if": [
+            {
+              "any": [
+                {
+                  "question": "taking",
+                  "op": "eq",
+                  "value": "yes_now"
+                },
+                {
+                  "question": "ended",
+                  "op": "eq",
+                  "value": "not_sure"
+                }
+              ]
+            }
+          ],
+          "options": [
+            {
+              "key": "yes",
+              "label": {
+                "en": "Yes"
+              }
+            },
+            {
+              "key": "no",
+              "label": {
+                "en": "No"
+              }
+            },
+            {
+              "key": "dont_know",
+              "label": {
+                "en": "I don't know"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "background",
+      "title": {
+        "en": "Your condition"
+      },
+      "questions": [
+        {
+          "key": "diagnosed_year",
+          "type": "date",
+          "text": {
+            "en": "In what year was your condition diagnosed?"
+          },
+          "config": {
+            "precision": [
+              "year"
+            ],
+            "min_date": "1900-01-01",
+            "max_date": "2099-12-31"
+          }
+        },
+        {
+          "key": "last_test",
+          "type": "date",
+          "required": false,
+          "text": {
+            "en": "When was your last blood test?"
+          },
+          "help": {
+            "en": "As exactly as you remember it."
+          },
+          "config": {
+            "precision": [
+              "day",
+              "month",
+              "year"
+            ],
+            "min_date": "2000-01-01",
+            "max_date": "2099-12-31"
+          }
+        }
+      ]
+    }
+  ]
+}

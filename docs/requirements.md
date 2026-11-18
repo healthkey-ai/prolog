@@ -161,6 +161,8 @@ identity capture and the participant opts in.
 | DEF-9 | The schema is versioned (`schema_version`); the runner supports the current version and documents migrations for earlier ones. |
 | DEF-10 | **A survey is a directed acyclic graph (DAG).** Questions are nodes; every `visible_if` condition (on a question or a section) and every `rows_from` / `options_from` reference is a directed edge from the dependent element to the question it depends on. An edge may only point to a question that appears **earlier** in presentation order (sections in array order, then questions in array order). Self-references, forward references, and therefore cycles are rejected at validation. |
 | DEF-11 | **Options taken from an earlier selection.** A `single` question may set `config.options_from` to an earlier `multi`: its options are that question's *selected* options, in its order and with its labels (a `free_text` option shows the participant's own text), followed by the question's own options with no key repeated. The source's `exclusive` options are never offered, and a source that selected only those leaves the question hidden — as an empty `rows_from` matrix is — and closed for progress purposes once the source is answered. The server accepts only what the source currently offers; unpicking the chosen option invalidates the answer (RUN-16). |
+| DEF-12 | **Any-of conditions.** A `visible_if` list may hold an `any` group of two or more simple conditions, which holds when at least one of them does; the list as a whole is still an AND. Each condition inside a group is a DAG edge (DEF-10). Groups do not nest. A question behind a false group is pending while any question the group reads is still ahead, and closed once all of them are settled. |
+| DEF-13 | **Partial dates and answers instead of a date.** A `date` question may set `config.precision` to the precisions it accepts (`day`, `month`, `year`; default `day`), stored as `YYYY-MM-DD`, `YYYY-MM` or `YYYY`; a partial date is a period, within `min_date`/`max_date` when the period meets them. Its `options` are answers given instead of a date ("not sure"), stored as `{"option": k}` and testable with `eq`/`neq`/`in`; a date given is none of them. |
 
 ### Survey graph
 
@@ -240,7 +242,7 @@ changed answer.
 | Q-7 | `matrix` | one row per fixed row or per option currently selected in `rows_from`; a segmented scale per row; legend once; rows stack vertically | `{"ratings": {row: n}}` |
 | Q-8 | `text` | input or textarea (`multiline`, `max_length`) | `{"text": s}` |
 | Q-9 | `number` | numeric input (`min_value`, `max_value`, `integer`) | `{"number": n}` |
-| Q-10 | `date` | date input (`min_date`, `max_date`) | `{"date": "YYYY-MM-DD"}` |
+| Q-10 | `date` | date input (`min_date`, `max_date`); separate day, month and year fields when `precision` lets a part be left out; the question's own options as radio cards (DEF-13) | `{"date": "YYYY-MM-DD" \| "YYYY-MM" \| "YYYY"}` or `{"option": k}` |
 | Q-11 | `email` | email input with the question's help copy in an info panel, optional consent tick boxes with a note beneath (CON-9); equal-weight Skip | never stored as an answer — see CON-3/CON-4; the answer row records only `{"provided": true|false}` and the consent keys ticked |
 | Q-12 | any | explicit skip | `{"skipped": true}` |
 

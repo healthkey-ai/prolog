@@ -42,8 +42,9 @@ function scalar(answer: AnswerValue): string | null {
   return null;
 }
 
-/** Every operator is false when the referenced question is unanswered. */
+/** Every operator is false when the referenced question is unanswered. An `any` group holds when one of its conditions does. */
 export function evaluateCondition(c: Condition, answers: Answers): boolean {
+  if ("any" in c) return c.any.some((child) => evaluateCondition(child, answers));
   const answer = answers[c.question];
   if (!isAnswered(answer)) return false;
   const a = answer as AnswerValue;
@@ -55,7 +56,8 @@ export function evaluateCondition(c: Condition, answers: Answers): boolean {
     return items.includes(c.value ?? "") === (c.op === "contains");
   }
   const s = scalar(a);
-  if (s === null) return false;
+  // A date given where the question also offers alternatives ("not sure") is answered, and is none of them.
+  if (s === null) return c.op === "neq" && "date" in a;
   if (c.op === "eq") return s === c.value;
   if (c.op === "neq") return s !== c.value;
   if (c.op === "in") return (c.values ?? []).includes(s);
@@ -64,6 +66,11 @@ export function evaluateCondition(c: Condition, answers: Answers): boolean {
 
 export function conditionsHold(conditions: Condition[] | undefined, answers: Answers): boolean {
   return (conditions ?? []).every((c) => evaluateCondition(c, answers));
+}
+
+/** The questions a condition reads: one, or each of an `any` group's. Mirrors visibility.py. */
+export function conditionQuestions(c: Condition): string[] {
+  return "any" in c ? c.any.map((child) => child.question) : [c.question];
 }
 
 /**
@@ -135,14 +142,16 @@ export function pendingKeys(def: Definition, answers: Answers): string[] {
     for (const q of section.questions) {
       if (shown.has(q.key)) continue;
       const conditions = [...(section.visible_if ?? []), ...(q.visible_if ?? [])];
-      let falseConditions = conditions.filter((c) => !evaluateCondition(c, seen)).map((c) => c.question);
+      let falseConditions = conditions.filter((c) => !evaluateCondition(c, seen)).map(conditionQuestions);
       // A question hidden for want of rows or options waits on its source the
       // same way a condition waits on its question.
       if (!falseConditions.length) {
         const source = dynamicSource(q);
-        if (source) falseConditions = [source];
+        if (source) falseConditions = [[source]];
       }
-      if (falseConditions.some(settled)) closed.add(q.key);
+      // A false condition is decided once every question it reads is settled:
+      // an `any` group may still open while one of its questions is ahead.
+      if (falseConditions.some((keys) => keys.every(settled))) closed.add(q.key);
       else if (ANSWERABLE.has(q.type)) pending.push(q.key);
     }
   }

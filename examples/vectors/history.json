@@ -1,0 +1,83 @@
+{
+  "definition": "sample-history.json",
+  "description": "Partial dates and any-of conditions. A month-and-year date also takes the year alone and the question's own 'not sure'; a year-only date refuses a month; a day-month-year date takes any of the three, and a partial date is within bounds when its period meets them. 'review' opens on either of two answers (an any group): taking the medicine now, or not being sure when it stopped. Changing either branch closes it and invalidates its answer only when neither branch holds.",
+  "initial": {
+    "visible": ["taking", "diagnosed_year", "last_test"]
+  },
+  "steps": [
+    {
+      "answer": {"key": "taking", "value": {"option": "stopped"}},
+      "expect": {"invalidated": [], "visible": ["taking", "started", "ended", "diagnosed_year", "last_test"]}
+    },
+    {
+      "answer": {"key": "started", "value": {"date": "2019-06"}},
+      "expect": {"invalidated": [], "answers_subset": {"started": {"date": "2019-06"}}}
+    },
+    {
+      "answer": {"key": "ended", "value": {"option": "not_sure"}},
+      "expect": {"invalidated": [], "visible": ["taking", "started", "ended", "review", "diagnosed_year", "last_test"]}
+    },
+    {
+      "answer": {"key": "review", "value": {"option": "yes"}},
+      "expect": {"invalidated": [], "missing": ["diagnosed_year", "last_test"]}
+    },
+    {
+      "answer": {"key": "ended", "value": {"date": "2021"}},
+      "expect": {
+        "invalidated": ["review"],
+        "visible": ["taking", "started", "ended", "diagnosed_year", "last_test"],
+        "answers_subset": {"ended": {"date": "2021"}}
+      }
+    },
+    {
+      "answer": {"key": "taking", "value": {"option": "yes_now"}},
+      "expect": {
+        "invalidated": ["ended"],
+        "visible": ["taking", "started", "review", "diagnosed_year", "last_test"],
+        "answers": {"taking": {"option": "yes_now"}, "started": {"date": "2019-06"}}
+      }
+    },
+    {
+      "answer": {"key": "review", "value": {"option": "no"}},
+      "expect": {"invalidated": []}
+    },
+    {
+      "answer": {"key": "taking", "value": {"option": "never"}},
+      "expect": {
+        "invalidated": ["started", "review"],
+        "visible": ["taking", "diagnosed_year", "last_test"],
+        "answers": {"taking": {"option": "never"}}
+      }
+    },
+    {
+      "answer": {"key": "diagnosed_year", "value": {"date": "1998"}},
+      "expect": {"invalidated": [], "missing": ["last_test"]}
+    }
+  ],
+  "final": {
+    "missing": ["last_test"],
+    "progress": {"answered": 5, "total": 6}
+  },
+  "reject": [
+    {"key": "started", "value": {"date": "2019-06-15"}, "code": "date_precision", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"date": "19-06"}, "code": "date_format", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"date": "2019-13"}, "code": "date_invalid", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"date": "0000"}, "code": "date_invalid", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"date": "1949-12"}, "code": "date_too_early", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"option": "ongoing"}, "code": "option_unknown", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"option": ""}, "code": "option_required", "given": {"taking": {"option": "yes_now"}}},
+    {"key": "diagnosed_year", "value": {"date": "1998-04"}, "code": "date_precision"},
+    {"key": "diagnosed_year", "value": {"option": "not_sure"}, "code": "option_unknown"},
+    {"key": "last_test", "value": {"date": "1999-12"}, "code": "date_too_early"},
+    {"key": "last_test", "value": {"date": "2100"}, "code": "date_too_late"},
+    {"key": "last_test", "value": {"date": 2019}, "code": "date_format"}
+  ],
+  "accept": [
+    {"key": "started", "value": {"date": "2019"}, "canonical": {"date": "2019"}, "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"option": "not_sure"}, "canonical": {"option": "not_sure"}, "given": {"taking": {"option": "yes_now"}}},
+    {"key": "started", "value": {"date": "1950-01"}, "canonical": {"date": "1950-01"}, "given": {"taking": {"option": "yes_now"}}},
+    {"key": "last_test", "value": {"date": "2000"}, "canonical": {"date": "2000"}},
+    {"key": "last_test", "value": {"date": "2000-01"}, "canonical": {"date": "2000-01"}},
+    {"key": "last_test", "value": {"date": "2024-02-29"}, "canonical": {"date": "2024-02-29"}}
+  ]
+}

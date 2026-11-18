@@ -20,6 +20,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..engine.answers import MAX_TEXT_LENGTH
+from ..engine.visibility import condition_questions
 from .schema import SUPPORTED_SCHEMA_VERSIONS, Issue
 
 SINGLE_VALUED = {"single", "dropdown", "scale"}
@@ -44,7 +45,7 @@ CONFIG_BY_TYPE: dict[str, set[str]] = {
     "matrix": {"scale", "rows_from", "rows"},
     "text": {"max_length", "multiline"},
     "number": {"min_value", "max_value", "integer"},
-    "date": {"min_date", "max_date"},
+    "date": {"min_date", "max_date", "precision"},
     "email": {
         "store_separately",
         "link_response",
@@ -446,6 +447,17 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             lo, hi = parse_dates(cfg, ("min_date", "max_date"), f"{qp}.config", "date_invalid")
             if lo and hi and lo > hi:
                 err("date_range", f"{qp}.config", "min_date exceeds max_date")
+            # A date question's options are answers instead of a date; there is
+            # nowhere to type an "other" beside them.
+            for oi, o in enumerate(q.get("options", [])):
+                if o.get("free_text"):
+                    err(
+                        "date_free_text",
+                        f"{qp}.options[{oi}].free_text",
+                        "a date question's options cannot take free text",
+                    )
+        elif t not in ("single", "dropdown", "multi", "ranking", "info") and q.get("options"):
+            warn("options_unused", f"{qp}.options", f"'{t}' questions do not use options")
 
     # --- DAG rule (DEF-10) ------------------------------------------------
     def check_edge(
@@ -484,7 +496,10 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             if t == "info":
                 err("condition_op", path, "info questions are never answered")
             return
-        if t in ("text", "number", "date", "email", "info", "matrix"):
+        # A date question's own options ("not sure") can be tested like a
+        # single choice; the date itself only as answered.
+        dated_options = t == "date" and bool(target.option_keys)
+        if t in ("text", "number", "date", "email", "info", "matrix") and not dated_options:
             err("condition_op", path, f"only 'answered' can test a '{t}' question")
             return
         if op in ("contains", "not_contains") and t not in MULTI_VALUED:
@@ -521,15 +536,23 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             if v not in target.option_keys and not has_source:
                 err("condition_value", path, f"'{v}' is not an option of '{target.key}'")
 
+    def simple_conditions(path: str, conds: list[dict[str, Any]]):
+        """Each simple condition with its path, an ``any`` group's included."""
+        for ci, cond in enumerate(conds):
+            cp = f"{path}.visible_if[{ci}]"
+            if "any" in cond:
+                for ai, sub in enumerate(cond["any"]):
+                    yield f"{cp}.any[{ai}]", sub
+            else:
+                yield cp, cond
+
     for si, section in enumerate(definition["sections"]):
         sp = f"$.sections[{si}]"
-        for ci, cond in enumerate(section.get("visible_if", [])):
-            cp = f"{sp}.visible_if[{ci}]"
+        for cp, cond in simple_conditions(sp, section.get("visible_if", [])):
             check_condition(cp, cond, check_edge(cp, None, cond["question"], section_index=si))
     for info in questions.values():
         qp = info.path
-        for ci, cond in enumerate(info.question.get("visible_if", [])):
-            cp = f"{qp}.visible_if[{ci}]"
+        for cp, cond in simple_conditions(qp, info.question.get("visible_if", [])):
             check_condition(cp, cond, check_edge(cp, info, cond["question"]))
         cfg = info.question.get("config") or {}
         for setting in ("rows_from", "options_from"):
@@ -551,9 +574,14 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             conds = list(info.question.get("visible_if", []))
             conds += definition["sections"][info.section_index].get("visible_if", [])
             by_target: dict[str, list[dict[str, Any]]] = {}
+            # An ``any`` group narrows nothing on its own (one of its branches
+            # may hold), so only simple conditions take part in the clash
+            # check; the group is dead only when every branch reads a question
+            # that can never be shown.
             for c in conds:
-                by_target.setdefault(c["question"], []).append(c)
-            dead = any(c["question"] in unreachable for c in conds)
+                if "any" not in c:
+                    by_target.setdefault(c["question"], []).append(c)
+            dead = any(all(k in unreachable for k in condition_questions(c)) for c in conds)
             for target_key, cs in by_target.items():
                 if questions[target_key].type not in SINGLE_VALUED:
                     continue

@@ -591,3 +591,31 @@ def test_progress_total_is_fixed_and_a_closed_branch_counts_as_passed():
     answers = {"has_symptoms": {"skipped": True}}
     assert pending_keys(definition, answers) == ["low_wellbeing_reason"]
     assert progress(definition, answers)["answered"] == 5
+
+
+def test_an_any_group_stays_pending_while_one_of_its_questions_is_ahead():
+    """An ``any`` group is decided against only when every question it reads
+    is settled: one false branch does not close a question the other branch
+    may still open."""
+    definition = load_definition("sample-history.json")
+    answers: dict = {}
+    assert "review" in pending_keys(definition, answers)
+    # "stopped" makes the first branch false, but "ended" is still ahead
+    store(definition, answers, "taking", {"option": "stopped"})
+    assert "review" not in visible_keys(definition, answers)
+    assert "review" in pending_keys(definition, answers)
+    # a date (not "not sure") settles the second branch: now closed
+    store(definition, answers, "ended", {"date": "2021-03"})
+    assert "review" not in pending_keys(definition, answers)
+
+
+def test_neq_on_a_date_question_holds_for_a_date():
+    """A date question's options are alternatives to a date: a date given is
+    answered, and is not any of them."""
+    from prolog_surveys.engine.visibility import evaluate_condition
+
+    cond = {"question": "ended", "op": "neq", "value": "not_sure"}
+    assert evaluate_condition(cond, {"ended": {"date": "2021"}})
+    assert not evaluate_condition(cond, {"ended": {"option": "not_sure"}})
+    assert not evaluate_condition({**cond, "op": "eq"}, {"ended": {"date": "2021"}})
+    assert not evaluate_condition(cond, {})
