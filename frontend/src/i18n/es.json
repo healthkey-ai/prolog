@@ -24,6 +24,7 @@
   "intro.consentAgree": "He leído el aviso y estoy de acuerdo",
   "intro.consentRequired": "Acepte el aviso para continuar.",
   "intro.submitted": "Ya ha completado esta encuesta. Gracias.",
+  "intro.lastCompleted": "Lo completó por última vez el {{date}}.",
   "header.section": "Sección {{number}} de {{total}}",
   "header.overview": "Todas las preguntas",
   "header.language": "Idioma",

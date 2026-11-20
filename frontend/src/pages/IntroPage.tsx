@@ -137,6 +137,16 @@ export function IntroPage() {
     if (definition.data)
       setNoResume(definition.data.participation?.resume === "none");
   }, [definition.data]);
+  // A repeatable instrument (a regular check-in) whose stored response is
+  // finished: this visit is the next one, so it starts afresh rather than
+  // offering the finished response as "already completed".
+  const [lastCompleted, setLastCompleted] = useState<string | null>(null);
+  useEffect(() => {
+    if (fresh || existing.data?.status !== "submitted") return;
+    if (!definition.data?.participation?.repeatable) return;
+    setLastCompleted(existing.data.submitted_at);
+    setFresh(true);
+  }, [fresh, existing.data, definition.data]);
 
   if (definition.isLoading)
     return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
@@ -533,6 +543,11 @@ export function IntroPage() {
                     </p>
                   )}
                 </div>
+              )}
+              {lastCompleted && (
+                <p className={soft} data-testid="last-completed">
+                  {t("intro.lastCompleted", { date: new Date(lastCompleted).toLocaleDateString(def.language, { day: "numeric", month: "long", year: "numeric" }) })}
+                </p>
               )}
               <div>
                 <Button

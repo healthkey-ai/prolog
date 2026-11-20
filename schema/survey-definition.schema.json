@@ -92,6 +92,11 @@
           "description": "How an in-progress response is resumed. browser_token (default for anonymous) = response id kept in browser storage; account = attached to the authenticated user; none = resumed only within the current browser tab (sessionStorage), never on a later visit.",
           "enum": ["browser_token", "account", "none"]
         },
+        "repeatable": {
+          "description": "true = the instrument is answered again and again (a regular check-in): when the respondent's stored response is already submitted, the runner starts a new response instead of showing it as completed. Default false.",
+          "type": "boolean",
+          "default": false
+        },
         "repeat": {
           "description": "Optional repeat administration for invited (non-anonymous) participants.",
           "type": "object",
