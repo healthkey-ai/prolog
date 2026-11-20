@@ -24,6 +24,7 @@
   "intro.consentAgree": "Li o aviso e concordo",
   "intro.consentRequired": "Concorde com o aviso para continuar.",
   "intro.submitted": "Você já concluiu esta pesquisa. Obrigado.",
+  "intro.lastCompleted": "Concluiu-o pela última vez em {{date}}.",
   "header.section": "Seção {{number}} de {{total}}",
   "header.overview": "Todas as perguntas",
   "header.language": "Idioma",

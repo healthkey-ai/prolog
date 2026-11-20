@@ -24,6 +24,7 @@
   "intro.consentAgree": "I have read the notice and agree",
   "intro.consentRequired": "Please agree to the notice to continue.",
   "intro.submitted": "You have already completed this survey. Thank you.",
+  "intro.lastCompleted": "You last completed this on {{date}}.",
   "header.section": "Section {{number}} of {{total}}",
   "header.overview": "All questions",
   "header.progress": "Progress",

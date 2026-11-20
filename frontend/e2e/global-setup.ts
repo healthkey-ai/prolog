@@ -22,7 +22,7 @@ export default function globalSetup() {
   // Idempotent on a reused local database: an active version refuses a changed
   // source, so the two sample surveys (and their test responses) are recreated
   // from source on every run. Nothing else in the database is touched.
-  const slugs = "['sample-wellbeing', 'sample-themed', 'sample-history']";
+  const slugs = "['sample-wellbeing', 'sample-themed', 'sample-history', 'sample-followup']";
   const reset = [
     "from prolog_surveys import models as m",
     `m.SurveyResponse.objects.filter(survey_version__survey__slug__in=${slugs}).delete()`,
@@ -35,5 +35,6 @@ export default function globalSetup() {
   ].join("; ");
   execSync(`uv run python manage.py shell -c "${reset}"`, { cwd: backend, stdio: "inherit" });
   const history = resolve(import.meta.dirname, "..", "..", "examples", "sample-history.json");
-  execSync(`uv run python manage.py load_definition "${example}" "${themedPath}" "${history}" --activate`, { cwd: backend, stdio: "inherit" });
+  const followup = resolve(import.meta.dirname, "..", "..", "examples", "sample-followup.json");
+  execSync(`uv run python manage.py load_definition "${example}" "${themedPath}" "${history}" "${followup}" --activate`, { cwd: backend, stdio: "inherit" });
 }
