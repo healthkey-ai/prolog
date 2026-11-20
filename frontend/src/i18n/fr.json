@@ -24,6 +24,7 @@
   "intro.consentAgree": "J'ai lu l'avis et j'accepte",
   "intro.consentRequired": "Veuillez accepter l'avis pour continuer.",
   "intro.submitted": "Vous avez déjà terminé ce questionnaire. Merci.",
+  "intro.lastCompleted": "Vous l'avez rempli pour la dernière fois le {{date}}.",
   "header.section": "Section {{number}} sur {{total}}",
   "header.overview": "Toutes les questions",
   "header.language": "Langue",

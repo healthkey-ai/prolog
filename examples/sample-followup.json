@@ -14,7 +14,7 @@
   },
   "completion": {"en": "Thank you. Your answers have been recorded.", "es": "Gracias. Sus respuestas han sido registradas."},
   "theme": "default",
-  "participation": {"anonymous": true, "resume": "browser_token"},
+  "participation": {"anonymous": true, "resume": "browser_token", "repeatable": true},
   "presentation": {"mode": "question", "overview": true, "section_interstitials": false, "skip_policy": "soft", "progress": "bar"},
   "sections": [
     {

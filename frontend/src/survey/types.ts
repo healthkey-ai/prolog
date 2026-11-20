@@ -136,6 +136,8 @@ export interface Presentation {
 export interface Participation {
   anonymous?: boolean;
   resume?: "browser_token" | "account" | "none";
+  /** Answered again and again: a submitted response is followed by a new one, not shown as completed. */
+  repeatable?: boolean;
 }
 
 export interface Consent {
