@@ -1256,6 +1256,23 @@ def test_a_survey_nobody_answered_is_one_row_of_zeros(db, example):
     ] == [(0, 0, None)]
 
 
+def test_the_survey_page_says_fewer_than_under_the_floor(admin_login, settings, example):
+    settings.PROLOG_STATS_MIN_COUNT = 20
+    from prolog_surveys.models import ResponseStatus
+
+    version = loader.load_definition(example).version
+    for status in (ResponseStatus.SUBMITTED, None, None):
+        make_response(version, language="en", **({"status": status} if status else {}))
+
+    change = admin_login.get(
+        f"/admin/prolog_surveys/survey/{version.survey.pk}/change/"
+    ).content.decode()
+    listing = admin_login.get("/admin/prolog_surveys/survey/").content.decode()
+
+    assert "<td>fewer than 20</td><td>fewer than 20</td><td>—</td>" in change
+    assert "fewer than 20" in listing
+
+
 def test_format_duration_reads_like_a_person_would_say_it():
     from datetime import timedelta
 

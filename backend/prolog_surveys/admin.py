@@ -52,7 +52,7 @@ from .models import (
     SurveyLinkedContact,
     SurveyVersion,
 )
-from .stats import basic_stats, format_duration
+from .stats import report, shown_count
 from .themes import registry as theme_registry
 from .themes import validate_theme
 from .themes.registry import _theme_roots, discover_themes, theme_directory
@@ -185,18 +185,20 @@ class SurveyAdmin(admin.ModelAdmin):
         read from — the answers stay with the exports (see the module
         docstring).
         """
+        numbers = report(obj)
+        fewer = f"fewer than {numbers['min_count']}"
         rows = format_html_join(
             "",
             '<tr><th scope="row">{}</th><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>',
             (
                 (
-                    r.label,
-                    r.respondents,
-                    r.completions,
-                    "—" if r.completion_rate is None else f"{r.completion_rate:.0%}",
-                    format_duration(r.average_response_time),
+                    r["label"],
+                    fewer if r["respondents"] is None else r["respondents"],
+                    fewer if r["completions"] is None else r["completions"],
+                    "—" if r["completion_rate"] is None else f"{r['completion_rate']:.0%}",
+                    r["average_response_time"],
                 )
-                for r in basic_stats(obj)
+                for r in numbers["versions"]
             ),
         )
         return format_html(
@@ -235,7 +237,11 @@ class SurveyAdmin(admin.ModelAdmin):
 
     @admin.display(description="Responses (submitted/total)")
     def responses(self, obj):
-        return f"{obj.n_completed}/{obj.n_responses}"
+        # Small numbers are not shown here either (RUN-24).
+        completed, total = shown_count(obj.n_completed), shown_count(obj.n_responses)
+        if completed is None or total is None:
+            return "fewer than " + str(int(conf.get("PROLOG_STATS_MIN_COUNT")))
+        return f"{completed}/{total}"
 
     # --- verify and load ---------------------------------------------------
     # The same thing `validate_definition` and `load_definition` do from a
