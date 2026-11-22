@@ -56,6 +56,7 @@ lives in code.
 | `participation` | object | no | Who may respond and how they resume — §5. |
 | `presentation` | object | no | Wizard layout and skip policy — §6. |
 | `consent` | object | no | Versioned consent attestation shown before the first question — §7. |
+| `facts` | array | no | Facts about the participant the host supplies, for `visible_if` to test — §4, "Facts". Not on an anonymous survey. |
 | `notes` | string | no | Internal notes; stripped from everything the runner receives. |
 | `sections` | array (≥ 1) | yes | The instrument — §2. |
 
@@ -249,6 +250,41 @@ the list, which must all hold as before. Each condition inside it is an edge
 under the DAG rule like any other. For progress, a question behind a false
 `any` group still counts as *to come* while any of its questions is
 unanswered and ahead, and as passed once every one of them is settled.
+
+### Facts (DEF-14)
+
+```jsonc
+"facts": [
+  { "key": "last_result", "values": ["awaited", "normal", "abnormal"],
+    "note": "The result of the participant's last test, as the host records it." }
+],
+...
+"visible_if": [{ "fact": "last_result", "op": "eq", "value": "awaited" }]
+```
+
+Some questions depend on something the host already knows about the
+participant, not on an answer in this response: a follow-up that a repeated
+check-in should ask only while an earlier result is still awaited. Declare the
+fact at the top level with every value it may take, then test it with `eq`,
+`neq` or `in`, on a question, a section, or a branch of an `any` group.
+
+- **The host supplies it** through `PROLOG_FACTS_PROVIDER`
+  ([integration.md](../integration.md)) when a signed-in participant starts a
+  response, and the response keeps the value for its life. An invitation link,
+  or a respondent who is not signed in, gets no facts.
+- **Unknown is false.** A fact the host does not supply, or supplies with a
+  value not declared here, is unknown: every condition on it is false, as every
+  condition on an unanswered question is. A question closed by a fact counts as
+  passed, not "to come".
+- **Not a DAG edge.** A fact is known before the first question, so a
+  condition on it may sit anywhere.
+- **The runner never sees the facts.** The server sends it each fact condition
+  already settled, and checks every answer against the same resolved
+  definition. `note` is for the people who maintain the survey.
+- A survey that declares facts cannot be anonymous: a fact describes a known
+  person.
+
+`examples/sample-recheck.json` uses each form.
 
 ### The DAG rule (DEF-10)
 

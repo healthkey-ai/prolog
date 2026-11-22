@@ -96,6 +96,10 @@ DEFAULTS: dict[str, Any] = {
     # created with no participant, which is what a deployment without a
     # participant model does anyway.
     "PROLOG_PARTICIPANT_FACTORY": None,
+    # Dotted path to a callable (participant pk, definition) -> {fact: value},
+    # the host's facts about a signed-in participant when they start a survey
+    # that declares facts (DEF-14, RUN-23). Unset = every fact is unknown.
+    "PROLOG_FACTS_PROVIDER": None,
     # Languages this deployment consciously offers as machine-translated (DEF-5).
     # Empty (the default) keeps the translation gate exactly as it was: a
     # version offering an unreviewed language cannot be activated at all.
@@ -202,19 +206,19 @@ def validate() -> None:
                 f"REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'][{scope!r}] = {rate!r} is not a "
                 "rate DRF can parse (e.g. '30/hour')"
             )
-    if get("PROLOG_PARTICIPANT_RESOLVER"):
+    for name in ("PROLOG_PARTICIPANT_RESOLVER", "PROLOG_FACTS_PROVIDER"):
+        if not get(name):
+            continue
         # Resolved lazily per request otherwise, i.e. a typo would pass the
-        # health check and 500 every account-survey request.
+        # health check and 500 (or, for facts, silently drop) every request.
         from django.utils.module_loading import import_string
 
         try:
-            resolver = import_string(get("PROLOG_PARTICIPANT_RESOLVER"))
+            hook = import_string(get(name))
         except (ImportError, AttributeError) as exc:
-            raise ImproperlyConfigured(
-                f"PROLOG_PARTICIPANT_RESOLVER could not be resolved: {exc}"
-            ) from exc
-        if not callable(resolver):
-            raise ImproperlyConfigured("PROLOG_PARTICIPANT_RESOLVER must name a callable")
+            raise ImproperlyConfigured(f"{name} could not be resolved: {exc}") from exc
+        if not callable(hook):
+            raise ImproperlyConfigured(f"{name} must name a callable")
     if prof == "integrated":
         if get("PROLOG_IDENTITY_SERVICE"):
             from .identity import get_identity_service

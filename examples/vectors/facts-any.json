@@ -1,0 +1,13 @@
+{
+  "definition": "sample-recheck.json",
+  "description": "An any group held by its fact branch whatever the question answers, a section opened by a fact, and a fact the definition does not declare ignored.",
+  "facts": { "last_result": "abnormal", "enrolled": "yes", "undeclared": "ignored" },
+  "initial": { "visible": ["feeling", "worse_details", "study_note"] },
+  "steps": [
+    {
+      "answer": { "key": "feeling", "value": { "option": "better" } },
+      "expect": { "invalidated": [], "visible": ["feeling", "worse_details", "study_note"] }
+    }
+  ],
+  "final": { "progress": { "answered": 2, "total": 4 } }
+}

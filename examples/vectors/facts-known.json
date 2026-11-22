@@ -1,0 +1,13 @@
+{
+  "definition": "sample-recheck.json",
+  "description": "Facts resolved for the response (DEF-14): a fact opens a question, the any group opens on its question branch, a section stays closed on a false fact and counts as settled.",
+  "facts": { "last_result": "awaited", "enrolled": "no" },
+  "initial": { "visible": ["feeling", "earlier_result"] },
+  "steps": [
+    {
+      "answer": { "key": "feeling", "value": { "option": "worse" } },
+      "expect": { "invalidated": [], "visible": ["feeling", "earlier_result", "worse_details"], "missing": ["earlier_result", "worse_details"] }
+    }
+  ],
+  "final": { "missing": ["earlier_result", "worse_details"], "progress": { "answered": 2, "total": 4 } }
+}

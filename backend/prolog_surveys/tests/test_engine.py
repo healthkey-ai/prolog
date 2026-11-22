@@ -12,6 +12,7 @@ from prolog_surveys.definitions.schema import read_json
 from prolog_surveys.engine.answers import AnswerError, validate_answer
 from prolog_surveys.engine.cascade import apply_cascade
 from prolog_surveys.engine.completion import missing_keys, progress
+from prolog_surveys.engine.facts import resolve_facts
 from prolog_surveys.engine.localize import localize
 from prolog_surveys.engine.visibility import (
     evaluate_condition,
@@ -57,6 +58,9 @@ def store(definition: dict, answers: dict, key: str, raw: dict) -> dict:
 def test_vector(vector_path: Path):
     vector = json.loads(vector_path.read_text())
     definition = load_definition(vector["definition"])
+    if "facts" in vector:
+        # The response's facts, as the server resolves them (DEF-14, RUN-23).
+        definition = resolve_facts(definition, vector["facts"])
     answers: dict = {}
 
     if "initial" in vector:

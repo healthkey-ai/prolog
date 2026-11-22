@@ -1,0 +1,16 @@
+{
+  "definition": "sample-recheck.json",
+  "description": "A definition with facts never resolved (the runner before a response exists): every fact condition is false, and the questions it gates are settled, not pending.",
+  "initial": { "visible": ["feeling"] },
+  "steps": [
+    {
+      "answer": { "key": "feeling", "value": { "option": "worse" } },
+      "expect": { "invalidated": [], "visible": ["feeling", "worse_details"], "missing": ["worse_details"] }
+    },
+    {
+      "answer": { "key": "feeling", "value": { "option": "better" } },
+      "expect": { "invalidated": [], "visible": ["feeling"] }
+    }
+  ],
+  "final": { "missing": [], "progress": { "answered": 4, "total": 4 } }
+}

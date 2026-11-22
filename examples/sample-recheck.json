@@ -1,0 +1,80 @@
+{
+  "$schema": "../schema/survey-definition.schema.json",
+  "schema_version": 1,
+  "slug": "sample-recheck",
+  "version": "1.0",
+  "status": "draft",
+  "default_language": "en",
+  "languages": ["en"],
+  "title": { "en": "Recheck" },
+  "intro": { "en": "A few questions on how you are doing since your last check." },
+  "completion": { "en": "Thank you. Your answers have been recorded." },
+  "estimated_minutes": 2,
+  "theme": "default",
+  "participation": { "anonymous": false, "resume": "account", "repeatable": true },
+  "presentation": { "mode": "question", "skip_policy": "soft", "progress": "bar" },
+  "facts": [
+    {
+      "key": "last_result",
+      "values": ["awaited", "normal", "abnormal"],
+      "note": "The result of the participant's last test, as the host records it: still awaited, or what it showed."
+    },
+    {
+      "key": "enrolled",
+      "values": ["yes", "no"],
+      "note": "Whether the participant takes part in the optional follow-up study."
+    }
+  ],
+  "notes": "Neutral sample instrument for facts (DEF-14): a question opened by a fact, an any group mixing a fact and a question, and a section gated on a fact.",
+  "sections": [
+    {
+      "key": "now",
+      "title": { "en": "Since your last check" },
+      "questions": [
+        {
+          "key": "feeling",
+          "type": "single",
+          "text": { "en": "How are you feeling compared with your last check?" },
+          "options": [
+            { "key": "better", "label": { "en": "Better" } },
+            { "key": "same", "label": { "en": "About the same" } },
+            { "key": "worse", "label": { "en": "Worse" } }
+          ]
+        },
+        {
+          "key": "earlier_result",
+          "type": "single",
+          "text": { "en": "Last time, your test result was not back yet. What were you told about it?" },
+          "visible_if": [{ "fact": "last_result", "op": "eq", "value": "awaited" }],
+          "options": [
+            { "key": "normal", "label": { "en": "It was normal" } },
+            { "key": "abnormal", "label": { "en": "It showed something to follow up" } },
+            { "key": "not_told", "label": { "en": "I have not been told yet" } }
+          ]
+        },
+        {
+          "key": "worse_details",
+          "type": "text",
+          "required": false,
+          "text": { "en": "Tell us more about what has changed, if you would like to." },
+          "visible_if": [
+            { "any": [{ "fact": "last_result", "op": "eq", "value": "abnormal" }, { "question": "feeling", "op": "eq", "value": "worse" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "study",
+      "title": { "en": "Follow-up study" },
+      "visible_if": [{ "fact": "enrolled", "op": "eq", "value": "yes" }],
+      "questions": [
+        {
+          "key": "study_note",
+          "type": "text",
+          "required": false,
+          "text": { "en": "Anything you would like the study team to know?" }
+        }
+      ]
+    }
+  ]
+}
