@@ -91,12 +91,34 @@ export interface SimpleCondition {
   values?: string[];
 }
 
-/** Holds when any of its conditions does (an OR inside visible_if's AND). */
-export interface AnyCondition {
-  any: SimpleCondition[];
+/** A condition on a fact the definition declares (DEF-14), not on a question. */
+export interface FactCondition {
+  fact: string;
+  op: "eq" | "neq" | "in";
+  value?: string;
+  values?: string[];
 }
 
-export type Condition = SimpleCondition | AnyCondition;
+/** A fact condition the server has already settled for this response (facts.ts). */
+export interface ConstCondition {
+  const: boolean;
+}
+
+export type BranchCondition = SimpleCondition | FactCondition | ConstCondition;
+
+/** Holds when any of its conditions does (an OR inside visible_if's AND). */
+export interface AnyCondition {
+  any: BranchCondition[];
+}
+
+export type Condition = BranchCondition | AnyCondition;
+
+/** A fact the host supplies about the participant, and the values it may take (DEF-14). */
+export interface Fact {
+  key: string;
+  values: string[];
+  note?: string;
+}
 
 export interface Question {
   key: string;
@@ -160,6 +182,8 @@ export interface Definition {
   participation?: Participation;
   presentation?: Presentation;
   consent?: Consent;
+  /** Only in a definition read from a file: the runner's copy never carries them. */
+  facts?: Fact[];
   sections: Section[];
 }
 

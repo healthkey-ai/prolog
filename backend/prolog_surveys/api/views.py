@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import secrets
@@ -27,12 +28,14 @@ from .. import conf, exports, legal, results, stats
 from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade, retained_when_hidden
 from ..engine.completion import missing_keys, progress
+from ..engine.facts import resolve_facts
 from ..engine.localize import language_from_accept_header, pick, resolve_language
 from ..engine.visibility import VisibleQuestion, question_by_key, visible_questions
 from ..identity import (
     IdentityRequest,
     IdentityServiceError,
     get_identity_service,
+    host_facts,
     idempotency_key,
     mint_participant,
     resolve_participant,
@@ -165,8 +168,10 @@ def _language(request, definition: dict, fallback: str | None = None) -> str:
     return resolve_language(definition, preferred)
 
 
-def _etag(version, lang: str, theme_code: str) -> str:
-    return f'"{version.checksum[:16]}-{lang}-{theme_code}"'
+def _etag(version, lang: str, theme_code: str, facts: dict | None = None) -> str:
+    # A response's facts change what its definition serves (DEF-14).
+    tail = f"-{conf.salted_hash(json.dumps(facts, sort_keys=True))[:12]}" if facts else ""
+    return f'"{version.checksum[:16]}-{lang}-{theme_code}{tail}"'
 
 
 def _response_for_definition(request, slug: str) -> SurveyResponse | None:
@@ -274,12 +279,19 @@ class SurveyDefinitionView(RunnerView):
             lang = _language(request, definition)
         theme = theme_registry.resolve(survey.theme_code)
         theme_code = theme.code if theme else "default"
-        etag = _etag(version, lang, theme_code)
+        etag = _etag(version, lang, theme_code, response.facts if response is not None else None)
         not_modified = get_conditional_response(request, etag=etag)
         if not_modified is not None:
             not_modified["ETag"] = etag
             return not_modified
         payload = dict(version.localized(lang))  # shared cache entry: copy before adding keys
+        if response is not None:
+            # What this participant is asked: each fact condition settled by the
+            # facts their response started with (DEF-14).
+            payload = resolve_facts(payload, response.facts)
+        # The facts themselves are the host's business: their notes are for the
+        # people who maintain the survey, never for the runner.
+        payload.pop("facts", None)
         payload["theme_code"] = theme_code
         payload["translation_status"] = definition.get("translation_status", {})
         # Whether the runner says "a machine wrote these words". Only when the
@@ -434,6 +446,11 @@ class ResponseCreateView(RunnerView):
                 fields["participant_id"] = invited
         elif participant is not None:
             fields["participant_id"] = participant
+            # A signed-in participant's own response: the host's facts about
+            # them, taken now and kept (RUN-23). Never through an invitation
+            # link (whoever holds it would see what the facts open) nor for a
+            # minted respondent, who has none.
+            fields["facts"] = host_facts(participant, definition)
         minted = None
         if "participant_id" not in fields:
             # RUN-2: a response belongs to a participant even when nobody is

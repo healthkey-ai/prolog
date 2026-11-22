@@ -1,0 +1,13 @@
+{
+  "definition": "sample-recheck.json",
+  "description": "A fact supplied with a value the definition does not declare is unknown, so every condition on it is false.",
+  "facts": { "last_result": "pending", "enrolled": "maybe" },
+  "initial": { "visible": ["feeling"] },
+  "steps": [
+    {
+      "answer": { "key": "feeling", "value": { "option": "worse" } },
+      "expect": { "invalidated": [], "visible": ["feeling", "worse_details"] }
+    }
+  ],
+  "final": { "progress": { "answered": 3, "total": 4 } }
+}
