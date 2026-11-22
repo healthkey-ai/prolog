@@ -29,6 +29,15 @@ def check_settings(app_configs, **kwargs):
                 id="prolog_surveys.E001",
             )
         ]
+    floor = conf.get("PROLOG_STATS_MIN_COUNT")
+    if not isinstance(floor, int) or isinstance(floor, bool) or floor < 0:
+        return [
+            Error(
+                f"PROLOG_STATS_MIN_COUNT must be an integer of 0 or more, got {floor!r}",
+                hint="0 shows every count; N shows a count under N as 'fewer than N' (RUN-24).",
+                id="prolog_surveys.E003",
+            )
+        ]
     return []
 
 

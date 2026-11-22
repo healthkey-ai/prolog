@@ -52,7 +52,7 @@ from .models import (
     SurveyLinkedContact,
     SurveyVersion,
 )
-from .stats import report, shown_count
+from .stats import report, shown_submitted_of
 from .themes import registry as theme_registry
 from .themes import validate_theme
 from .themes.registry import _theme_roots, discover_themes, theme_directory
@@ -238,10 +238,9 @@ class SurveyAdmin(admin.ModelAdmin):
     @admin.display(description="Responses (submitted/total)")
     def responses(self, obj):
         # Small numbers are not shown here either (RUN-24).
-        completed, total = shown_count(obj.n_completed), shown_count(obj.n_responses)
-        if completed is None or total is None:
+        if not shown_submitted_of(obj.n_completed, obj.n_responses):
             return "fewer than " + str(int(conf.get("PROLOG_STATS_MIN_COUNT")))
-        return f"{completed}/{total}"
+        return f"{obj.n_completed}/{obj.n_responses}"
 
     # --- verify and load ---------------------------------------------------
     # The same thing `validate_definition` and `load_definition` do from a

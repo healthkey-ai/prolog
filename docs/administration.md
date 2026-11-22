@@ -309,7 +309,10 @@ N". So that a hidden count cannot be worked out by subtraction, a second count
 goes with it wherever it would otherwise be the only one hidden in a group
 whose total is shown: a version's beside the total, completions beside
 partials, a day, a language, a question. A rate or an average over a hidden
-count reads "—". Zero is shown, as it is nobody. The exports are unchanged.
+count reads "—". Zero is shown, as it is nobody. The exports are unchanged,
+and so are the operational counts an administrator acts on: how many responses
+discarding or archiving a version affects, and the contact lists, which are
+rows rather than figures.
 
 ### What the admin deliberately does not do
 

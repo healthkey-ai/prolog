@@ -66,7 +66,8 @@ def test_a_small_version_is_hidden_and_cannot_be_worked_out_from_the_total(setti
     # 33 respondents in all, so 1.1's count would give 1.0's away: it is hidden too, and with its
     # completions hidden, its partials (respondents less completions) go with them.
     assert (total["respondents"], v11["respondents"]) == (33, None)
-    assert (v11["completions"], v11["partials"]) == (None, None)
+    # 1.1's completions go with them; its 10 partials may show, as neither other count of its row does.
+    assert v11["completions"] is None
     assert (total["completions"], total["partials"]) == (23, 10)
 
 
@@ -123,3 +124,100 @@ def _viewer(email, password):
     from prolog_surveys.results import ResultsViewer
 
     return ResultsViewer(label=email) if password == "right" else None
+
+
+def test_days_cannot_give_hidden_partials_away(settings, example):
+    """Review of #99: completed per day added up to the hidden completions."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from prolog_surveys.models import SurveyResponse
+
+    settings.PROLOG_STATS_MIN_COUNT = 5
+    version = loader.load_definition(example).version
+    responses(version, 30, submitted=27)
+    now = timezone.now()
+    submitted = list(
+        SurveyResponse.objects.filter(status=ResponseStatus.SUBMITTED)
+        .order_by("id")
+        .values_list("id", flat=True)
+    )
+    SurveyResponse.objects.filter(id__in=submitted).update(started_at=now, submitted_at=now)
+    yesterday = now - timedelta(days=1)
+    SurveyResponse.objects.filter(id__in=submitted[:15]).update(
+        started_at=yesterday, submitted_at=yesterday
+    )
+
+    numbers = report(version.survey)
+    [row] = numbers["versions"]
+    completed = [d["completed"] for d in numbers["by_day"]]
+
+    assert (row["completions"], row["partials"]) == (None, None)
+    assert None in completed  # otherwise 15 + 12 = 27 completions, and partials = 3
+
+
+def test_drop_off_cannot_give_hidden_completions_away(settings, example):
+    from prolog_surveys.models import SurveyResponse
+
+    settings.PROLOG_STATS_MIN_COUNT = 5
+    version = loader.load_definition(example).version
+    responses(version, 30, submitted=3)
+    ids = list(
+        SurveyResponse.objects.exclude(status=ResponseStatus.SUBMITTED).values_list("id", flat=True)
+    )
+    SurveyResponse.objects.filter(id__in=ids[:15]).update(last_question_key="q1")
+    SurveyResponse.objects.filter(id__in=ids[15:]).update(last_question_key="q2")
+
+    numbers = report(version.survey)
+    [row] = numbers["versions"]
+
+    assert row["completions"] is None and row["partials"] is None
+    assert None in [r["count"] for r in numbers["drop_off"]]  # otherwise 15 + 12 = 27 partials
+
+
+def assert_no_lone_hidden(versions):
+    """No row (completions, partials, respondents) and no column with the total
+    has exactly one hidden count: it would be a subtraction away."""
+    for row in versions:
+        assert sum(row[k] is None for k in ("completions", "partials", "respondents")) != 1, row
+    if len(versions) > 1:
+        for col in ("respondents", "completions", "partials"):
+            assert sum(row[col] is None for row in versions) != 1, (col, versions)
+
+
+def test_a_version_cannot_be_worked_out_from_its_own_row_and_the_total(settings, two_versions):
+    """Review of #99: 1.1's completions and zero partials gave its respondents, and the total gave 1.0's."""
+    settings.PROLOG_STATS_MIN_COUNT = 5
+    first, second = two_versions
+    responses(first, 1)
+    responses(second, 5, submitted=5)
+
+    versions = report(first.survey)["versions"]
+
+    assert versions[1]["respondents"] is None  # 1.0's one respondent
+    assert_no_lone_hidden(versions)
+
+
+def test_the_survey_list_hides_submitted_of_total_when_the_unfinished_are_few():
+    from django.test import override_settings
+
+    from prolog_surveys.stats import shown_submitted_of
+
+    with override_settings(PROLOG_STATS_MIN_COUNT=5):
+        assert shown_submitted_of(27, 30) is False  # 3 unfinished
+        assert shown_submitted_of(20, 30) is True
+        assert shown_submitted_of(30, 30) is True  # nobody unfinished: zero is nobody
+        assert shown_submitted_of(2, 30) is False
+
+
+def test_the_setting_is_checked():
+    from django.test import override_settings
+
+    from prolog_surveys.checks import check_settings
+
+    for bad in (-1, "20", 2.5, True):
+        with override_settings(PROLOG_STATS_MIN_COUNT=bad):
+            assert [e.id for e in check_settings(None)] == ["prolog_surveys.E003"]
+    with override_settings(PROLOG_STATS_MIN_COUNT=20):
+        assert check_settings(None) == []

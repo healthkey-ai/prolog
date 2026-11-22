@@ -266,6 +266,9 @@ def report(survey: Survey) -> dict:
     stops = drop_off(survey)
 
     cells: dict = {}
+    # Each group is a set of counts that add up, with the count holding their
+    # sum among them: hiding exactly one count in a group would let it be
+    # worked out from the others, the sum included.
     groups: list[list] = []
     for i, r in enumerate(rows):
         cells[("v", i, "respondents")] = r.respondents
@@ -274,27 +277,36 @@ def report(survey: Survey) -> dict:
         cells[("v", i, "contacts")] = contacts.get(
             r.version, sum(contacts.values()) if r.version is None else 0
         )
-        groups.append([("v", i, "completions"), ("v", i, "partials")])
+        groups.append([("v", i, "completions"), ("v", i, "partials"), ("v", i, "respondents")])
     versions = [i for i, r in enumerate(rows) if r.version is not None]
-    if len(versions) > 1:  # with the "All versions" row as their sum
+    total = len(rows) - 1  # the "All versions" row, or the one version's own
+    if len(versions) > 1:
         for col in ("respondents", "completions", "partials", "contacts"):
-            groups.append([("v", i, col) for i in versions])
+            groups.append([*(("v", i, col) for i in versions), ("v", total, col)])
     for i, r in enumerate(languages):
         cells[("l", i, "respondents")] = r.respondents
         cells[("l", i, "completions")] = r.completions
         # Not shown, but respondents less completions: hidden with them.
         cells[("l", i, "partials")] = r.respondents - r.completions
-        groups.append([("l", i, "completions"), ("l", i, "partials")])
+        groups.append([("l", i, "completions"), ("l", i, "partials"), ("l", i, "respondents")])
     for col in ("respondents", "completions"):
-        groups.append([("l", i, col) for i in range(len(languages))])
+        groups.append([*(("l", i, col) for i in range(len(languages))), ("v", total, col)])
     for i, d in enumerate(days):
         cells[("d", i, "started")] = d.started
         cells[("d", i, "completed")] = d.completed
-    for col in ("started", "completed"):
-        groups.append([("d", i, col) for i in range(len(days))])
+    # Days and drop-off are lists cut short (60 days, 10 questions): their
+    # total only adds up, and only joins the group, when nothing was cut.
+    for col, against in (("started", "respondents"), ("completed", "completions")):
+        group = [("d", i, col) for i in range(len(days))]
+        if sum(cells[k] for k in group) == cells.get(("v", total, against), -1):
+            group.append(("v", total, against))
+        groups.append(group)
     for i, r in enumerate(stops):
         cells[("q", i, "count")] = r.count
-    groups.append([("q", i, "count") for i in range(len(stops))])
+    group = [("q", i, "count") for i in range(len(stops))]
+    if sum(cells[k] for k in group) == cells.get(("v", total, "partials"), -1):
+        group.append(("v", total, "partials"))
+    groups.append(group)
 
     hidden = hide_small(cells, groups, n)
 
@@ -344,10 +356,11 @@ def report(survey: Survey) -> dict:
     }
 
 
-def shown_count(value: int) -> int | None:
-    """One count on its own (the admin's survey list): None under the floor."""
+def shown_submitted_of(completed: int, total: int) -> bool:
+    """Whether the survey list may show "submitted/total": not when either,
+    or the unfinished between them, is a small group (RUN-24)."""
     n = int(conf.get("PROLOG_STATS_MIN_COUNT") or 0)
-    return None if 0 < value < n else value
+    return not any(0 < v < n for v in (completed, total, total - completed))
 
 
 def format_duration(d: timedelta | None) -> str:
