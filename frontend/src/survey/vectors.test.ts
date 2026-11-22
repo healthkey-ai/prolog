@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AnswerError, type AnswerIssue, validateAnswer } from "./answers";
 import { applyCascade } from "./cascade";
 import { missingKeys, progress } from "./completion";
+import { resolveFacts } from "./facts";
 import type { Answers, Definition } from "./types";
 import { questionByKey, visibleKeys } from "./visibility";
 
@@ -30,6 +31,7 @@ interface Retained {
 }
 interface Vector {
   definition: string;
+  facts?: Record<string, string>;
   initial?: { visible: string[] };
   steps?: Step[];
   retained?: Retained[];
@@ -57,7 +59,9 @@ describe("shared engine vectors", () => {
   for (const file of files) {
     it(file, () => {
       const vector = JSON.parse(readFileSync(join(VECTOR_DIR, file), "utf-8")) as Vector;
-      const def = JSON.parse(readFileSync(join(EXAMPLES, vector.definition), "utf-8")) as Definition;
+      const read = JSON.parse(readFileSync(join(EXAMPLES, vector.definition), "utf-8")) as Definition;
+      // The response's facts, resolved as the server does before serving it (DEF-14).
+      const def = vector.facts ? resolveFacts(read, vector.facts) : read;
       let answers: Answers = {};
 
       if (vector.initial) expect(visibleKeys(def, answers)).toEqual(vector.initial.visible);

@@ -56,6 +56,11 @@
       "maxLength": 64
     },
     "participation": { "$ref": "#/$defs/participation" },
+    "facts": {
+      "description": "DEF-14. Facts about the participant that the host supplies when a response starts (RUN-23), each with the values it can take, for visible_if to test with a fact condition. Only on a survey that is not anonymous: a fact describes a known person. A fact the host does not supply, or supplies with a value not listed here, is unknown, and every condition on it is false.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/fact" }
+    },
     "presentation": { "$ref": "#/$defs/presentation" },
     "consent": { "$ref": "#/$defs/consent" },
     "notes": {
@@ -294,8 +299,8 @@
       }
     },
     "condition": {
-      "description": "One visible_if entry: a simple condition on one earlier question, or an `any` group that holds when at least one of its simple conditions does (an OR inside visible_if's AND).",
-      "oneOf": [{ "$ref": "#/$defs/simple_condition" }, { "$ref": "#/$defs/any_condition" }]
+      "description": "One visible_if entry: a simple condition on one earlier question, a condition on a declared fact, or an `any` group that holds when at least one of its conditions does (an OR inside visible_if's AND).",
+      "oneOf": [{ "$ref": "#/$defs/simple_condition" }, { "$ref": "#/$defs/fact_condition" }, { "$ref": "#/$defs/any_condition" }]
     },
     "any_condition": {
       "type": "object",
@@ -303,10 +308,10 @@
       "additionalProperties": false,
       "properties": {
         "any": {
-          "description": "Holds when at least one of these conditions holds. Each is a DAG edge like any other condition. Groups do not nest.",
+          "description": "Holds when at least one of these conditions holds. Each is a condition on a question (a DAG edge like any other) or on a fact. Groups do not nest.",
           "type": "array",
           "minItems": 2,
-          "items": { "$ref": "#/$defs/simple_condition" }
+          "items": { "oneOf": [{ "$ref": "#/$defs/simple_condition" }, { "$ref": "#/$defs/fact_condition" }] }
         }
       }
     },
@@ -325,6 +330,32 @@
       },
       "allOf": [
         { "if": { "properties": { "op": { "enum": ["eq", "neq", "contains", "not_contains"] } } }, "then": { "required": ["value"] } },
+        { "if": { "properties": { "op": { "const": "in" } } }, "then": { "required": ["values"] } }
+      ]
+    },
+    "fact": {
+      "type": "object",
+      "required": ["key", "values"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "values": { "description": "The values the host may supply for it.", "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/key" } },
+        "note": { "description": "What the fact means and where the host takes it from, for the people who maintain the survey (plain text, not translated). Never sent to the runner.", "type": "string" }
+      }
+    },
+    "fact_condition": {
+      "description": "A condition on a fact the definition declares (DEF-14), not on a question. Not a DAG edge: a fact is known before the first question.",
+      "type": "object",
+      "required": ["fact", "op"],
+      "additionalProperties": false,
+      "properties": {
+        "fact": { "$ref": "#/$defs/key" },
+        "op": { "description": "eq/neq: the fact is / is not value. in: the fact is one of values. All three are false while the fact is unknown.", "enum": ["eq", "neq", "in"] },
+        "value": { "type": "string" },
+        "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "op": { "enum": ["eq", "neq"] } } }, "then": { "required": ["value"] } },
         { "if": { "properties": { "op": { "const": "in" } } }, "then": { "required": ["values"] } }
       ]
     },

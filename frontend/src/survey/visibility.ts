@@ -42,9 +42,16 @@ function scalar(answer: AnswerValue): string | null {
   return null;
 }
 
-/** Every operator is false when the referenced question is unanswered. An `any` group holds when one of its conditions does. */
+/**
+ * Every operator is false when the referenced question is unanswered. An `any`
+ * group holds when one of its conditions does. A `const` is a fact condition
+ * the server settled for this response; a fact condition never settled tests
+ * an unknown fact, and is false. Mirrors visibility.py.
+ */
 export function evaluateCondition(c: Condition, answers: Answers): boolean {
   if ("any" in c) return c.any.some((child) => evaluateCondition(child, answers));
+  if ("const" in c) return c.const;
+  if ("fact" in c) return false;
   const answer = answers[c.question];
   if (!isAnswered(answer)) return false;
   const a = answer as AnswerValue;
@@ -68,9 +75,10 @@ export function conditionsHold(conditions: Condition[] | undefined, answers: Ans
   return (conditions ?? []).every((c) => evaluateCondition(c, answers));
 }
 
-/** The questions a condition reads: one, or each of an `any` group's. Mirrors visibility.py. */
+/** The questions a condition reads: one, or each of an `any` group's; a fact reads none. Mirrors visibility.py. */
 export function conditionQuestions(c: Condition): string[] {
-  return "any" in c ? c.any.map((child) => child.question) : [c.question];
+  const branches = "any" in c ? c.any : [c];
+  return branches.flatMap((b) => ("question" in b ? [b.question] : []));
 }
 
 /**

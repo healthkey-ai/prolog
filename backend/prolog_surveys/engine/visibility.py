@@ -67,10 +67,17 @@ def _scalar(answer: dict[str, Any]) -> str | None:
 def evaluate_condition(condition: dict[str, Any], answers: Answers) -> bool:
     """All operators are false when the referenced question is unanswered.
 
-    An ``any`` group holds when at least one of its conditions does.
+    An ``any`` group holds when at least one of its conditions does. A
+    ``const`` is a fact condition already resolved for the response
+    (engine/facts.py); a fact condition never resolved tests an unknown fact,
+    and is false.
     """
     if "any" in condition:
         return any(evaluate_condition(c, answers) for c in condition["any"])
+    if "const" in condition:
+        return bool(condition["const"])
+    if "fact" in condition:
+        return False
     answer = answers.get(condition["question"])
     if not is_answered(answer):
         return False
@@ -102,10 +109,12 @@ def conditions_hold(conditions: list[dict[str, Any]], answers: Answers) -> bool:
 
 
 def condition_questions(condition: dict[str, Any]) -> list[str]:
-    """The questions a condition reads: one, or each of an ``any`` group's."""
+    """The questions a condition reads: one, or each of an ``any`` group's. A
+    fact, or a resolved one (``const``), reads none: it is settled from the
+    start."""
     if "any" in condition:
-        return [c["question"] for c in condition["any"]]
-    return [condition["question"]]
+        return [c["question"] for c in condition["any"] if "question" in c]
+    return [condition["question"]] if "question" in condition else []
 
 
 def visible_questions(

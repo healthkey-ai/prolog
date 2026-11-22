@@ -20,7 +20,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..engine.answers import MAX_TEXT_LENGTH
-from ..engine.visibility import condition_questions
 from .schema import SUPPORTED_SCHEMA_VERSIONS, Issue
 
 SINGLE_VALUED = {"single", "dropdown", "scale"}
@@ -122,6 +121,14 @@ def source_option_keys(source: str) -> frozenset[str] | None:
 
     provider = iso3166.SOURCE_KEYS.get(source)
     return provider() if provider else None
+
+
+def _never_holds(condition: dict[str, Any], unreachable: set[str]) -> bool:
+    """A condition that reads only questions never shown. A fact may be
+    anything the host supplies, so a condition on one, or a group with a fact
+    branch, may always hold."""
+    branches = condition["any"] if "any" in condition else [condition]
+    return all("question" in b and b["question"] in unreachable for b in branches)
 
 
 def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone") -> list[Issue]:
@@ -459,6 +466,25 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
         elif t not in ("single", "dropdown", "multi", "ranking", "info") and q.get("options"):
             warn("options_unused", f"{qp}.options", f"'{t}' questions do not use options")
 
+    # --- facts (DEF-14) ---------------------------------------------------
+    facts: dict[str, set[str]] = {}
+    for fi, fact in enumerate(definition.get("facts") or []):
+        if fact["key"] in facts:
+            err("fact_duplicate", f"$.facts[{fi}].key", f"fact '{fact['key']}' is declared twice")
+        facts[fact["key"]] = set(fact["values"])
+    if facts and (definition.get("participation") or {}).get("anonymous"):
+        # A fact describes a known person; an anonymous response has none to describe.
+        err("facts_anonymous", "$.facts", "an anonymous survey cannot declare facts")
+
+    def check_fact(path: str, cond: dict[str, Any]) -> None:
+        values = facts.get(cond["fact"])
+        if values is None:
+            err("fact_unknown", path, f"references undeclared fact '{cond['fact']}'")
+            return
+        for v in [cond["value"]] if "value" in cond else cond.get("values", []):
+            if v not in values:
+                err("condition_value", path, f"'{v}' is not a value of fact '{cond['fact']}'")
+
     # --- DAG rule (DEF-10) ------------------------------------------------
     def check_edge(
         path: str, source: QuestionInfo | None, target_key: str, *, section_index: int | None = None
@@ -549,11 +575,17 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
     for si, section in enumerate(definition["sections"]):
         sp = f"$.sections[{si}]"
         for cp, cond in simple_conditions(sp, section.get("visible_if", [])):
-            check_condition(cp, cond, check_edge(cp, None, cond["question"], section_index=si))
+            if "fact" in cond:
+                check_fact(cp, cond)
+            else:
+                check_condition(cp, cond, check_edge(cp, None, cond["question"], section_index=si))
     for info in questions.values():
         qp = info.path
         for cp, cond in simple_conditions(qp, info.question.get("visible_if", [])):
-            check_condition(cp, cond, check_edge(cp, info, cond["question"]))
+            if "fact" in cond:
+                check_fact(cp, cond)
+            else:
+                check_condition(cp, cond, check_edge(cp, info, cond["question"]))
         cfg = info.question.get("config") or {}
         for setting in ("rows_from", "options_from"):
             source = cfg.get(setting)
@@ -579,9 +611,9 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             # check; the group is dead only when every branch reads a question
             # that can never be shown.
             for c in conds:
-                if "any" not in c:
+                if "any" not in c and "question" in c:
                     by_target.setdefault(c["question"], []).append(c)
-            dead = any(all(k in unreachable for k in condition_questions(c)) for c in conds)
+            dead = any(_never_holds(c, unreachable) for c in conds)
             for target_key, cs in by_target.items():
                 if questions[target_key].type not in SINGLE_VALUED:
                     continue
