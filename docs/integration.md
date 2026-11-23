@@ -27,6 +27,7 @@ PROLOG_PROFILE = "integrated"
 PROLOG_PARTICIPANT_MODEL = "omop_core.Person"          # any "app_label.Model"
 PROLOG_PARTICIPANT_RESOLVER = "myhost.prolog.resolve_participant"  # (request) -> pk | None
 PROLOG_FACTS_PROVIDER = "myhost.prolog.facts"                      # (participant pk, definition) -> {fact: value}
+PROLOG_STATS_MIN_COUNT = 20                            # report/admin counts under this show as "fewer than 20" (RUN-24); 0 = all
 PROLOG_IDENTITY_SERVICE = "myhost.prolog.IdentityService"          # class or factory
 PROLOG_DEFINITION_DIRS = ["/srv/surveys"]
 PROLOG_THEME_DIRS = ["/srv/prolog/themes", "/srv/themes"]

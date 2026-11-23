@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
-import { exportHref, useReport, useReportLogin, useReportLogout } from "@/api/report";
+import { exportHref, useReport, useReportLogin, useReportLogout, type Count } from "@/api/report";
 import { ApiError } from "@/api/client";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { Decor } from "@/components/Decor";
@@ -31,6 +31,8 @@ export function ReportPage() {
 
   const data = report.data;
   const viewer = data?.viewer ?? null;
+  // A count the deployment does not show (RUN-24): "fewer than N".
+  const few = (n: Count) => (n === null ? t("report.fewerThan", { count: data?.stats?.min_count ?? 0 }) : n);
   const signInFailed = login.isError && login.error instanceof ApiError && login.error.status === 403;
 
   return (
@@ -95,18 +97,18 @@ export function ReportPage() {
             <section className="flex flex-col gap-3" data-testid="report-downloads">
               <h2 className="text-lg">{t("report.downloads")}</h2>
               <p className="text-sm text-ink-soft">{t("report.downloadsNote")}</p>
-              {data.stats.versions.filter((v) => v.version && v.respondents > 0).length === 0 ? (
+              {data.stats.versions.filter((v) => v.version && v.respondents !== 0).length === 0 ? (
                 <p className="text-sm text-ink-soft">{t("report.noneYet")}</p>
               ) : (
                 data.stats.versions
-                  .filter((v) => v.version && v.respondents > 0)
+                  .filter((v) => v.version && v.respondents !== 0)
                   .map((v) => (
                     <div key={v.version} className="flex flex-wrap items-center gap-3">
                       <span className="w-24 text-sm text-ink-soft">{t("report.versionLabel", { version: v.version })}</span>
-                      <Download slug={slug} kind="responses" version={v.version!} count={v.completions} label={t("report.downloadResponses", { count: v.completions })} variant="primary" testId={`report-download-responses-${v.version}`} />
-                      <Download slug={slug} kind="responses" version={v.version!} includeInProgress count={v.respondents} label={t("report.downloadAll", { count: v.respondents })} variant="surface" testId={`report-download-all-${v.version}`} />
+                      <Download slug={slug} kind="responses" version={v.version!} count={v.completions} label={v.completions === null ? t("report.downloadResponsesFew") : t("report.downloadResponses", { count: v.completions })} variant="primary" testId={`report-download-responses-${v.version}`} />
+                      <Download slug={slug} kind="responses" version={v.version!} includeInProgress count={v.respondents} label={v.respondents === null ? t("report.downloadAllFew") : t("report.downloadAll", { count: v.respondents })} variant="surface" testId={`report-download-all-${v.version}`} />
                       {viewer.may_read_contacts && (
-                        <Download slug={slug} kind="contacts" version={v.version!} count={v.contacts} label={t("report.downloadContacts", { count: v.contacts })} variant="surface" testId={`report-download-contacts-${v.version}`} />
+                        <Download slug={slug} kind="contacts" version={v.version!} count={v.contacts} label={v.contacts === null ? t("report.downloadContactsFew") : t("report.downloadContacts", { count: v.contacts })} variant="surface" testId={`report-download-contacts-${v.version}`} />
                       )}
                     </div>
                   ))
@@ -116,20 +118,20 @@ export function ReportPage() {
             <Table
               caption={t("report.versions")}
               head={[t("report.version"), t("report.respondents"), t("report.completions"), t("report.partials"), t("report.completionRate"), t("report.averageTime")]}
-              rows={data.stats.versions.map((v) => [v.label, v.respondents, v.completions, v.partials, percent(v.completion_rate), v.average_response_time])}
+              rows={data.stats.versions.map((v) => [v.label, few(v.respondents), few(v.completions), few(v.partials), percent(v.completion_rate), v.average_response_time])}
               testId="report-versions"
             />
             <Table
               caption={t("report.byLanguage")}
               head={[t("report.language"), t("report.respondents"), t("report.completions")]}
-              rows={data.stats.by_language.map((r) => [r.language, r.respondents, r.completions])}
+              rows={data.stats.by_language.map((r) => [r.language, few(r.respondents), few(r.completions)])}
               empty={t("report.noneYet")}
               testId="report-languages"
             />
             <Table
               caption={t("report.byDay")}
               head={[t("report.day"), t("report.started"), t("report.completed")]}
-              rows={data.stats.by_day.map((d) => [d.day, d.started, d.completed])}
+              rows={data.stats.by_day.map((d) => [d.day, few(d.started), few(d.completed)])}
               empty={t("report.noneYet")}
               testId="report-days"
             />
@@ -137,7 +139,7 @@ export function ReportPage() {
               caption={t("report.dropOff")}
               note={t("report.dropOffNote")}
               head={[t("report.question"), t("report.responses")]}
-              rows={data.stats.drop_off.map((d) => [d.label || d.question_key || t("report.beforeStarting"), d.count])}
+              rows={data.stats.drop_off.map((d) => [d.label || d.question_key || t("report.beforeStarting"), few(d.count)])}
               empty={t("report.noneYet")}
               testId="report-dropoff"
             />
@@ -153,7 +155,7 @@ export function ReportPage() {
  * link: an empty file tells a reader less than a button that says "0" and does
  * not respond.
  */
-function Download({ slug, kind, version, includeInProgress = false, count, label, variant, testId }: { slug: string; kind: "responses" | "contacts"; version: string; includeInProgress?: boolean; count: number; label: string; variant: "primary" | "surface"; testId: string }) {
+function Download({ slug, kind, version, includeInProgress = false, count, label, variant, testId }: { slug: string; kind: "responses" | "contacts"; version: string; includeInProgress?: boolean; count: Count; label: string; variant: "primary" | "surface"; testId: string }) {
   if (count === 0)
     return (
       <Button variant={variant} size="runner-sm" disabled data-testid={testId}>
