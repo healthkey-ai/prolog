@@ -968,37 +968,8 @@ def _report_payload(request, survey, version) -> dict:
         "may_read_responses": viewer.may_read_responses,
         "may_read_contacts": viewer.may_read_contacts,
     }
-    rows = stats.basic_stats(survey)
-    contacts = stats.contact_counts(survey)
-    payload["stats"] = {
-        "versions": [
-            {
-                "label": r.label,
-                "version": r.version,
-                "respondents": r.respondents,
-                "completions": r.completions,
-                "contacts": contacts.get(
-                    r.version, sum(contacts.values()) if r.version is None else 0
-                ),
-                "partials": r.partials,
-                "completion_rate": r.completion_rate,
-                "average_response_time": stats.format_duration(r.average_response_time),
-            }
-            for r in rows
-        ],
-        "by_day": [
-            {"day": d.day, "started": d.started, "completed": d.completed}
-            for d in stats.by_day(survey)
-        ],
-        "by_language": [
-            {"language": r.language, "respondents": r.respondents, "completions": r.completions}
-            for r in stats.by_language(survey)
-        ],
-        "drop_off": [
-            {"question_key": r.question_key, "label": r.label, "count": r.count}
-            for r in stats.drop_off(survey)
-        ],
-    }
+    # Counts under PROLOG_STATS_MIN_COUNT come as null (RUN-24).
+    payload["stats"] = stats.report(survey)
     return payload
 
 
