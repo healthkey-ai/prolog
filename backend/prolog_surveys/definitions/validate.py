@@ -219,6 +219,22 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
 
     # --- participation ----------------------------------------------------
     participation = definition.get("participation") or {}
+    if participation.get("revisable"):
+        # Updating answers starts from the participant's own last submission,
+        # which only an account can find again; and a check-in answered afresh
+        # each time has nothing to update.
+        if participation.get("anonymous") or participation.get("resume", "account") != "account":
+            err(
+                "revisable_needs_account",
+                "$.participation.revisable",
+                "revisable needs participants who sign in (anonymous false, resume account)",
+            )
+        if participation.get("repeatable"):
+            err(
+                "revisable_repeatable",
+                "$.participation.revisable",
+                "a survey is revisable or repeatable, not both",
+            )
     if repeat := participation.get("repeat"):
         rp = "$.participation.repeat"
         start, end = parse_dates(repeat, ("start_date", "end_date"), rp, "repeat_date_invalid")

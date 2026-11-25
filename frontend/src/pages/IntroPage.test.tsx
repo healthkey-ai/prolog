@@ -63,6 +63,38 @@ describe("IntroPage", () => {
     expect(m.$("create-error")?.textContent).toContain(t("app.error"));
   });
 
+  it("offers a revisable survey's finished response as 'Update my answers', opening at the first question", async () => {
+    const submitted = response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" });
+    const server = runnerServer(definition({ participation: { revisable: true } }), submitted);
+    const answers = { q1: { text: "a" }, q2: { text: "b" }, q3: { option: "a" } };
+    server.on("POST", "/responses/", {
+      status: 201,
+      body: response({ id: "rev-1", answers, last_question_key: "" }),
+    });
+    m = mount(`/s/${SLUG}`);
+    await m.flush();
+    expect(m.text()).toContain(t("intro.revisable"));
+    expect(m.$("resume")).toBeNull();
+    expect(m.$("start-new")).toBeNull();
+    click(m.$("update"));
+    await m.flush();
+    const [call] = server.of("POST", "/responses/");
+    expect(call.body).toMatchObject({ slug: SLUG, revise: true });
+    // Every answer is there, so it opens at the start, not the end.
+    expect(m.pathname()).toBe(`/s/${SLUG}/q/q1`);
+  });
+
+  it("does not ask to revise when starting a survey that is not revisable", async () => {
+    const server = runnerServer(definition(), response({ status: "submitted" }));
+    server.on("POST", "/responses/", { status: 201, body: response({ id: "new-1", answers: {}, last_question_key: "" }) });
+    m = mount(`/s/${SLUG}`);
+    await m.flush();
+    expect(m.$("update")).toBeNull();
+    click(m.$("start-new"));
+    await m.flush();
+    expect(server.of("POST", "/responses/")[0].body).not.toHaveProperty("revise");
+  });
+
   it("links the privacy notice only for an http(s) URL", async () => {
     const consent = { version: "1", text: "We store your answers.", privacy_url: "javascript:alert(1)" };
     runnerServer(definition({ consent }));

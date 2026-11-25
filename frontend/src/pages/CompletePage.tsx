@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import { useResponse, useSurveyDefinition } from "@/api/hooks";
+import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
-import { storedResponseId } from "@/lib/storage";
+import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
+import { visibleQuestions } from "@/survey/visibility";
+import { Button } from "@/components/ui/button";
 import { Decor } from "@/components/Decor";
 import { Eyebrow } from "@/components/Eyebrow";
 import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
@@ -14,7 +16,9 @@ export function CompletePage() {
   const { slug = "" } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const id = storedResponseId(slug);
+  // The response this page was opened for: storing an update's id must not turn
+  // the page into a redirect to that update's first open question.
+  const [id] = useState(() => storedResponseId(slug));
   const response = useResponse(id);
   const definition = useSurveyDefinition(slug, { lang: response.data?.language, responseId: id });
   const def = definition.data;
@@ -24,6 +28,7 @@ export function CompletePage() {
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
   const immersive = layout.immersiveIntro;
   const submitted = response.data?.status === "submitted";
+  const create = useCreateResponse();
 
   // This page asserts "submitted and read-only", so it only stands for a
   // submitted response. Browser Back after "Start a new response", a bookmark,
@@ -46,6 +51,27 @@ export function CompletePage() {
   if (!submitted) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
 
   const text = def?.completion as string | undefined;
+  // A profile kept up to date (participation.revisable): updating starts a new
+  // response from these answers. A consent notice is agreed on the intro first.
+  const revisable = Boolean(def?.participation?.revisable) && !response.data?.administration;
+  const update = async () => {
+    if (!def) return;
+    if (def.consent && (def.consent.required ?? true)) {
+      navigate(`/s/${slug}`);
+      return;
+    }
+    let next;
+    try {
+      next = await create.mutateAsync({ slug, language: response.data!.language, revise: true });
+    } catch {
+      return; // create.isError renders the message
+    }
+    storeResponseId(slug, next.id, def.participation?.resume !== "none");
+    const key = next.last_question_key
+      ? firstOpenKey(def, next.answers, next.last_question_key)
+      : visibleQuestions(def, next.answers)[0]?.key;
+    navigate(key ? `/s/${slug}/q/${key}` : `/s/${slug}`);
+  };
   return (
     <div className={`relative min-h-dvh overflow-hidden ${immersive ? "bg-primary text-on-primary" : "bg-ground text-ink"}`} data-immersive={immersive || undefined} data-testid="complete">
       {immersive && <Decor />}
@@ -54,7 +80,21 @@ export function CompletePage() {
         <Eyebrow onPrimary={immersive}>{t("complete.eyebrow")}</Eyebrow>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{t("complete.title")}</h1>
         <p className={`text-[1.05rem] ${immersive ? "text-on-primary/85" : "text-ink-soft"}`}>{text ?? t("complete.body")}</p>
-        <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>{t("complete.readonly")}</p>
+        <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>
+          {t(revisable ? "complete.revisable" : "complete.readonly")}
+        </p>
+        {revisable && (
+          <div className="flex flex-wrap gap-3">
+            <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={() => void update()} disabled={create.isPending} data-testid="update">
+              {t("intro.update")}
+            </Button>
+          </div>
+        )}
+        {create.isError && (
+          <p className={immersive ? "text-on-primary" : "text-error"} role="alert">
+            {t("app.error")}
+          </p>
+        )}
       </main>
     </div>
   );

@@ -31,6 +31,7 @@ import { renderInline } from "@/survey/markdown";
 import { forget, recall, remember } from "@/survey/scratch";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
+import { visibleQuestions } from "@/survey/visibility";
 import { needsLanguageStep } from "@/survey/languageStep";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { Decor } from "@/components/Decor";
@@ -67,6 +68,9 @@ export function IntroPage() {
   // Discarding an unfinished response is destructive, so it is confirmed in an
   // alert dialog (focus-trapped, themed) rather than a browser confirm box.
   const [confirmingStartAgain, setConfirmingStartAgain] = useState(false);
+  // "Update my answers" (participation.revisable): the next start copies the
+  // last submitted answers into the new response (server-side, RUN-4).
+  const [revising, setRevising] = useState(false);
   // A stored response answers a different administration than the link's (a
   // repeat administration, RUN-5): it is not the one to resume, so this visit
   // starts the response for its own administration instead.
@@ -171,6 +175,8 @@ export function IntroPage() {
   // "Start again" can only discard when the server would create a fresh response:
   // an invitation link and an account survey both resume the same response instead.
   const canStartAgain = !invite && def.participation?.resume !== "account";
+  // A profile kept up to date: a finished response is updated, never restarted blank.
+  const revisable = Boolean(def.participation?.revisable) && !invite;
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending)
@@ -186,7 +192,7 @@ export function IntroPage() {
     );
   }
 
-  const start = async () => {
+  const start = async (revise: boolean = revising) => {
     if (consentRequired && !agreed) {
       setConsentError(true);
       return;
@@ -203,14 +209,26 @@ export function IntroPage() {
             ? { version: consent.version, agreed: true }
             : undefined,
         invitation,
+        revise: revise || undefined,
       });
     } catch {
       return; // create.isError renders the message (below both the resume card and the start form)
     }
     storeResponseId(slug, response.id, resumable);
     forget(`consent:${slug}`);
-    const key = firstOpenKey(def, response.answers, response.last_question_key);
+    // A new update holds every earlier answer, so it opens at the start for the
+    // participant to go through (or jump from the overview), not at the end.
+    const key =
+      revise && response.status !== "submitted" && !response.last_question_key
+        ? visibleQuestions(def, response.answers)[0]?.key
+        : firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
+  };
+
+  const update = () => {
+    setRevising(true);
+    if (consentRequired) setFresh(true);
+    else void start(true);
   };
 
   const resume = () => {
@@ -422,19 +440,33 @@ export function IntroPage() {
             >
               <h2 className="text-lg">{t("intro.welcomeBack")}</h2>
               <p className="mt-1 text-ink-soft [@media(max-height:800px)]:leading-snug">
-                {existing.data!.status === "submitted"
-                  ? t("intro.submitted")
-                  : t("intro.resumeHint")}
+                {existing.data!.status !== "submitted"
+                  ? t("intro.resumeHint")
+                  : revisable
+                    ? t("intro.revisable")
+                    : t("intro.submitted")}
               </p>
               <div className="mt-4 flex flex-wrap gap-3 [@media(max-height:800px)]:mt-3">
-                <Button
-                  variant="primary"
-                  size="runner"
-                  onClick={resume}
-                  data-testid="resume"
-                >
-                  {t("intro.continue")}
-                </Button>
+                {existing.data!.status === "submitted" && revisable ? (
+                  <Button
+                    variant="primary"
+                    size="runner"
+                    onClick={update}
+                    disabled={create.isPending}
+                    data-testid="update"
+                  >
+                    {t("intro.update")}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="runner"
+                    onClick={resume}
+                    data-testid="resume"
+                  >
+                    {t("intro.continue")}
+                  </Button>
+                )}
                 {existing.data!.status !== "submitted" ? (
                   canStartAgain && (
                     <Button
@@ -446,7 +478,7 @@ export function IntroPage() {
                       {t("intro.startAgain")}
                     </Button>
                   )
-                ) : invite ? null : ( // an invitation is answered once; the server would return the same response
+                ) : invite || revisable ? null : ( // an invitation is answered once; a revisable survey is updated, not restarted
                   <Button
                     variant="text"
                     size="runner"
@@ -553,7 +585,7 @@ export function IntroPage() {
                 <Button
                   variant={immersive ? "onPrimary" : "primary"}
                   size="runner"
-                  onClick={start}
+                  onClick={() => void start()}
                   disabled={create.isPending || definition.isPlaceholderData}
                   className="px-8"
                   data-testid="start"

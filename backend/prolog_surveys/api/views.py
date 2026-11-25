@@ -401,6 +401,11 @@ class ResponseCreateView(RunnerView):
         participant = (
             None if definition["participation"]["anonymous"] else resolve_participant(request)
         )
+        revises = (
+            _revision_source(definition, survey, participant, administration)
+            if data["revise"]
+            else None
+        )
         if administration is not None:
             # An invitation link resumes its own administration's response and
             # nothing else: a logged-in participant's older in-progress response
@@ -460,7 +465,11 @@ class ResponseCreateView(RunnerView):
             minted = mint_participant()
             if minted is not None:
                 fields["participant_id"] = minted
+        if revises is not None:
+            fields["revises"] = revises
         response = SurveyResponse.objects.create(**fields)
+        if revises is not None:
+            _copy_answers(revises, response)
         if minted is not None:
             # So the host can tell a respondent from a patient in its own tables.
             MintedParticipant.objects.create(participant_id=minted)
@@ -473,6 +482,67 @@ class ResponseCreateView(RunnerView):
                 language=lang,
             )
         return Response(_response_payload(response), status=status.HTTP_201_CREATED)
+
+
+def _revision_source(definition, survey, participant, administration) -> SurveyResponse:
+    """The response an update starts from: the signed-in participant's last
+    submitted response to this survey, in any version (participation.revisable)."""
+    if not definition["participation"].get("revisable"):
+        raise ValidationError({"revise": "this survey's answers are not updated"})
+    if participant is None or administration is not None:
+        # An invitation link answers its own administration, once.
+        raise ValidationError({"revise": "only a signed-in participant updates their answers"})
+    source = (
+        SurveyResponse.objects.filter(
+            survey_version__survey=survey,
+            participant_id=participant,
+            status=ResponseStatus.SUBMITTED,
+        )
+        .order_by("-submitted_at")
+        .first()
+    )
+    if source is None:
+        raise ValidationError({"revise": "no submitted response to update"})
+    return source
+
+
+def _source_options(question: dict) -> set[str] | None:
+    """A dropdown's options when they come from a list rather than the definition."""
+    if question["type"] == "dropdown" and question["config"].get("options_source"):
+        return set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
+    return None
+
+
+def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> None:
+    """The earlier answers that still hold in this response's version: each is
+    checked as the runner would check it now, and an answer its question no
+    longer shows is dropped, as when it is changed. An email capture is the
+    participant's to give again, never copied."""
+    definition = response.definition
+    questions = question_by_key(definition)
+    previous = source.answer_map()
+    answers: dict[str, dict] = {}
+    for key, question in questions.items():  # presentation order: earlier answers first
+        if key not in previous or question["type"] == "email":
+            continue
+        try:
+            answers[key] = validate_answer(
+                question,
+                previous[key],
+                answers,
+                presentation=definition["presentation"],
+                source_options=_source_options(question),
+                questions=questions,
+            )
+        except AnswerError:
+            continue  # the question changed: asked afresh
+    kept = apply_cascade(definition, answers, questions=questions).answers
+    SurveyAnswer.objects.bulk_create(
+        SurveyAnswer(
+            response=response, question_key=key, value=value, option_keys=option_keys_of(value)
+        )
+        for key, value in kept.items()
+    )
 
 
 class AnswerRejected(APIException):
@@ -609,16 +679,13 @@ class AnswerView(ResponseMixin, RunnerView):
                     questions=questions,
                 )
             )
-        source_options = None
-        if question["type"] == "dropdown" and question["config"].get("options_source"):
-            source_options = set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
         try:
             value = validate_answer(
                 question,
                 ser.validated_data["value"],
                 answers,
                 presentation=definition["presentation"],
-                source_options=source_options,
+                source_options=_source_options(question),
                 questions=questions,
             )
         except AnswerError as exc:

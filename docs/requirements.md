@@ -201,7 +201,7 @@ changed answer.
 | RUN-1 | The runner shows only `active` versions within their effective dates that the participant may access. Anonymous surveys (`participation.anonymous = true`) need no account; the response id is the sole credential and is treated as a secret. Anonymous here means the participant is not identified — the response is still bound to a person record (RUN-2), one carrying nothing that could name them. |
 | RUN-2 | Starting a survey creates a response bound to the active version, the chosen language, and a participant record. For a signed-in participant that is their own `Person`; otherwise PROlog asks the host's participant service for a new `Person` with no identifying attributes and binds the response to it. A response is never created without one (DEP-2). |
 | RUN-3 | Resume: for `browser_token`, the response id is kept in browser storage and the intro page offers **Continue** / **Start again** (start again is confirmed and abandons the previous response); for `account`, the participant's in-progress response is resumed on sign-in. |
-| RUN-4 | Submission records server timestamps, marks the response immutable, and returns it read-only thereafter. Correction is a revision/new response, never an overwrite. |
+| RUN-4 | Submission records server timestamps, marks the response immutable, and returns it read-only thereafter. Correction is a revision/new response, never an overwrite: a `participation.revisable` survey offers **Update my answers**, a new response holding the participant's last submitted answers that are still valid, linked to it by `revises`. |
 | RUN-5 | Repeat administration (`participation.repeat`) is available to invited, non-anonymous participants only: at each due date a new invitation is sent and a distinct response is created for the scheduled or then-active version. Off by default. |
 
 ### Presentation and navigation
@@ -364,7 +364,7 @@ surveys: session/JWT):
 | `GET /api/run/surveys/{slug}/?lang=` | Active version's definition for the runner, localized, with theme code, ETag-cached. Internal `notes` stripped. |
 | `GET /api/run/themes/{code}/` and `/assets/{path}` | Theme document and assets (THM-2). |
 | `GET /api/run/options/{source}/?lang=` | Built-in option lists (ISO 3166). |
-| `POST /api/run/responses/` `{slug, language, consent?}` | Create response, obtaining or creating the participant `Person` it binds to (RUN-2) → `{id, version, …}`. The person id is never returned to an unauthenticated runner. |
+| `POST /api/run/responses/` `{slug, language, consent?, revise?}` | Create response, obtaining or creating the participant `Person` it binds to (RUN-2) → `{id, version, …}`. The person id is never returned to an unauthenticated runner. `revise: true` (a `revisable` survey, signed-in participant) starts from their last submitted answers (RUN-4). |
 | `GET /api/run/responses/{id}/` | Status, language, all answers, visible-question list. |
 | `PUT /api/run/responses/{id}/answers/{key}/` | Upsert one answer (autosave). Validates (RUN-15), cascades (RUN-16), returns `{answer, invalidated}`. |
 | `POST /api/run/responses/{id}/submit/` | Complete (RUN-18). |

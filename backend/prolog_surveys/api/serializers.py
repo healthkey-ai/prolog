@@ -10,6 +10,11 @@ class CreateResponseSerializer(serializers.Serializer):
     invitation = serializers.UUIDField(
         required=False, help_text="Administration id from an invitation link"
     )
+    revise = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Start from the participant's last submitted answers (participation.revisable)",
+    )
 
 
 class PatchResponseSerializer(serializers.Serializer):
