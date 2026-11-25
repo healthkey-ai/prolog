@@ -59,6 +59,17 @@ describe("CompletePage", () => {
     expect(m.$("update")).not.toBeNull();
   });
 
+  it("offers no update from a submission other than the last one, which an update would copy", async () => {
+    const server = runnerServer(definition(), response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" }));
+    server.on("GET", `/surveys/${SLUG}/status/`, {
+      body: { account: true, in_progress: null, last_submitted: "later", revisable: true },
+    });
+    m = mount(`/s/${SLUG}/complete`);
+    await m.flush();
+    expect(m.text()).toContain(t("complete.readonly"));
+    expect(m.$("update")).toBeNull();
+  });
+
   it("sends a visitor with no stored response to the intro", async () => {
     runnerServer();
     localStorage.clear();

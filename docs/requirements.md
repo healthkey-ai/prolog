@@ -362,7 +362,7 @@ surveys: session/JWT):
 | Method & path | Purpose |
 | --- | --- |
 | `GET /api/run/surveys/{slug}/?lang=` | Active version's definition for the runner, localized, with theme code, ETag-cached. Internal `notes` stripped. |
-| `GET /api/run/surveys/{slug}/status/` | Where the signed-in participant stands with an `account` survey: `{account, in_progress, last_submitted, revisable}`, `revisable` being the active version's. The runner's intro and completion pages ask it before trusting the response id the browser kept (RUN-3, RUN-4); `account` is false for anonymous, `browser_token` and signed-out visits. Not cached. |
+| `GET /api/run/surveys/{slug}/status/` | Where the signed-in participant stands with an `account` survey, as starting it would find: `{account, in_progress, last_submitted, revisable}` — the response a start resumes (on the active version), the submission an update starts from, and the active version's `revisable`. The runner's intro and completion pages ask it before trusting the response id the browser kept (RUN-3, RUN-4); `account` is false for anonymous, `browser_token` and signed-out visits. Not cached. |
 | `GET /api/run/themes/{code}/` and `/assets/{path}` | Theme document and assets (THM-2). |
 | `GET /api/run/options/{source}/?lang=` | Built-in option lists (ISO 3166). |
 | `POST /api/run/responses/` `{slug, language, consent?}` | Create response, obtaining or creating the participant `Person` it binds to (RUN-2) → `{id, version, …}`. The person id is never returned to an unauthenticated runner. On a `revisable` survey a signed-in participant who has submitted starts from their last submitted answers (RUN-4). |

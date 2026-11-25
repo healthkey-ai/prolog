@@ -793,7 +793,7 @@ def test_the_status_is_the_participants_own_and_only_on_account_surveys(api_clie
 
 
 @pytest.mark.django_db
-def test_a_response_left_unfinished_before_the_last_submission_is_not_resumed(api_client):
+def test_a_blank_response_waits_to_become_the_update_and_is_not_offered_blank(api_client):
     version = load_definition(_history(), activate=True).version
     alice = get_user_model().objects.create_user("alice", "", "x")
     SurveyResponse.objects.create(survey_version=version, participant=alice, language="en")
@@ -802,7 +802,45 @@ def test_a_response_left_unfinished_before_the_last_submission_is_not_resumed(ap
 
     status = _status(api_client)
 
+    # Continuing it would open an empty form; starting makes it the update.
     assert status["in_progress"] is None and status["last_submitted"] == str(source.pk)
+
+
+@pytest.mark.django_db
+def test_the_status_names_what_starting_would_resume_and_nothing_else(api_client):
+    # Not revisable: a start resumes the unfinished response on the active
+    # version, whenever it was started, and never one on a retired version.
+    first = load_definition(_history(revisable=False), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    SurveyResponse.objects.create(survey_version=first, participant=alice, language="en")
+    second = load_definition(_history("2.0", revisable=False), activate=True).version
+    left = SurveyResponse.objects.create(survey_version=second, participant=alice, language="en")
+    _submitted(second, alice, {"taking": {"option": "never"}})
+    api_client.force_authenticate(alice)
+
+    assert _status(api_client)["in_progress"] == str(left.pk)
+    assert _start(api_client).json()["id"] == str(left.pk)
+
+    left.delete()
+    assert _status(api_client)["in_progress"] is None  # the retired version's is not resumed
+    assert _start(api_client).status_code == 201
+
+
+@pytest.mark.django_db
+def test_a_blank_response_started_before_the_last_submission_is_the_update_once_started(
+    api_client,
+):
+    # Starting again turns the earlier blank response into the update: from
+    # then on it is the place to come back to, though it was started first.
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    blank = SurveyResponse.objects.create(survey_version=version, participant=alice, language="en")
+    _submitted(version, alice, {"taking": {"option": "never"}})
+    api_client.force_authenticate(alice)
+
+    assert _start(api_client).json()["id"] == str(blank.pk)
+
+    assert _status(api_client)["in_progress"] == str(blank.pk)
 
 
 # --- the host's answers for an update (PROLOG_REVISION_ANSWERS_PROVIDER) -----------

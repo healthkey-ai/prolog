@@ -56,8 +56,10 @@ export function CompletePage() {
   const text = def?.completion as string | undefined;
   // A profile kept up to date (participation.revisable): updating starts from
   // the intro, on the active version (its consent, if it asks one).
-  const revisable =
-    (known ? known.revisable : Boolean(def?.participation?.revisable)) && !response.data?.administration;
+  // An update starts from the last submission, so only that one offers it.
+  const revisable = known
+    ? known.revisable && known.last_submitted === id
+    : Boolean(def?.participation?.revisable) && !response.data?.administration;
   const update = () => navigate(`/s/${slug}`, { state: { update: true } });
   return (
     <div className={`relative min-h-dvh overflow-hidden ${immersive ? "bg-primary text-on-primary" : "bg-ground text-ink"}`} data-immersive={immersive || undefined} data-testid="complete">

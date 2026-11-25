@@ -60,17 +60,16 @@ export function IntroPage() {
   const status = useParticipantStatus(slug, { enabled: !invite });
   const known = accountStatus(status);
   const statusPending = !invite && status.isPending;
-  const existingId = statusPending
-    ? null
-    : known
-      ? (known.in_progress ?? known.last_submitted)
-      : storedResponseId(slug);
+  // The server's pointer (null: none kept); undefined when it keeps no place.
+  // The kept response loads alongside the question (it usually is the answer),
+  // and nothing renders until the server has answered.
+  const serverId = known ? (known.in_progress ?? known.last_submitted) : undefined;
+  const existingId = serverId !== undefined ? serverId : storedResponseId(slug);
   useEffect(() => {
-    if (!known) return;
-    const id = known.in_progress ?? known.last_submitted;
-    if (id) storeResponseId(slug, id);
+    if (serverId === undefined) return;
+    if (serverId) storeResponseId(slug, serverId);
     else clearResponseId(slug);
-  }, [known, slug]);
+  }, [serverId, slug]);
   const existing = useResponse(existingId);
   const create = useCreateResponse();
   const patch = usePatchResponse(existingId ?? "");
@@ -212,10 +211,11 @@ export function IntroPage() {
   // A profile kept up to date: a finished response is updated, never restarted
   // blank. The server's answer is the active version's, the one an update
   // starts on; `def` may be the finished response's older version.
+  // With the server's answer, an update starts from the last submission
+  // however it was given (an invitation's too), as a start would.
   const revisable =
-    (known ? known.revisable : Boolean(def.participation?.revisable)) &&
     !invite &&
-    !existing.data?.administration;
+    (known ? known.revisable : Boolean(def.participation?.revisable) && !existing.data?.administration);
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending)

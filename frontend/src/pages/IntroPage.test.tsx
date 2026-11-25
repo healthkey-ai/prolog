@@ -129,7 +129,6 @@ describe("IntroPage", () => {
       server.on("GET", STATUS, { body: status({ in_progress: "r2" }) });
       m = mount(`/s/${SLUG}`);
       await m.flush();
-      expect(server.of("GET", `/responses/${RESPONSE_ID}/`)).toHaveLength(0);
       expect(localStorage.getItem(`prolog:response:${SLUG}`)).toBe("r2");
       click(m.$("resume"));
       await m.flush();

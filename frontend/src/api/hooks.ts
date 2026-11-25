@@ -75,6 +75,8 @@ export function useParticipantStatus(slug: string | undefined, { enabled = true 
     staleTime: 0,
     gcTime: 0,
     refetchOnWindowFocus: false,
+    // Without an answer the page falls back to the browser's id: no retry delay.
+    retry: false,
   });
 }
 
