@@ -88,7 +88,19 @@ class Command(BaseCommand):
         if erase_response:
             # The whole record, as a person asking to be forgotten means it:
             # the response goes and takes its answers, address and consents.
-            responses = SurveyResponse.objects.filter(pk__in=linked.values("response_id"))
+            erased = set(linked.values_list("response_id", flat=True))
+            # An update holds the answers it was started from (participation.revisable),
+            # so every response linked to an erased one, either way, goes too.
+            while True:
+                later = SurveyResponse.objects.filter(revises_id__in=erased)
+                earlier = SurveyResponse.objects.filter(pk__in=erased, revises__isnull=False)
+                more = set(later.values_list("pk", flat=True)) | set(
+                    earlier.values_list("revises_id", flat=True)
+                )
+                if more <= erased:
+                    break
+                erased |= more
+            responses = SurveyResponse.objects.filter(pk__in=erased)
             n = responses.count()
             if n == 0:
                 raise CommandError(

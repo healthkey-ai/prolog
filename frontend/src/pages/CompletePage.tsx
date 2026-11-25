@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import { useCreateResponse, useResponse, useSurveyDefinition } from "@/api/hooks";
+import { useResponse, useSurveyDefinition } from "@/api/hooks";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
-import { storeResponseId, storedResponseId } from "@/lib/storage";
+import { storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
-import { visibleQuestions } from "@/survey/visibility";
 import { Button } from "@/components/ui/button";
 import { Decor } from "@/components/Decor";
 import { Eyebrow } from "@/components/Eyebrow";
@@ -28,7 +27,6 @@ export function CompletePage() {
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
   const immersive = layout.immersiveIntro;
   const submitted = response.data?.status === "submitted";
-  const create = useCreateResponse();
 
   // This page asserts "submitted and read-only", so it only stands for a
   // submitted response. Browser Back after "Start a new response", a bookmark,
@@ -51,27 +49,10 @@ export function CompletePage() {
   if (!submitted) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
 
   const text = def?.completion as string | undefined;
-  // A profile kept up to date (participation.revisable): updating starts a new
-  // response from these answers. A consent notice is agreed on the intro first.
+  // A profile kept up to date (participation.revisable): updating starts from
+  // the intro, on the active version (its consent, if it asks one).
   const revisable = Boolean(def?.participation?.revisable) && !response.data?.administration;
-  const update = async () => {
-    if (!def) return;
-    if (def.consent && (def.consent.required ?? true)) {
-      navigate(`/s/${slug}`);
-      return;
-    }
-    let next;
-    try {
-      next = await create.mutateAsync({ slug, language: response.data!.language, revise: true });
-    } catch {
-      return; // create.isError renders the message
-    }
-    storeResponseId(slug, next.id, def.participation?.resume !== "none");
-    const key = next.last_question_key
-      ? firstOpenKey(def, next.answers, next.last_question_key)
-      : visibleQuestions(def, next.answers)[0]?.key;
-    navigate(key ? `/s/${slug}/q/${key}` : `/s/${slug}`);
-  };
+  const update = () => navigate(`/s/${slug}`, { state: { update: true } });
   return (
     <div className={`relative min-h-dvh overflow-hidden ${immersive ? "bg-primary text-on-primary" : "bg-ground text-ink"}`} data-immersive={immersive || undefined} data-testid="complete">
       {immersive && <Decor />}
@@ -85,15 +66,10 @@ export function CompletePage() {
         </p>
         {revisable && (
           <div className="flex flex-wrap gap-3">
-            <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={() => void update()} disabled={create.isPending} data-testid="update">
+            <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={update} data-testid="update">
               {t("intro.update")}
             </Button>
           </div>
-        )}
-        {create.isError && (
-          <p className={immersive ? "text-on-primary" : "text-error"} role="alert">
-            {t("app.error")}
-          </p>
         )}
       </main>
     </div>

@@ -31,7 +31,6 @@ import { renderInline } from "@/survey/markdown";
 import { forget, recall, remember } from "@/survey/scratch";
 import { storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
-import { visibleQuestions } from "@/survey/visibility";
 import { needsLanguageStep } from "@/survey/languageStep";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { Decor } from "@/components/Decor";
@@ -64,13 +63,18 @@ export function IntroPage() {
   // "Start a new response" / "Start again": show the start form (with the
   // consent notice) instead of the resume card; the old id is only replaced
   // once the new response exists.
-  const [fresh, setFresh] = useState(false);
+  const [fresh, setFresh] = useState(() => Boolean((location.state as { update?: boolean } | null)?.update));
   // Discarding an unfinished response is destructive, so it is confirmed in an
   // alert dialog (focus-trapped, themed) rather than a browser confirm box.
   const [confirmingStartAgain, setConfirmingStartAgain] = useState(false);
-  // "Update my answers" (participation.revisable): the next start copies the
-  // last submitted answers into the new response (server-side, RUN-4).
-  const [revising, setRevising] = useState(false);
+  // "Update my answers" (participation.revisable). The server starts an update
+  // from the participant's last submitted answers whenever they start the
+  // survey again (RUN-4); the runner only has to start it, from the active
+  // version (the stored response's may be older: another consent, or no longer
+  // revisable). From the completion page it arrives as navigation state.
+  const [updating, setUpdating] = useState(() => Boolean((location.state as { update?: boolean } | null)?.update));
+  const startRef = useRef<(() => Promise<void>) | null>(null);
+  const autoStarted = useRef(false);
   // A stored response answers a different administration than the link's (a
   // repeat administration, RUN-5): it is not the one to resume, so this visit
   // starts the response for its own administration instead.
@@ -151,6 +155,15 @@ export function IntroPage() {
     setLastCompleted(existing.data.submitted_at);
     setFresh(true);
   }, [fresh, existing.data, definition.data]);
+  // An update with no consent to agree to starts at once, on the active
+  // version's definition; one with a consent notice shows it first.
+  useEffect(() => {
+    const active = definition.data;
+    if (!updating || !fresh || autoStarted.current || !active || definition.isPlaceholderData) return;
+    if (active.consent && (active.consent.required ?? true)) return;
+    autoStarted.current = true;
+    void startRef.current?.();
+  }, [updating, fresh, definition.data, definition.isPlaceholderData]);
 
   if (definition.isLoading)
     return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
@@ -176,7 +189,7 @@ export function IntroPage() {
   // an invitation link and an account survey both resume the same response instead.
   const canStartAgain = !invite && def.participation?.resume !== "account";
   // A profile kept up to date: a finished response is updated, never restarted blank.
-  const revisable = Boolean(def.participation?.revisable) && !invite;
+  const revisable = Boolean(def.participation?.revisable) && !invite && !existing.data?.administration;
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending)
@@ -192,7 +205,7 @@ export function IntroPage() {
     );
   }
 
-  const start = async (revise: boolean = revising) => {
+  const start = async () => {
     if (consentRequired && !agreed) {
       setConsentError(true);
       return;
@@ -209,26 +222,21 @@ export function IntroPage() {
             ? { version: consent.version, agreed: true }
             : undefined,
         invitation,
-        revise: revise || undefined,
       });
     } catch {
       return; // create.isError renders the message (below both the resume card and the start form)
     }
     storeResponseId(slug, response.id, resumable);
     forget(`consent:${slug}`);
-    // A new update holds every earlier answer, so it opens at the start for the
-    // participant to go through (or jump from the overview), not at the end.
-    const key =
-      revise && response.status !== "submitted" && !response.last_question_key
-        ? visibleQuestions(def, response.answers)[0]?.key
-        : firstOpenKey(def, response.answers, response.last_question_key);
+    // An update opens where the server put it: its first question.
+    const key = firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
   };
+  startRef.current = start;
 
   const update = () => {
-    setRevising(true);
-    if (consentRequired) setFresh(true);
-    else void start(true);
+    setUpdating(true);
+    setFresh(true);
   };
 
   const resume = () => {
@@ -590,7 +598,7 @@ export function IntroPage() {
                   className="px-8"
                   data-testid="start"
                 >
-                  {t("intro.start")}
+                  {updating ? t("intro.update") : t("intro.start")}
                 </Button>
               </div>
             </>

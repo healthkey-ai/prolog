@@ -401,9 +401,14 @@ class ResponseCreateView(RunnerView):
         participant = (
             None if definition["participation"]["anonymous"] else resolve_participant(request)
         )
+        # A revisable survey (a profile kept up to date): a signed-in participant
+        # who has submitted it starts again from their last answers, on any
+        # device, in the active version (RUN-4). Never through an invitation.
         revises = (
-            _revision_source(definition, survey, participant, administration)
-            if data["revise"]
+            _last_submitted(survey, participant)
+            if participant is not None
+            and administration is None
+            and definition["participation"].get("revisable")
             else None
         )
         if administration is not None:
@@ -428,6 +433,14 @@ class ResponseCreateView(RunnerView):
                 .first()
             )
             if existing is not None:
+                if (
+                    revises is not None
+                    and existing.revises_id is None
+                    and not existing.answers.exists()
+                ):
+                    # Started blank before (another device, or before the survey
+                    # was revisable): it becomes the update, not an empty form.
+                    _start_revision(existing, revises)
                 return Response(_response_payload(existing), status=status.HTTP_200_OK)
 
         consent_cfg = definition.get("consent")
@@ -469,7 +482,7 @@ class ResponseCreateView(RunnerView):
             fields["revises"] = revises
         response = SurveyResponse.objects.create(**fields)
         if revises is not None:
-            _copy_answers(revises, response)
+            _start_revision(response, revises)
         if minted is not None:
             # So the host can tell a respondent from a patient in its own tables.
             MintedParticipant.objects.create(participant_id=minted)
@@ -484,15 +497,9 @@ class ResponseCreateView(RunnerView):
         return Response(_response_payload(response), status=status.HTTP_201_CREATED)
 
 
-def _revision_source(definition, survey, participant, administration) -> SurveyResponse:
-    """The response an update starts from: the signed-in participant's last
-    submitted response to this survey, in any version (participation.revisable)."""
-    if not definition["participation"].get("revisable"):
-        raise ValidationError({"revise": "this survey's answers are not updated"})
-    if participant is None or administration is not None:
-        # An invitation link answers its own administration, once.
-        raise ValidationError({"revise": "only a signed-in participant updates their answers"})
-    source = (
+def _last_submitted(survey, participant) -> SurveyResponse | None:
+    """The participant's last submitted response to this survey, in any version."""
+    return (
         SurveyResponse.objects.filter(
             survey_version__survey=survey,
             participant_id=participant,
@@ -501,9 +508,16 @@ def _revision_source(definition, survey, participant, administration) -> SurveyR
         .order_by("-submitted_at")
         .first()
     )
-    if source is None:
-        raise ValidationError({"revise": "no submitted response to update"})
-    return source
+
+
+def _start_revision(response: SurveyResponse, source: SurveyResponse) -> None:
+    """Make ``response`` an update of ``source``: its still-valid answers copied
+    in, and it opens at its first question for the participant to go through."""
+    kept = _copy_answers(source, response)
+    first = visible_questions(response.definition, kept)
+    response.revises = source
+    response.last_question_key = first[0].key if first else ""
+    response.save(update_fields=["revises", "last_question_key", "updated_at"])
 
 
 def _source_options(question: dict) -> set[str] | None:
@@ -513,7 +527,7 @@ def _source_options(question: dict) -> set[str] | None:
     return None
 
 
-def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> None:
+def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> dict[str, dict]:
     """The earlier answers that still hold in this response's version: each is
     checked as the runner would check it now, and an answer its question no
     longer shows is dropped, as when it is changed. An email capture is the
@@ -543,6 +557,7 @@ def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> None:
         )
         for key, value in kept.items()
     )
+    return kept
 
 
 class AnswerRejected(APIException):

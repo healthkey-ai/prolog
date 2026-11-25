@@ -205,7 +205,7 @@
   "password.save": "Alterar",
   "password.changed": "A sua palavra-passe foi alterada.",
   "password.close": "Fechar",
-  "intro.revisable": "Você já concluiu isto. Pode atualizar as suas respostas: você começa com as que deu da última vez.",
-  "intro.update": "Atualizar minhas respostas",
-  "complete.revisable": "Você pode atualizar as suas respostas a qualquer momento: você começa com as que deu."
+  "intro.revisable": "Já concluiu isto. Pode atualizar as suas respostas: começa com as que deu da última vez.",
+  "intro.update": "Atualizar as minhas respostas",
+  "complete.revisable": "Pode atualizar as suas respostas em qualquer altura: começa com as que deu."
 }

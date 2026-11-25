@@ -640,14 +640,12 @@ def _submitted(version, participant, answers):
     return response
 
 
-def _revise(api_client, slug="sample-history"):
-    return api_client.post(
-        "/api/run/responses/", {"slug": slug, "language": "en", "revise": True}, format="json"
-    )
+def _start(api_client, slug="sample-history"):
+    return api_client.post("/api/run/responses/", {"slug": slug, "language": "en"}, format="json")
 
 
 @pytest.mark.django_db
-def test_updating_starts_a_new_response_from_the_last_submitted_answers(api_client):
+def test_starting_a_revisable_survey_again_starts_from_the_last_submitted_answers(api_client):
     version = load_definition(_history(), activate=True).version
     alice = get_user_model().objects.create_user("alice", "", "x")
     earlier = {
@@ -660,20 +658,35 @@ def test_updating_starts_a_new_response_from_the_last_submitted_answers(api_clie
     source = _submitted(version, alice, earlier)
     api_client.force_authenticate(alice)
 
-    r = _revise(api_client)
+    r = _start(api_client)  # from any device: nothing in the request says "update"
 
     assert r.status_code == 201
     revision = SurveyResponse.objects.get(pk=r.json()["id"])
     assert revision.revises == source and revision.status == "in_progress"
     assert revision.answer_map() == earlier
     assert r.json()["answers"] == earlier
+    # It opens at the first question, for the participant to go through.
+    assert r.json()["last_question_key"] == "taking"
     # The submitted response is untouched.
-    assert (
-        source.answer_map() == earlier
-        and SurveyResponse.objects.get(pk=source.pk).status == "submitted"
-    )
-    # Asking again resumes the update, as any in-progress response.
-    assert _revise(api_client).json()["id"] == str(revision.pk)
+    assert source.answer_map() == earlier
+    assert SurveyResponse.objects.get(pk=source.pk).status == "submitted"
+    # Starting again resumes the update, as any in-progress response.
+    assert _start(api_client).json()["id"] == str(revision.pk)
+
+
+@pytest.mark.django_db
+def test_a_blank_response_started_elsewhere_becomes_the_update(api_client):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    source = _submitted(version, alice, {"taking": {"option": "never"}})
+    blank = SurveyResponse.objects.create(survey_version=version, participant=alice, language="en")
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 200 and r.json()["id"] == str(blank.pk)
+    assert r.json()["answers"] == {"taking": {"option": "never"}}
+    assert SurveyResponse.objects.get(pk=blank.pk).revises == source
 
 
 @pytest.mark.django_db
@@ -695,7 +708,7 @@ def test_an_answer_the_current_version_no_longer_takes_is_asked_afresh(api_clien
     load_definition(doc, activate=True)
     api_client.force_authenticate(alice)
 
-    r = _revise(api_client)
+    r = _start(api_client)
 
     assert r.status_code == 201
     assert SurveyResponse.objects.get(pk=r.json()["id"]).answer_map() == {
@@ -705,21 +718,18 @@ def test_an_answer_the_current_version_no_longer_takes_is_asked_afresh(api_clien
 
 
 @pytest.mark.django_db
-def test_only_a_revisable_survey_with_a_submission_of_ones_own_is_updated(api_client):
+def test_nothing_is_copied_without_a_submission_of_ones_own_or_a_revisable_version(api_client):
     version = load_definition(_history(), activate=True).version
     alice = get_user_model().objects.create_user("alice", "", "x")
     bob = get_user_model().objects.create_user("bob", "", "x")
     _submitted(version, alice, {"taking": {"option": "never"}})
 
     api_client.force_authenticate(bob)
-    r = _revise(api_client)
-    assert r.status_code == 400 and "revise" in r.json()  # nothing of Bob's to update
-
-    api_client.force_authenticate(None)
-    assert _revise(api_client).status_code in (400, 403)
+    r = _start(api_client)
+    assert r.status_code == 201 and r.json()["answers"] == {}  # nothing of Bob's
 
     load_definition(_history("2.0", revisable=False), activate=True)
     api_client.force_authenticate(alice)
-    r = _revise(api_client)
-    assert r.status_code == 400 and "revise" in r.json()
+    r = _start(api_client)
+    assert r.status_code == 201 and r.json()["answers"] == {}
     assert SurveyResponse.objects.filter(revises__isnull=False).count() == 0

@@ -112,8 +112,6 @@ export function useCreateResponse() {
       language: string;
       consent?: { version: string; agreed: boolean };
       invitation?: string;
-      /** Start from the participant's last submitted answers (participation.revisable). */
-      revise?: boolean;
     }) =>
       api.post<ResponseSummary>("/responses/", body),
     onSuccess: (data) => qc.setQueryData(keys.response(data.id), data),
