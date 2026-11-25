@@ -412,6 +412,15 @@ class ResponseCreateView(RunnerView):
             and definition["participation"].get("revisable")
             else None
         )
+        # The host's answers for an update, and its facts, asked before the lock
+        # below: that lock serialises every participant's start of this version,
+        # so the host's code (which may read a whole record) must not run under it.
+        facts = host_facts(participant, definition) if revises is not None else None
+        starting = (
+            _revision_starting_answers(participant, definition, facts, revises)
+            if revises is not None
+            else None
+        )
         if administration is not None:
             # An invitation link resumes its own administration's response and
             # nothing else: a logged-in participant's older in-progress response
@@ -441,7 +450,7 @@ class ResponseCreateView(RunnerView):
                 ):
                     # Started blank before (another device, or before the survey
                     # was revisable): it becomes the update, not an empty form.
-                    _start_revision(existing, revises)
+                    _start_revision(existing, revises, starting)
                 return Response(_response_payload(existing), status=status.HTTP_200_OK)
 
         consent_cfg = definition.get("consent")
@@ -469,7 +478,7 @@ class ResponseCreateView(RunnerView):
             # them, taken now and kept (RUN-23). Never through an invitation
             # link (whoever holds it would see what the facts open) nor for a
             # minted respondent, who has none.
-            fields["facts"] = host_facts(participant, definition)
+            fields["facts"] = facts if facts is not None else host_facts(participant, definition)
         minted = None
         if "participant_id" not in fields:
             # RUN-2: a response belongs to a participant even when nobody is
@@ -483,7 +492,7 @@ class ResponseCreateView(RunnerView):
             fields["revises"] = revises
         response = SurveyResponse.objects.create(**fields)
         if revises is not None:
-            _start_revision(response, revises)
+            _start_revision(response, revises, starting)
         if minted is not None:
             # So the host can tell a respondent from a patient in its own tables.
             MintedParticipant.objects.create(participant_id=minted)
@@ -511,13 +520,18 @@ def _last_submitted(survey, participant) -> SurveyResponse | None:
     )
 
 
-def _start_revision(response: SurveyResponse, source: SurveyResponse) -> None:
+def _revision_starting_answers(participant, definition, facts, source: SurveyResponse) -> dict:
+    """The answers an update of ``source`` starts from: the host's, for the
+    definition as the participant will see it (their facts resolved), else
+    ``source``'s own."""
+    seen = resolve_facts(definition, facts) if definition.get("facts") else definition
+    return revision_answers(participant, seen, source.answer_map())
+
+
+def _start_revision(response: SurveyResponse, source: SurveyResponse, starting: dict) -> None:
     """Make ``response`` an update of ``source``: the answers it starts from
-    (the host's, else ``source``'s) that still hold copied in, and it opens at
-    its first question for the participant to go through."""
-    starting = revision_answers(
-        getattr(response, "participant_id", None), response.definition, source.answer_map()
-    )
+    that still hold copied in, and it opens at its first question for the
+    participant to go through."""
     kept = _copy_answers(starting, response)
     first = visible_questions(response.definition, kept)
     response.revises = source

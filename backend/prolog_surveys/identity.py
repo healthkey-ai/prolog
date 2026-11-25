@@ -9,10 +9,12 @@ participant ids a human needs to reconcile them.
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from django.db import transaction
 from django.utils.module_loading import import_string
 
 from . import conf
@@ -99,7 +101,10 @@ def host_facts(participant: Any, definition: dict[str, Any]) -> dict[str, str]:
     from .engine.facts import known_facts
 
     try:
-        supplied = import_string(path)(participant, definition)
+        # A savepoint: a database error in the host's code must not leave the
+        # caller's transaction aborted, or the fallback below could not be used.
+        with transaction.atomic():
+            supplied = import_string(path)(participant, definition)
     except Exception:  # noqa: BLE001 - the host's code; the survey still starts
         logger.exception(
             "PROLOG_FACTS_PROVIDER failed for survey %s; starting with no facts", definition["slug"]
@@ -121,7 +126,12 @@ def revision_answers(
     if not path:
         return previous
     try:
-        supplied = import_string(path)(participant, definition, dict(previous))
+        # Its own copies (the definition is the version's cached one, shared by
+        # every request), and a savepoint, as for the facts provider.
+        with transaction.atomic():
+            supplied = import_string(path)(
+                participant, copy.deepcopy(definition), copy.deepcopy(previous)
+            )
     except Exception:  # noqa: BLE001 - the host's code; the update still starts
         logger.exception(
             "PROLOG_REVISION_ANSWERS_PROVIDER failed for survey %s; starting from the last answers",

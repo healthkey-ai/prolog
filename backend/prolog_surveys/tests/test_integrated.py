@@ -801,3 +801,46 @@ def test_an_update_starts_from_the_last_answers_when_the_host_cannot_say(
     r = _start(api_client)
 
     assert r.status_code == 201 and r.json()["answers"] == earlier
+
+
+def fail_in_the_database(participant, definition, previous):
+    """A host whose own query fails: Postgres aborts the transaction it ran in."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT * FROM no_such_host_table")
+
+
+def mutate_what_it_is_given(participant, definition, previous):
+    definition["sections"].clear()
+    previous.clear()
+    return {"taking": {"option": "never"}}
+
+
+@pytest.mark.django_db
+def test_a_provider_failing_in_the_database_still_starts_the_update(api_client, settings):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    earlier = {"taking": {"option": "never"}}
+    _submitted(version, alice, earlier)
+    settings.PROLOG_REVISION_ANSWERS_PROVIDER = f"{__name__}.fail_in_the_database"
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 201 and r.json()["answers"] == earlier
+
+
+@pytest.mark.django_db
+def test_a_provider_cannot_change_the_version_or_the_submission(api_client, settings):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    source = _submitted(version, alice, {"taking": {"option": "stopped"}})
+    settings.PROLOG_REVISION_ANSWERS_PROVIDER = f"{__name__}.mutate_what_it_is_given"
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 201 and r.json()["answers"] == {"taking": {"option": "never"}}
+    assert version.cached_definition["sections"]  # the shared definition is intact
+    assert source.answer_map() == {"taking": {"option": "stopped"}}
