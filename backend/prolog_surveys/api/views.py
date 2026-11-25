@@ -39,6 +39,7 @@ from ..identity import (
     idempotency_key,
     mint_participant,
     resolve_participant,
+    revision_answers,
 )
 from ..invitations import takes_invitations, version_for
 from ..models import (
@@ -511,9 +512,13 @@ def _last_submitted(survey, participant) -> SurveyResponse | None:
 
 
 def _start_revision(response: SurveyResponse, source: SurveyResponse) -> None:
-    """Make ``response`` an update of ``source``: its still-valid answers copied
-    in, and it opens at its first question for the participant to go through."""
-    kept = _copy_answers(source, response)
+    """Make ``response`` an update of ``source``: the answers it starts from
+    (the host's, else ``source``'s) that still hold copied in, and it opens at
+    its first question for the participant to go through."""
+    starting = revision_answers(
+        getattr(response, "participant_id", None), response.definition, source.answer_map()
+    )
+    kept = _copy_answers(starting, response)
     first = visible_questions(response.definition, kept)
     response.revises = source
     response.last_question_key = first[0].key if first else ""
@@ -527,14 +532,13 @@ def _source_options(question: dict) -> set[str] | None:
     return None
 
 
-def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> dict[str, dict]:
-    """The earlier answers that still hold in this response's version: each is
-    checked as the runner would check it now, and an answer its question no
-    longer shows is dropped, as when it is changed. An email capture is the
-    participant's to give again, never copied."""
+def _copy_answers(previous: dict[str, dict], response: SurveyResponse) -> dict[str, dict]:
+    """The given answers that hold in this response's version: each is checked
+    as the runner would check it now, and an answer its question does not show
+    is dropped, as when it is changed. An email capture is the participant's to
+    give again, never copied."""
     definition = response.definition
     questions = question_by_key(definition)
-    previous = source.answer_map()
     answers: dict[str, dict] = {}
     for key, question in questions.items():  # presentation order: earlier answers first
         if key not in previous or question["type"] == "email":

@@ -108,6 +108,36 @@ def host_facts(participant: Any, definition: dict[str, Any]) -> dict[str, str]:
     return known_facts(definition, supplied if isinstance(supplied, dict) else {})
 
 
+def revision_answers(
+    participant: Any, definition: dict[str, Any], previous: dict[str, dict]
+) -> dict[str, dict]:
+    """The answers an update of a revisable survey starts from (RUN-4): the
+    host's (PROLOG_REVISION_ANSWERS_PROVIDER), given the participant's last
+    submitted answers, or those answers themselves. A provider that fails or
+    returns something other than a dict is logged, and the update starts from
+    the last submitted answers; it never stops the participant from starting.
+    The caller checks every answer either way."""
+    path = conf.get("PROLOG_REVISION_ANSWERS_PROVIDER")
+    if not path:
+        return previous
+    try:
+        supplied = import_string(path)(participant, definition, dict(previous))
+    except Exception:  # noqa: BLE001 - the host's code; the update still starts
+        logger.exception(
+            "PROLOG_REVISION_ANSWERS_PROVIDER failed for survey %s; starting from the last answers",
+            definition["slug"],
+        )
+        return previous
+    if not isinstance(supplied, dict):
+        logger.error(
+            "PROLOG_REVISION_ANSWERS_PROVIDER returned %s for survey %s; starting from the last answers",
+            type(supplied).__name__,
+            definition["slug"],
+        )
+        return previous
+    return {key: value for key, value in supplied.items() if isinstance(value, dict)}
+
+
 def resolve_participant(request) -> Any | None:
     """Participant pk for an authenticated request (account surveys)."""
     path = conf.get("PROLOG_PARTICIPANT_RESOLVER")

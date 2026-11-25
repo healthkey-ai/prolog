@@ -100,6 +100,12 @@ DEFAULTS: dict[str, Any] = {
     # the host's facts about a signed-in participant when they start a survey
     # that declares facts (DEF-14, RUN-23). Unset = every fact is unknown.
     "PROLOG_FACTS_PROVIDER": None,
+    # Dotted path to a callable (participant pk, definition, previous answers)
+    # -> {question key: answer}: the answers an update of a revisable survey
+    # starts from (RUN-4), e.g. the host's record as it stands now, which may
+    # have moved on since the participant last submitted. Each is checked as an
+    # answer given now. Unset = the participant's last submitted answers.
+    "PROLOG_REVISION_ANSWERS_PROVIDER": None,
     # Languages this deployment consciously offers as machine-translated (DEF-5).
     # Empty (the default) keeps the translation gate exactly as it was: a
     # version offering an unreviewed language cannot be activated at all.
@@ -212,7 +218,11 @@ def validate() -> None:
                 f"REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'][{scope!r}] = {rate!r} is not a "
                 "rate DRF can parse (e.g. '30/hour')"
             )
-    for name in ("PROLOG_PARTICIPANT_RESOLVER", "PROLOG_FACTS_PROVIDER"):
+    for name in (
+        "PROLOG_PARTICIPANT_RESOLVER",
+        "PROLOG_FACTS_PROVIDER",
+        "PROLOG_REVISION_ANSWERS_PROVIDER",
+    ):
         if not get(name):
             continue
         # Resolved lazily per request otherwise, i.e. a typo would pass the

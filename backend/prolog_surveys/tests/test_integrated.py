@@ -733,3 +733,71 @@ def test_nothing_is_copied_without_a_submission_of_ones_own_or_a_revisable_versi
     r = _start(api_client)
     assert r.status_code == 201 and r.json()["answers"] == {}
     assert SurveyResponse.objects.filter(revises__isnull=False).count() == 0
+
+
+# --- the host's answers for an update (PROLOG_REVISION_ANSWERS_PROVIDER) -----------
+
+HOST_ANSWERS: dict = {}
+PROVIDED: list = []
+
+
+def provide_answers(participant, definition, previous):
+    """The test host: its record says what HOST_ANSWERS holds, over the last answers."""
+    PROVIDED.append((participant, definition["slug"], previous))
+    return {**previous, **HOST_ANSWERS}
+
+
+def fail_answers(participant, definition, previous):
+    raise RuntimeError("the host's record is unavailable")
+
+
+def answers_not_a_dict(participant, definition, previous):
+    return ["not", "answers"]
+
+
+@pytest.mark.django_db
+def test_an_update_starts_from_the_hosts_answers_as_checked_as_any(api_client, settings):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    earlier = {"taking": {"option": "yes_now"}, "started": {"date": "2019-06"}}
+    _submitted(version, alice, earlier)
+    settings.PROLOG_REVISION_ANSWERS_PROVIDER = f"{__name__}.provide_answers"
+    PROVIDED.clear()
+    HOST_ANSWERS.clear()
+    # The host's record moved on: the treatment stopped. It also offers an
+    # answer the survey does not take, which is dropped like any other.
+    HOST_ANSWERS.update(
+        {
+            "taking": {"option": "stopped"},
+            "ended": {"date": "2021-03"},
+            "diagnosed_year": {"date": "not a date"},
+        }
+    )
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 201
+    assert PROVIDED == [(alice.pk, "sample-history", earlier)]
+    assert r.json()["answers"] == {
+        "taking": {"option": "stopped"},
+        "started": {"date": "2019-06"},
+        "ended": {"date": "2021-03"},
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("provider", ["fail_answers", "answers_not_a_dict"])
+def test_an_update_starts_from_the_last_answers_when_the_host_cannot_say(
+    api_client, settings, provider
+):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    earlier = {"taking": {"option": "never"}}
+    _submitted(version, alice, earlier)
+    settings.PROLOG_REVISION_ANSWERS_PROVIDER = f"{__name__}.{provider}"
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 201 and r.json()["answers"] == earlier
