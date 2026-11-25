@@ -46,6 +46,7 @@ else in the directory is served.
   "layout": { … },
   "assets": { … },
   "motion": { "enabled": true },
+  "exit_url": "/",                     // optional: the deployment's home page (§2.6a)
   "strings": { … }
 }
 ```
@@ -121,6 +122,17 @@ Values are CSS colours; use 6-digit hex so the contrast check can run.
 `{"enabled": false}` disables transitions regardless of user preference.
 `prefers-reduced-motion` is always honoured.
 
+### 2.6a `exit_url`
+
+The deployment's own home page, for a runner that sits inside a wider site.
+When set, every question screen's header offers **Save and exit** (`nav.exit`):
+the answer on screen is saved as **Next** would save it (a refused or failed
+save keeps the participant there, with its message), and the page then opens;
+the response resumes where they left it. The completion page offers **Back to
+home** (`complete.exit`). A path on the same site (`/…`, never `//…`) or an
+http(s) URL; anything else fails registration (schema), and the runner ignores
+it too. Absent: neither link, as before.
+
 ### 2.7 `strings` — chrome overrides
 
 Overrides for the runner's own UI strings, per key then language. Survey
@@ -144,7 +156,7 @@ mirrors it:
 | --- | --- |
 | App | `app.title` `app.loading` `app.error` `app.retry` `app.reload` `app.notFound` `app.closed` `app.forbidden` `app.throttled` `app.hint` (`{{path}}`) `app.pageTitle` (`{{survey}}`, `{{step}}`) |
 | Intro | `intro.eyebrow` `intro.minutes` (`{{count}}`) `intro.anonymous` `intro.language` `intro.start` `intro.continue` `intro.welcomeBack` `intro.resumeHint` `intro.startAgain` `intro.startAgainAction` `intro.startAgainConfirm` `intro.startNew` `intro.consentAgree` `intro.consentRequired` `intro.submitted` `intro.lastCompleted` (`{{date}}`) `intro.machineTranslation` (`{{source}}`, `{{language}}`) |
-| Header | `header.section` (`{{number}}`, `{{total}}`) `header.steps` (`{{number}}`, `{{total}}`) `header.overview` `header.language` `header.progress` |
+| Header | `header.section` (`{{number}}`, `{{total}}`) `header.steps` (`{{number}}`, `{{total}}`) `header.overview` `nav.exit` `header.language` `header.progress` |
 | Question | `question.eyebrow` (`{{number}}`, `{{total}}`) `question.optional` `question.info` |
 | Footer | `nav.back` `nav.next` `nav.finish` `nav.saving` `nav.saved` `nav.saveFailed` |
 | Skip prompt | `skip.prompt` `skip.skip` `skip.answer` `skip.hard` |
@@ -155,7 +167,7 @@ mirrors it:
 | Ranking | `ranking.help` `ranking.srInstructions` `ranking.drag` (`{{label}}`) `ranking.moveUp` (`{{label}}`) `ranking.moveDown` (`{{label}}`) `ranking.position` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragStart` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOver` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.dragOutside` (`{{label}}`) `ranking.dragDropped` (`{{label}}`) `ranking.dragCancel` (`{{label}}`, `{{position}}`, `{{total}}`) `ranking.optional` `ranking.include` `ranking.exclude` `ranking.skipped` |
 | Email step | `email.placeholder` `email.save` `email.skip` `email.saved` `email.invalid` `email.unavailable` `email.consentsRequired` `email.savedAs` `email.change` `email.cancel` `email.remove` |
 | Report page | `report.eyebrow` `report.title` `report.signInIntro` `report.email` `report.password` `report.signIn` `report.signInFailed` `report.noSignIn` `report.signedInAs` (`{{label}}`) `report.signOut` `report.downloads` `report.downloadsNote` `report.downloadResponses` (`{{count}}`) `report.downloadAll` (`{{count}}`) `report.downloadContacts` (`{{count}}`) `report.downloadResponsesFew` `report.downloadAllFew` `report.downloadContactsFew` `report.fewerThan` (`{{count}}`) `report.versions` `report.version` `report.versionLabel` (`{{version}}`) `report.respondents` `report.completions` `report.partials` `report.completionRate` `report.averageTime` `report.byLanguage` `report.language` `report.byDay` `report.day` `report.started` `report.completed` `report.dropOff` `report.dropOffNote` `report.question` `report.responses` `report.beforeStarting` `report.noneYet` `password.show` `password.hide` `password.change` `password.current` `password.new` `password.confirm` `password.mismatch` `password.save` `password.changed` `password.close` — the results page at `/s/<slug>/report`, which only a reader the deployment recognises ever sees |
-| Completion | `complete.eyebrow` `complete.title` `complete.body` `complete.readonly` `complete.missing` |
+| Completion | `complete.eyebrow` `complete.title` `complete.body` `complete.readonly` `complete.exit` `complete.missing` |
 | Common | `common.close` `common.cancel` |
 | Validation | `error.generic` (fallback for an unknown code) and one `error.<code>` per answer-validation code shared by both engines (see the survey manual §10): `value_not_object` `skip_shape` `other_text_not_string` `options_not_list` `options_duplicate` `order_not_list` `order_duplicate` `ratings_not_object` `email_via_endpoint` `unsupported_type` `info_no_answer` `skip_not_allowed` `not_visible` `other_text_without_free_option` `other_text_too_long` (`{{max}}`) `option_required` `option_unknown` `options_no_source` `options_unknown` `min_selections` (`{{min}}`) `max_selections` (`{{max}}`) `exclusive_combined` `value_not_integer` `value_out_of_range` (`{{min}}`, `{{max}}`) `order_unknown` `order_incomplete` `matrix_no_rows` `rows_unknown` `rows_incomplete` `rating_not_integer` `rating_out_of_range` (`{{min}}`, `{{max}}`) `text_required` `text_too_long` (`{{max}}`) `number_required` `number_not_finite` `number_not_integer` `number_too_small` (`{{min}}`) `number_too_large` (`{{max}}`) `date_format` `date_precision` `date_invalid` `date_too_early` (`{{min}}`) `date_too_late` (`{{max}}`) |
 

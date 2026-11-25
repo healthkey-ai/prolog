@@ -7,7 +7,8 @@ import { storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { Decor } from "@/components/Decor";
 import { Eyebrow } from "@/components/Eyebrow";
-import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
+import { useThemeExit, useThemeLayout, useThemeLogo } from "@/theme/useTheme";
+import { Button } from "@/components/ui/button";
 import { usePageTitle } from "./usePageTitle";
 
 export function CompletePage() {
@@ -24,6 +25,7 @@ export function CompletePage() {
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
   const immersive = layout.immersiveIntro;
   const submitted = response.data?.status === "submitted";
+  const exit = useThemeExit();
 
   // This page asserts "submitted and read-only", so it only stands for a
   // submitted response. Browser Back after "Start a new response", a bookmark,
@@ -55,6 +57,15 @@ export function CompletePage() {
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{t("complete.title")}</h1>
         <p className={`text-[1.05rem] ${immersive ? "text-on-primary/85" : "text-ink-soft"}`}>{text ?? t("complete.body")}</p>
         <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>{t("complete.readonly")}</p>
+        {exit && (
+          <div className="flex flex-wrap gap-3">
+            <Button asChild variant={immersive ? "onPrimary" : "primary"} size="runner">
+              <a href={exit} data-testid="exit">
+                {t("complete.exit")}
+              </a>
+            </Button>
+          </div>
+        )}
       </main>
     </div>
   );

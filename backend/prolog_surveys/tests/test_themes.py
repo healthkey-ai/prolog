@@ -331,3 +331,21 @@ def test_logo_height_is_a_css_length_or_refused(tmp_path):
     assert theme({"logo_height": "calc(100% - 1px)"})
     assert theme({"intro_logo_height": "url(x)"})
     assert theme({"logo_height": "56"})
+
+
+@pytest.mark.parametrize(
+    ("exit_url", "accepted"),
+    [
+        ("/", True),
+        ("/home", True),
+        ("https://example.org/home", True),
+        ("//elsewhere.example", False),
+        ("/\\elsewhere.example", False),
+        ("javascript:alert(1)", False),
+        ("home", False),
+    ],
+)
+def test_an_exit_url_is_a_path_on_the_site_or_an_http_url(tmp_path, exit_url, accepted):
+    _, issues = validate_theme(write_theme(tmp_path / "t", code="t", exit_url=exit_url))
+    errors = [i for i in issues if i.level == "error"]
+    assert (not errors) is accepted, [str(i) for i in errors]

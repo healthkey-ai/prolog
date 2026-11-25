@@ -204,5 +204,7 @@
   "password.mismatch": "Those two do not match.",
   "password.save": "Change it",
   "password.changed": "Your password has been changed.",
-  "password.close": "Close"
+  "password.close": "Close",
+  "nav.exit": "Save and exit",
+  "complete.exit": "Back to home"
 }

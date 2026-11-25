@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ListIcon } from "lucide-react";
+import { ListIcon, LogOutIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Eyebrow } from "./Eyebrow";
@@ -20,6 +20,9 @@ interface ShellProps {
   step: number;
   stepTotal: number;
   onOverview?: () => void;
+  /** "Save and exit" to the deployment's home page (the theme's `exit_url`). */
+  onExit?: () => void;
+  exitDisabled?: boolean;
   languages: string[];
   language: string;
   onLanguage: (lang: string) => void;
@@ -60,6 +63,12 @@ export function Shell(p: ShellProps) {
               <button type="button" onClick={p.onOverview} aria-label={t("header.overview")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 sm:px-3.5")} data-testid="overview">
                 <ListIcon className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">{t("header.overview")}</span>
+              </button>
+            )}
+            {p.onExit && (
+              <button type="button" onClick={p.onExit} disabled={p.exitDisabled} aria-label={t("nav.exit")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 sm:px-3.5")} data-testid="exit">
+                <LogOutIcon className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">{t("nav.exit")}</span>
               </button>
             )}
           </div>

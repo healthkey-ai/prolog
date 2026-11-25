@@ -204,5 +204,7 @@
   "password.mismatch": "As duas não coincidem.",
   "password.save": "Alterar",
   "password.changed": "A sua palavra-passe foi alterada.",
-  "password.close": "Fechar"
+  "password.close": "Fechar",
+  "nav.exit": "Salvar e sair",
+  "complete.exit": "Voltar ao início"
 }

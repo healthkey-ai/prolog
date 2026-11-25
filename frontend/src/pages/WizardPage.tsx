@@ -13,13 +13,14 @@ import { SkipConfirm } from "@/components/SkipConfirm";
 import { Button } from "@/components/ui/button";
 import { issueMessages } from "@/i18n/issues";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
+import { browser } from "@/lib/leave";
 import { storedResponseId } from "@/lib/storage";
 import { AnswerError, implicitAnswer, sameAnswer, validateAnswer } from "@/survey/answers";
 import { missingKeys } from "@/survey/completion";
 import { firstOpenKey, hasStoredAnswer, overview, position, progressFraction, type Position } from "@/survey/navigation";
 import { ANSWERABLE, questionRequired, skipPolicy, type AnswerValue, type Question } from "@/survey/types";
 import { questionByKey } from "@/survey/visibility";
-import { useThemeLogo } from "@/theme/useTheme";
+import { useThemeExit, useThemeLogo } from "@/theme/useTheme";
 import { usePageTitle } from "./usePageTitle";
 
 /**
@@ -58,6 +59,8 @@ export function WizardPage() {
   const [draftKey, setDraftKey] = useState<string | null>(null);
   const [skipPrompt, setSkipPrompt] = useState<SkipPrompt | null>(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const exit = useThemeExit();
+  const [exiting, setExiting] = useState(false);
   const [interstitial, setInterstitial] = useState<number | null>(null);
   const [localErrors, setLocalErrors] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -365,6 +368,27 @@ export function WizardPage() {
     return false;
   };
 
+  /**
+   * "Save and exit": the answer on screen is saved as Next would save it (a
+   * failed or refused save keeps the participant here, with its message), any
+   * save in flight lands, and then the deployment's home page opens. The
+   * response is resumed from where they were.
+   */
+  const onExit = async () => {
+    if (!exit) return;
+    setExiting(true);
+    try {
+      if (isAnswerable && hasDraft && draftValue !== undefined && !sameAnswer(cleared ? undefined : answers[key], draftValue)) {
+        if ((await commit(draftValue)) !== "saved") return;
+      } else if (!(await settled())) {
+        return;
+      }
+      browser.leave(exit);
+    } finally {
+      setExiting(false);
+    }
+  };
+
   /** Back and the overview jump: leave for `target` once a cleared answer is resolved. */
   const leave = async (target: string) => {
     if (!(await resolveCleared(target))) return;
@@ -473,6 +497,8 @@ export function WizardPage() {
         step={pos.index + 1}
         stepTotal={pos.visible.length}
         onOverview={def.presentation?.overview !== false ? () => setOverviewOpen(true) : undefined}
+        onExit={exit ? () => void onExit() : undefined}
+        exitDisabled={exiting || saveState === "closed"}
         languages={def.languages}
         language={def.language}
         onLanguage={onLanguage}

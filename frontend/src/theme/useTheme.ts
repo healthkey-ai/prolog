@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from "react";
+import { httpUrl } from "@/pages/httpUrl";
 import { useThemeContext } from "./ThemeProvider";
 
 export interface ThemeLayout {
@@ -31,6 +32,22 @@ export function useThemeLogo(onPrimary = false, screen: "header" | "intro" = "he
   // size costs the words nothing.
   const height = screen === "intro" ? (theme?.layout?.intro_logo_height ?? headerHeight) : headerHeight;
   return createElement("img", { src, alt: theme?.name ?? "", className: "w-auto shrink-0", style: { height }, "data-testid": "theme-logo" });
+}
+
+/**
+ * The theme's `exit_url` when it is safe to follow: a path on this site (not
+ * `//host` or `/\host`, which leave it) or an http(s) URL. The schema says the
+ * same; a theme served from elsewhere is checked again here.
+ */
+export function exitUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (/^\/(?![/\\])/.test(raw)) return raw;
+  return httpUrl(raw);
+}
+
+export function useThemeExit(): string | undefined {
+  const { theme } = useThemeContext();
+  return exitUrl(theme?.exit_url);
 }
 
 export function useThemeDecor(): string[] {
