@@ -152,6 +152,15 @@ def test_participant_resolver_is_resolved_at_startup(settings, profile, model):
         conf.validate()
 
 
+def test_the_revision_answers_provider_is_resolved_at_startup(settings):
+    settings.PROLOG_REVISION_ANSWERS_PROVIDER = "prolog_surveys.no_such_module.answers"
+    with pytest.raises(ImproperlyConfigured, match="PROLOG_REVISION_ANSWERS_PROVIDER"):
+        conf.validate()
+    settings.PROLOG_REVISION_ANSWERS_PROVIDER = "prolog_surveys.conf.THROTTLE_RATES"  # not callable
+    with pytest.raises(ImproperlyConfigured, match="callable"):
+        conf.validate()
+
+
 # --- throttle rates ---------------------------------------------------------------
 
 

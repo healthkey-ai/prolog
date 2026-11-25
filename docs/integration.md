@@ -27,6 +27,7 @@ PROLOG_PROFILE = "integrated"
 PROLOG_PARTICIPANT_MODEL = "omop_core.Person"          # any "app_label.Model"
 PROLOG_PARTICIPANT_RESOLVER = "myhost.prolog.resolve_participant"  # (request) -> pk | None
 PROLOG_FACTS_PROVIDER = "myhost.prolog.facts"                      # (participant pk, definition) -> {fact: value}
+PROLOG_REVISION_ANSWERS_PROVIDER = "myhost.prolog.revision_answers" # (participant pk, definition, previous answers) -> {key: answer}
 PROLOG_STATS_MIN_COUNT = 20                            # report/admin counts under this show as "fewer than 20" (RUN-24); 0 = all
 PROLOG_IDENTITY_SERVICE = "myhost.prolog.IdentityService"          # class or factory
 PROLOG_DEFINITION_DIRS = ["/srv/surveys"]
@@ -104,6 +105,27 @@ participant's in-progress response for the active version instead of
 creating another; reads and writes are refused for anyone else (403).
 Without a resolver, PROlog uses `request.user.pk` when the participant
 model *is* `AUTH_USER_MODEL`.
+
+## Revision answers provider (RUN-4)
+
+An update of a `revisable` survey starts, by default, from the participant's
+last submitted answers. When the host keeps what those answers described, and
+it may have changed since (a record that later questionnaires or clinicians
+update), the host supplies the answers the update starts from instead:
+
+```python
+def revision_answers(participant_id, definition, previous):
+    # previous: {question key: answer} from their last submission
+    return {**previous, **answers_from_my_record(participant_id, definition)}
+```
+
+`definition` is the active version's, with the participant's facts resolved.
+Answers take the shape the API stores (`{"option": ...}`, `{"date": ...}`, …).
+PROlog checks each one as an answer given now, in presentation order, and drops
+what the version does not take or does not show, so the provider can offer more
+than applies. A provider that raises, or returns anything but a dict, is logged
+and the update starts from `previous`; it never stops the participant starting.
+The setting is resolved at start-up, like the other hooks.
 
 ## Facts provider (DEF-14, RUN-23)
 
