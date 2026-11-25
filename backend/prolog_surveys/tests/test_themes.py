@@ -343,6 +343,12 @@ def test_logo_height_is_a_css_length_or_refused(tmp_path):
         ("/\\elsewhere.example", False),
         ("javascript:alert(1)", False),
         ("home", False),
+        # A browser drops tabs and newlines from a URL: these would lead off the site.
+        ("/\t/elsewhere.example", False),
+        ("/\n/elsewhere.example", False),
+        ("/home\n", False),
+        ("HTTPS://example.org", False),
+        ("https:elsewhere.example", False),
     ],
 )
 def test_an_exit_url_is_a_path_on_the_site_or_an_http_url(tmp_path, exit_url, accepted):

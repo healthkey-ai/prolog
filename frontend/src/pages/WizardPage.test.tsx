@@ -78,6 +78,55 @@ describe("WizardPage", () => {
       expect(m.pathname()).toBe(`/s/${SLUG}/q/q1`);
     });
 
+    it("resolves a cleared required answer as Next would: asks, records the skip, then leaves", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const server = withExit("/home");
+      server.on("GET", `/responses/${RESPONSE_ID}/`, { body: response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q2" }) });
+      server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value, "q2"));
+      m = mount(`/s/${SLUG}/q/q2`, themedRoutes());
+      await m.until("exit");
+      type(TEXT(m), "");
+      blur(TEXT(m));
+      click(m.$("exit"));
+      await m.flush();
+      expect(leave).not.toHaveBeenCalled();
+      expect(m.container.querySelector("[role=alertdialog]")).not.toBeNull();
+      click(m.$("skip-confirm"));
+      await m.flush();
+      expect(server.of("PUT", ANSWERS).map((c) => c.body)).toEqual([{ value: { skipped: true } }]);
+      expect(leave).toHaveBeenCalledWith("/home");
+    });
+
+    it("saves nothing the participant did not change, such as a ranking's displayed order", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const ranking = { key: "r1", type: "ranking", text: "Put these in order", required: true, options: [{ key: "a", label: "A" }, { key: "b", label: "B" }] };
+      const server = runnerServer(
+        definition({ sections: [{ key: "s1", title: "Only", questions: [ranking] }] } as never),
+        response({ answers: {}, last_question_key: "r1" }),
+      );
+      server.on("GET", "/themes/default/", { body: { code: "default", colors: { light: {} }, exit_url: "/home" } });
+      m = mount(`/s/${SLUG}/q/r1`, themedRoutes());
+      await m.until("exit");
+      click(m.$("exit"));
+      await m.flush();
+      expect(server.of("PUT", ANSWERS)).toHaveLength(0);
+      expect(leave).toHaveBeenCalledWith("/home");
+    });
+
+    it("stays while an earlier save has failed, until it is retried", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const server = withExit("/home");
+      server.on("PUT", ANSWERS, { status: 500, body: {} });
+      m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
+      await m.until("exit");
+      type(TEXT(m), "x");
+      blur(TEXT(m)); // the autosave fails
+      await m.flush();
+      click(m.$("exit"));
+      await m.flush();
+      expect(leave).not.toHaveBeenCalled();
+    });
+
     it("is offered only for a safe exit_url", async () => {
       for (const unsafe of [undefined, "//elsewhere.example", "javascript:alert(1)"]) {
         withExit(unsafe);

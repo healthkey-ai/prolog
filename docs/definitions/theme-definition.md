@@ -126,12 +126,17 @@ Values are CSS colours; use 6-digit hex so the contrast check can run.
 
 The deployment's own home page, for a runner that sits inside a wider site.
 When set, every question screen's header offers **Save and exit** (`nav.exit`):
-the answer on screen is saved as **Next** would save it (a refused or failed
-save keeps the participant there, with its message), and the page then opens;
-the response resumes where they left it. The completion page offers **Back to
-home** (`complete.exit`). A path on the same site (`/…`, never `//…`) or an
-http(s) URL; anything else fails registration (schema), and the runner ignores
-it too. Absent: neither link, as before.
+what the participant changed on screen is saved as **Next** would save it (a
+cleared answer is skipped, confirmed or refused as Next would; a displayed
+default such as a ranking's order is not saved for them), every save in flight
+lands, and the page then opens; a refused or failed save, or one already
+failed, keeps them there with its message. The response resumes where they left
+it. On a survey that has closed, it simply leaves. The completion page offers
+**Back to home** (`complete.exit`). A path on the same site (`/…`, never `//…`)
+or an `http://` / `https://` URL, with no whitespace, control character or
+backslash anywhere (browsers drop a tab or newline from a URL, so `/<tab>/host`
+would leave the site); anything else fails registration (schema), and the
+runner ignores it too. Absent: neither link, as before.
 
 ### 2.7 `strings` — chrome overrides
 

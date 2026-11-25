@@ -34,7 +34,8 @@ type SaveOutcome = "saved" | "failed" | "superseded";
  * going when it opened: Back or an overview jump from a question whose stored
  * answer they cleared; null when it was Next.
  */
-type SkipPrompt = { target: string | null };
+/** Where a confirmed skip goes: a question, on (null), or out of the runner ("Save and exit"). */
+type SkipPrompt = { target: string | null; exit?: boolean };
 
 /** The server's view of the response differs from the cache (submitted in another tab, or gone). */
 const stale = (err: unknown) => (err instanceof ApiError && err.status === 409) || isGone(err);
@@ -61,6 +62,14 @@ export function WizardPage() {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const exit = useThemeExit();
   const [exiting, setExiting] = useState(false);
+  // Back from the home page out of the browser's page cache: usable again.
+  useEffect(() => {
+    const reopened = (e: PageTransitionEvent) => {
+      if (e.persisted) setExiting(false);
+    };
+    window.addEventListener("pageshow", reopened);
+    return () => window.removeEventListener("pageshow", reopened);
+  }, []);
   const [interstitial, setInterstitial] = useState<number | null>(null);
   const [localErrors, setLocalErrors] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -357,15 +366,25 @@ export function WizardPage() {
    * (the prompt remembers `target`), a hard-required one blocks. True when there
    * is nothing to resolve.
    */
-  const resolveCleared = async (target: string | null): Promise<boolean> => {
+  const resolveCleared = async (target: string | null, exit = false): Promise<boolean> => {
     if (!cleared) return true;
     if (skippable) return (await persist(key, { skipped: true })) === "saved";
     if (policy === "hard") {
       setLocalErrors([t("skip.hard")]);
       return false;
     }
-    setSkipPrompt({ target });
+    setSkipPrompt({ target, exit });
     return false;
+  };
+
+  /** Every save still in flight lands (as Finish waits), then the home page opens. */
+  const leaveSite = async (): Promise<boolean> => {
+    while (pendingSaves.current.size) {
+      const outcomes = await Promise.all([...pendingSaves.current]);
+      if (outcomes.includes("failed")) return false;
+    }
+    browser.leave(exit!);
+    return true;
   };
 
   /**
@@ -375,17 +394,29 @@ export function WizardPage() {
    * response is resumed from where they were.
    */
   const onExit = async () => {
-    if (!exit) return;
-    setExiting(true);
-    try {
-      if (isAnswerable && hasDraft && draftValue !== undefined && !sameAnswer(cleared ? undefined : answers[key], draftValue)) {
-        if ((await commit(draftValue)) !== "saved") return;
-      } else if (!(await settled())) {
-        return;
-      }
+    if (!exit || exiting) return;
+    if (saveState === "closed") {
+      // Nothing more can be saved; the way home stays open.
       browser.leave(exit);
+      return;
+    }
+    // A save that failed is retried from the footer first, as Next requires.
+    if (saveState === "error") return;
+    setExiting(true);
+    let left = false;
+    try {
+      if (cleared) {
+        // A cleared answer is resolved as Next resolves it: a skip, a prompt, or a block.
+        if (!(await resolveCleared(null, true))) return;
+      } else if (isAnswerable && draftKey === key && hasDraft && draftValue !== undefined && !sameAnswer(answers[key], draftValue)) {
+        // Only what the participant changed: a displayed default (a ranking's
+        // order) is not their answer until they accept it with Next.
+        if ((await commit(draftValue)) !== "saved") return;
+      }
+      left = await leaveSite();
     } finally {
-      setExiting(false);
+      // After leaving, the page stays inert until the next one loads.
+      if (!left) setExiting(false);
     }
   };
 
@@ -444,8 +475,14 @@ export function WizardPage() {
 
   const onSkip = async () => {
     const target = skipPrompt?.target ?? null;
+    const exitAfter = skipPrompt?.exit ?? false;
     setSkipPrompt(null);
     if ((await persist(key, { skipped: true })) !== "saved") return;
+    if (exitAfter) {
+      setExiting(true);
+      if (!(await leaveSite())) setExiting(false);
+      return;
+    }
     if (target) await goTo(target);
     else await advance(after({ skipped: true }));
   };
@@ -498,7 +535,7 @@ export function WizardPage() {
         stepTotal={pos.visible.length}
         onOverview={def.presentation?.overview !== false ? () => setOverviewOpen(true) : undefined}
         onExit={exit ? () => void onExit() : undefined}
-        exitDisabled={exiting || saveState === "closed"}
+        exitDisabled={exiting || submit.isPending}
         languages={def.languages}
         language={def.language}
         onLanguage={onLanguage}

@@ -66,7 +66,7 @@ export function Shell(p: ShellProps) {
               </button>
             )}
             {p.onExit && (
-              <button type="button" onClick={p.onExit} disabled={p.exitDisabled} aria-label={t("nav.exit")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 sm:px-3.5")} data-testid="exit">
+              <button type="button" onClick={p.onExit} disabled={p.exitDisabled} aria-label={t("nav.exit")} className={cn(ghostPill(false), "min-w-[44px] justify-center px-0 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5")} data-testid="exit">
                 <LogOutIcon className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">{t("nav.exit")}</span>
               </button>
