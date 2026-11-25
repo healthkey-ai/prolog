@@ -209,6 +209,8 @@ give an address**, and its copy has to say so. With `store_separately`,
 nobody — including you — can join an address back to a set of answers, which
 also means you cannot honour a later "delete my answers" request from that
 address; with `link_response` you can (`withdraw_consent … --erase-response`).
+On a `revisable` survey that also erases every update linked to that response,
+and the one it updated: each holds a copy of the same answers.
 
 Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
@@ -477,6 +479,11 @@ join them, something has gone wrong.
 By default only submitted responses are exported; `--include-in-progress`
 includes unfinished ones, which is usually what you want for a "how far did
 people get" question and not what you want for analysis.
+
+On a `revisable` survey each update is its own row, and its `revises` column
+holds the response it updated. A participant's current answers are the row no
+other row revises; the report likewise counts every update as a response and
+a completion.
 
 Multi-selects and matrix rows are exploded into columns, so a row is one
 response. An email question that offers consents adds a `1`/`0` column per

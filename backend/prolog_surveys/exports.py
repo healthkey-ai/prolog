@@ -110,6 +110,8 @@ def response_header(version: SurveyVersion) -> list[str]:
         "status",
         "started_at",
         "submitted_at",
+        # The submitted response this one updates (participation.revisable), or empty.
+        "revises",
     ] + [c[0] for c in _columns(version.definition)]
 
 
@@ -135,6 +137,7 @@ def response_rows(
             r.status,
             r.started_at.isoformat(),
             r.submitted_at.isoformat() if r.submitted_at else "",
+            str(r.revises_id) if r.revises_id else "",
         ] + [
             _cell(answers.get(qk) if qk in visible else None, sub, withdrawn) for _, qk, sub in cols
         ]

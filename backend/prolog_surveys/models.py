@@ -282,6 +282,15 @@ class SurveyResponse(models.Model):
         help_text="The host's facts about the participant when the response started (RUN-23): "
         "only those the definition declares, with a declared value.",
     )
+    revises = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="revisions",
+        help_text="The submitted response this one started from (participation.revisable): "
+        "its answers were copied in, and that response is unchanged (RUN-4).",
+    )
 
     class Meta:
         ordering = ["-started_at"]

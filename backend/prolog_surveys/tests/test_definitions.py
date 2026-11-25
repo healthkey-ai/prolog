@@ -915,3 +915,29 @@ def test_an_any_group_does_not_make_its_question_unreachable(history):
 def test_precision_is_a_date_setting(history):
     question(history, "taking")["config"] = {"precision": ["year"]}
     assert "config_mismatch" in codes(validate_semantics(history), level="warning")
+
+
+# --- participation.revisable ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("participation", "expected"),
+    [
+        ({"anonymous": False, "resume": "account", "revisable": True}, set()),
+        ({"anonymous": True, "revisable": True}, {"revisable_needs_account"}),
+        ({"anonymous": False, "resume": "none", "revisable": True}, {"revisable_needs_account"}),
+        (
+            {"anonymous": False, "resume": "account", "revisable": True, "repeatable": True},
+            {"revisable_repeatable"},
+        ),
+    ],
+)
+def test_a_revisable_survey_needs_signed_in_participants_and_is_not_a_check_in(
+    example, participation, expected
+):
+    example["participation"] = participation
+    found = set(codes(validate_definition(example))) & {
+        "revisable_needs_account",
+        "revisable_repeatable",
+    }
+    assert found == expected

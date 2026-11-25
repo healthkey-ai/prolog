@@ -1,21 +1,23 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { useResponse, useSurveyDefinition } from "@/api/hooks";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
+import { Button } from "@/components/ui/button";
 import { Decor } from "@/components/Decor";
 import { Eyebrow } from "@/components/Eyebrow";
 import { useThemeExit, useThemeLayout, useThemeLogo } from "@/theme/useTheme";
-import { Button } from "@/components/ui/button";
 import { usePageTitle } from "./usePageTitle";
 
 export function CompletePage() {
   const { slug = "" } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const id = storedResponseId(slug);
+  // The response this page was opened for: storing an update's id must not turn
+  // the page into a redirect to that update's first open question.
+  const [id] = useState(() => storedResponseId(slug));
   const response = useResponse(id);
   const definition = useSurveyDefinition(slug, { lang: response.data?.language, responseId: id });
   const def = definition.data;
@@ -48,6 +50,10 @@ export function CompletePage() {
   if (!submitted) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
 
   const text = def?.completion as string | undefined;
+  // A profile kept up to date (participation.revisable): updating starts from
+  // the intro, on the active version (its consent, if it asks one).
+  const revisable = Boolean(def?.participation?.revisable) && !response.data?.administration;
+  const update = () => navigate(`/s/${slug}`, { state: { update: true } });
   return (
     <div className={`relative min-h-dvh overflow-hidden ${immersive ? "bg-primary text-on-primary" : "bg-ground text-ink"}`} data-immersive={immersive || undefined} data-testid="complete">
       {immersive && <Decor />}
@@ -56,14 +62,24 @@ export function CompletePage() {
         <Eyebrow onPrimary={immersive}>{t("complete.eyebrow")}</Eyebrow>
         <h1 className="text-[2.1rem] leading-[1.1] sm:text-[3rem]">{t("complete.title")}</h1>
         <p className={`text-[1.05rem] ${immersive ? "text-on-primary/85" : "text-ink-soft"}`}>{text ?? t("complete.body")}</p>
-        <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>{t("complete.readonly")}</p>
-        {exit && (
+        <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>
+          {t(revisable ? "complete.revisable" : "complete.readonly")}
+        </p>
+        {(exit || revisable) && (
           <div className="flex flex-wrap gap-3">
-            <Button asChild variant={immersive ? "onPrimary" : "primary"} size="runner">
-              <a href={exit} data-testid="exit">
-                {t("complete.exit")}
-              </a>
-            </Button>
+            {exit && (
+              <Button asChild variant={immersive ? "onPrimary" : "primary"} size="runner">
+                <a href={exit} data-testid="exit">
+                  {t("complete.exit")}
+                </a>
+              </Button>
+            )}
+            {revisable && (
+              // Beside "Back to home" it is the second choice, not a second primary.
+              <Button variant={immersive ? "onPrimary" : exit ? "surface" : "primary"} size="runner" onClick={update} data-testid="update">
+                {t("intro.update")}
+              </Button>
+            )}
           </div>
         )}
       </main>
