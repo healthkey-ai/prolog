@@ -735,6 +735,114 @@ def test_nothing_is_copied_without_a_submission_of_ones_own_or_a_revisable_versi
     assert SurveyResponse.objects.filter(revises__isnull=False).count() == 0
 
 
+# --- where a signed-in participant stands (the runner's intro asks first) ---
+
+
+def _status(api_client, slug="sample-history"):
+    r = api_client.get(f"/api/run/surveys/{slug}/status/")
+    assert r.status_code == 200 and r["Cache-Control"] == "no-store"
+    return r.json()
+
+
+@pytest.mark.django_db
+def test_the_status_offers_an_update_from_an_older_version_on_any_device(api_client):
+    # The answers were given on a version that could not be updated; the active
+    # one can. The browser that kept the old response's id is not asked.
+    first = load_definition(_history(revisable=False), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    source = _submitted(first, alice, {"taking": {"option": "never"}})
+    load_definition(_history("2.0"), activate=True)
+    api_client.force_authenticate(alice)
+
+    assert _status(api_client) == {
+        "account": True,
+        "in_progress": None,
+        "last_submitted": str(source.pk),
+        "revisable": True,
+    }
+    # Once the update is started, it is the place to come back to.
+    update = _start(api_client).json()["id"]
+    assert _status(api_client)["in_progress"] == update
+
+
+@pytest.mark.django_db
+def test_the_status_is_the_participants_own_and_only_on_account_surveys(api_client):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    bob = get_user_model().objects.create_user("bob", "", "x")
+    _submitted(version, alice, {"taking": {"option": "never"}})
+
+    api_client.force_authenticate(bob)
+    assert _status(api_client) == {
+        "account": True,
+        "in_progress": None,
+        "last_submitted": None,
+        "revisable": True,
+    }
+    api_client.force_authenticate(None)
+    assert _status(api_client)["account"] is False  # signed out: the browser's id stands
+
+    load_definition(_history("2.0", resume="browser_token", revisable=False), activate=True)
+    api_client.force_authenticate(alice)
+    assert _status(api_client) == {
+        "account": False,
+        "in_progress": None,
+        "last_submitted": None,
+        "revisable": False,
+    }
+
+
+@pytest.mark.django_db
+def test_a_blank_response_waits_to_become_the_update_and_is_not_offered_blank(api_client):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    SurveyResponse.objects.create(survey_version=version, participant=alice, language="en")
+    source = _submitted(version, alice, {"taking": {"option": "never"}})
+    api_client.force_authenticate(alice)
+
+    status = _status(api_client)
+
+    # Continuing it would open an empty form; starting makes it the update.
+    assert status["in_progress"] is None and status["last_submitted"] == str(source.pk)
+
+
+@pytest.mark.django_db
+def test_the_status_names_what_starting_would_resume_and_nothing_else(api_client):
+    # Not revisable: a start resumes the unfinished response on the active
+    # version, whenever it was started, and never one on a retired version.
+    first = load_definition(_history(revisable=False), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    SurveyResponse.objects.create(survey_version=first, participant=alice, language="en")
+    second = load_definition(_history("2.0", revisable=False), activate=True).version
+    left = SurveyResponse.objects.create(survey_version=second, participant=alice, language="en")
+    _submitted(second, alice, {"taking": {"option": "never"}})
+    api_client.force_authenticate(alice)
+
+    assert _status(api_client)["in_progress"] == str(left.pk)
+    assert _start(api_client).json()["id"] == str(left.pk)
+
+    left.delete()
+    assert _status(api_client)["in_progress"] is None  # the retired version's is not resumed
+    assert _start(api_client).status_code == 201
+
+
+@pytest.mark.django_db
+def test_a_blank_response_started_before_the_last_submission_is_the_update_once_started(
+    api_client,
+):
+    # Starting again turns the earlier blank response into the update: from
+    # then on it is the place to come back to, though it was started first.
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    blank = SurveyResponse.objects.create(survey_version=version, participant=alice, language="en")
+    _submitted(version, alice, {"taking": {"option": "never"}})
+    api_client.force_authenticate(alice)
+
+    assert _start(api_client).json()["id"] == str(blank.pk)
+
+    assert _status(api_client)["in_progress"] == str(blank.pk)
+
+
 # --- the host's answers for an update (PROLOG_REVISION_ANSWERS_PROVIDER) -----------
 
 HOST_ANSWERS: dict = {}

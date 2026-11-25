@@ -12,6 +12,19 @@ export interface RunnerDefinition extends Definition {
   machine_notice?: boolean;
 }
 
+/**
+ * Where the signed-in participant stands with an account survey, from the
+ * server (GET /surveys/<slug>/status/). With `account` false the server keeps
+ * no place for them and the response id the browser kept is the only pointer.
+ */
+export interface ParticipantStatus {
+  account: boolean;
+  in_progress: string | null;
+  last_submitted: string | null;
+  /** The active version offers "Update my answers". */
+  revisable: boolean;
+}
+
 export interface ResponseSummary {
   id: string;
   slug: string;
