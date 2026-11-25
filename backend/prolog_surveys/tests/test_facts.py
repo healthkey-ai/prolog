@@ -196,6 +196,22 @@ def test_a_failing_provider_starts_the_response_with_no_facts(settings, signed_i
     assert SurveyResponse.objects.get(pk=rid).facts == {}
 
 
+def fail_in_the_database(participant, definition):
+    """A host whose own query fails: Postgres aborts the transaction it ran in."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT * FROM no_such_host_table")
+
+
+@integrated
+@pytest.mark.django_db
+def test_a_provider_failing_in_the_database_still_starts_the_response(settings, signed_in):
+    settings.PROLOG_FACTS_PROVIDER = f"{__name__}.fail_in_the_database"
+    rid = start(signed_in)
+    assert SurveyResponse.objects.get(pk=rid).facts == {}
+
+
 @integrated
 @pytest.mark.django_db
 def test_no_provider_means_every_fact_is_unknown(settings, signed_in):
