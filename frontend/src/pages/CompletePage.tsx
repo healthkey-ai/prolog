@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import { useResponse, useSurveyDefinition } from "@/api/hooks";
+import { accountStatus, useParticipantStatus, useResponse, useSurveyDefinition } from "@/api/hooks";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
 import { storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
@@ -20,6 +20,10 @@ export function CompletePage() {
   const [id] = useState(() => storedResponseId(slug));
   const response = useResponse(id);
   const definition = useSurveyDefinition(slug, { lang: response.data?.language, responseId: id });
+  // Whether this can be updated is the active version's to say, not the
+  // version this response answered (see IntroPage).
+  const status = useParticipantStatus(slug);
+  const known = accountStatus(status);
   const def = definition.data;
   useDefinitionLanguage(def?.language);
   usePageTitle(def ? t("app.pageTitle", { survey: def.title as string, step: t("complete.title") }) : undefined);
@@ -47,12 +51,13 @@ export function CompletePage() {
     }
   }, [id, response.isError, response.data, submitted, def, definition.isError, slug, navigate]);
 
-  if (!submitted) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
+  if (!submitted || status.isPending) return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
 
   const text = def?.completion as string | undefined;
   // A profile kept up to date (participation.revisable): updating starts from
   // the intro, on the active version (its consent, if it asks one).
-  const revisable = Boolean(def?.participation?.revisable) && !response.data?.administration;
+  const revisable =
+    (known ? known.revisable : Boolean(def?.participation?.revisable)) && !response.data?.administration;
   const update = () => navigate(`/s/${slug}`, { state: { update: true } });
   return (
     <div className={`relative min-h-dvh overflow-hidden ${immersive ? "bg-primary text-on-primary" : "bg-ground text-ink"}`} data-immersive={immersive || undefined} data-testid="complete">

@@ -4,7 +4,9 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { ApiError, isClosed, isGone } from "@/api/client";
 import {
   SupersededError,
+  accountStatus,
   useCreateResponse,
+  useParticipantStatus,
   usePatchResponse,
   useResponse,
   useSurveyDefinition,
@@ -29,7 +31,7 @@ import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { languageName } from "@/i18n/languageName";
 import { renderInline } from "@/survey/markdown";
 import { forget, recall, remember } from "@/survey/scratch";
-import { storeResponseId, storedResponseId } from "@/lib/storage";
+import { clearResponseId, storeResponseId, storedResponseId } from "@/lib/storage";
 import { firstOpenKey } from "@/survey/navigation";
 import { needsLanguageStep } from "@/survey/languageStep";
 import { useDefinitionLanguage } from "@/i18n/useDefinitionLanguage";
@@ -49,7 +51,26 @@ export function IntroPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [language, setLanguage] = useState<string | undefined>(undefined);
-  const existingId = storedResponseId(slug);
+  // On an account survey the server knows where the participant stands, on
+  // every device; the id this browser kept is only a pointer, rewritten from
+  // that answer. Trusted alone it could be another device's leftover, a
+  // response on a version that is no longer active (which then decided what
+  // the intro offered), or missing on a new browser. An invitation link
+  // names its own response, and other surveys keep their place in the browser.
+  const status = useParticipantStatus(slug, { enabled: !invite });
+  const known = accountStatus(status);
+  const statusPending = !invite && status.isPending;
+  const existingId = statusPending
+    ? null
+    : known
+      ? (known.in_progress ?? known.last_submitted)
+      : storedResponseId(slug);
+  useEffect(() => {
+    if (!known) return;
+    const id = known.in_progress ?? known.last_submitted;
+    if (id) storeResponseId(slug, id);
+    else clearResponseId(slug);
+  }, [known, slug]);
   const existing = useResponse(existingId);
   const create = useCreateResponse();
   const patch = usePatchResponse(existingId ?? "");
@@ -110,7 +131,7 @@ export function IntroPage() {
       (bound ? existing.data?.language : undefined),
     invite,
     responseId: bound,
-    enabled: !existingId || !existing.isPending,
+    enabled: !statusPending && (!existingId || !existing.isPending),
   });
   const layout = useThemeLayout();
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
@@ -165,7 +186,7 @@ export function IntroPage() {
     void startRef.current?.();
   }, [updating, fresh, definition.data, definition.isPlaceholderData]);
 
-  if (definition.isLoading)
+  if (statusPending || definition.isLoading)
     return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
   if (definition.isError || !definition.data) {
     return (
@@ -188,8 +209,13 @@ export function IntroPage() {
   // "Start again" can only discard when the server would create a fresh response:
   // an invitation link and an account survey both resume the same response instead.
   const canStartAgain = !invite && def.participation?.resume !== "account";
-  // A profile kept up to date: a finished response is updated, never restarted blank.
-  const revisable = Boolean(def.participation?.revisable) && !invite && !existing.data?.administration;
+  // A profile kept up to date: a finished response is updated, never restarted
+  // blank. The server's answer is the active version's, the one an update
+  // starts on; `def` may be the finished response's older version.
+  const revisable =
+    (known ? known.revisable : Boolean(def.participation?.revisable)) &&
+    !invite &&
+    !existing.data?.administration;
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending)

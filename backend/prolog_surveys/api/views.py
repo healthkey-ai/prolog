@@ -323,6 +323,53 @@ class SurveyDefinitionView(RunnerView):
         )
 
 
+class ParticipantStatusView(RunnerView):
+    """Where the signed-in participant stands with an account survey (RUN-3, RUN-4).
+
+    The runner asks this before it trusts the response id its browser kept: on
+    an account survey the server knows the participant's place on every
+    device, and a kept id can be another device's leftover, a response on a
+    version that is no longer active, or nothing at all. ``revisable`` is the
+    active version's, the one an update starts on. Anywhere else (anonymous,
+    browser resume, signed out) ``account`` is false and the browser's id
+    stays the runner's only pointer.
+    """
+
+    throttle_classes = [ClientKeyThrottle]
+
+    def get(self, request, slug: str):
+        survey, version = _active_version(slug)
+        definition = version.cached_definition
+        participation = definition["participation"]
+        participant = None if participation["anonymous"] else resolve_participant(request)
+        account = participant is not None and participation.get("resume") == "account"
+        in_progress = last_submitted = None
+        if account:
+            # Responses to an invitation are reached through its link, not here.
+            own = SurveyResponse.objects.filter(
+                survey_version__survey=survey,
+                participant_id=participant,
+                administration__isnull=True,
+            ).only("pk", "status", "started_at", "submitted_at")
+            last_submitted = (
+                own.filter(status=ResponseStatus.SUBMITTED).order_by("-submitted_at").first()
+            )
+            unfinished = own.filter(status=ResponseStatus.IN_PROGRESS)
+            if last_submitted is not None:
+                # One left unfinished before the last submission was abandoned.
+                unfinished = unfinished.filter(started_at__gt=last_submitted.submitted_at)
+            in_progress = unfinished.order_by("-started_at").first()
+        return Response(
+            {
+                "account": account,
+                "in_progress": str(in_progress.pk) if in_progress else None,
+                "last_submitted": str(last_submitted.pk) if last_submitted else None,
+                "revisable": account and bool(participation.get("revisable")),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+
 # BCP 47-ish language tag: language, optional script or region subtag.
 _LANG_TAG = re.compile(r"^([A-Za-z]{2,3})(?:-([A-Za-z]{2,4}))?$")
 

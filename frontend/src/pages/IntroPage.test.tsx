@@ -97,6 +97,78 @@ describe("IntroPage", () => {
     expect(m.$("start")?.textContent).toBe(t("intro.update"));
   });
 
+  describe("on an account survey, where the participant stands is the server's to say", () => {
+    const STATUS = `/surveys/${SLUG}/status/`;
+    const status = (over: object = {}) => ({ account: true, in_progress: null, last_submitted: null, revisable: false, ...over });
+    const finished = response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" });
+
+    it("offers an update of answers given on an older version that could not be updated", async () => {
+      // The kept response's own version is not revisable; the active one is.
+      const server = runnerServer(definition(), finished);
+      server.on("GET", STATUS, { body: status({ last_submitted: RESPONSE_ID, revisable: true }) });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.text()).toContain(t("intro.revisable"));
+      expect(m.$("update")).not.toBeNull();
+      expect(m.$("resume")).toBeNull();
+    });
+
+    it("finds the participant's answers on a browser that kept nothing", async () => {
+      localStorage.clear();
+      const server = runnerServer(definition(), finished);
+      server.on("GET", STATUS, { body: status({ last_submitted: RESPONSE_ID, revisable: true }) });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.$("update")).not.toBeNull();
+      expect(localStorage.getItem(`prolog:response:${SLUG}`)).toBe(RESPONSE_ID);
+    });
+
+    it("resumes the response left unfinished on another device, not the one this browser kept", async () => {
+      const server = runnerServer();
+      server.on("GET", "/responses/r2/", { body: response({ id: "r2", answers: { q1: { text: "a" } }, last_question_key: "q1" }) });
+      server.on("GET", STATUS, { body: status({ in_progress: "r2" }) });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(server.of("GET", `/responses/${RESPONSE_ID}/`)).toHaveLength(0);
+      expect(localStorage.getItem(`prolog:response:${SLUG}`)).toBe("r2");
+      click(m.$("resume"));
+      await m.flush();
+      expect(m.pathname()).toBe(`/s/${SLUG}/q/q2`);
+    });
+
+    it("forgets a kept response the server no longer counts as the participant's place", async () => {
+      const server = runnerServer();
+      server.on("GET", STATUS, { body: status() });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.$("resume-card")).toBeNull();
+      expect(m.$("start")).not.toBeNull();
+      expect(localStorage.getItem(`prolog:response:${SLUG}`)).toBeNull();
+    });
+
+    it("keeps the browser's response where the server keeps no place, or cannot answer", async () => {
+      const server = runnerServer();
+      server.on("GET", STATUS, { body: { ...status(), account: false } });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.$("resume")).not.toBeNull();
+      m.unmount();
+      server.on("GET", STATUS, { status: 500, body: { detail: "down" } });
+      m = mount(`/s/${SLUG}`);
+      await m.flush();
+      expect(m.$("resume")).not.toBeNull();
+      expect(localStorage.getItem(`prolog:response:${SLUG}`)).toBe(RESPONSE_ID);
+    });
+
+    it("does not ask on an invitation link, which names its own response", async () => {
+      const server = runnerServer();
+      server.on("GET", STATUS, { body: status() });
+      m = mount(`/s/${SLUG}?invite=adm-1`);
+      await m.flush();
+      expect(server.of("GET", STATUS)).toHaveLength(0);
+    });
+  });
+
   it("offers no update for a survey that is not revisable", async () => {
     runnerServer(definition(), response({ status: "submitted" }));
     m = mount(`/s/${SLUG}`);

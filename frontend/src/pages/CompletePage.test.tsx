@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SLUG, click, definition, installDom, mount, response, runnerServer, t, type Mounted } from "./testHarness";
+import { RESPONSE_ID, SLUG, click, definition, installDom, mount, response, runnerServer, t, type Mounted } from "./testHarness";
 
 describe("CompletePage", () => {
   let m: Mounted | null = null;
@@ -46,6 +46,17 @@ describe("CompletePage", () => {
     expect(server.of("POST", "/responses/")[0].body).toMatchObject({ slug: SLUG });
     // q3 holds no earlier answer, so the update opens there; q1 and q2 are behind it.
     expect(m.pathname()).toBe(`/s/${SLUG}/q/q3`);
+  });
+
+  it("offers the update the active version allows, though this response's version did not", async () => {
+    const server = runnerServer(definition(), response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" }));
+    server.on("GET", `/surveys/${SLUG}/status/`, {
+      body: { account: true, in_progress: null, last_submitted: RESPONSE_ID, revisable: true },
+    });
+    m = mount(`/s/${SLUG}/complete`);
+    await m.flush();
+    expect(m.text()).toContain(t("complete.revisable"));
+    expect(m.$("update")).not.toBeNull();
   });
 
   it("sends a visitor with no stored response to the intro", async () => {

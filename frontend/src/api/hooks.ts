@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 import { ApiError, ApiTimeoutError, api } from "./client";
-import type { AnswerResult, OptionsSource, ResponseSummary, RunnerDefinition } from "./types";
+import type { AnswerResult, OptionsSource, ParticipantStatus, ResponseSummary, RunnerDefinition } from "./types";
 import type { AnswerValue, EmailValue } from "@/survey/types";
 import type { Theme } from "@/theme/types";
 
@@ -10,6 +10,7 @@ export const keys = {
   response: (id: string) => ["response", id] as const,
   options: (source: string, lang: string) => ["options", source, lang] as const,
   theme: (code: string) => ["theme", code] as const,
+  status: (slug: string) => ["status", slug] as const,
 };
 
 /**
@@ -59,6 +60,27 @@ export function useSurveyDefinition(slug: string | undefined, { lang, invite, re
     // localisation meanwhile instead of unmounting the page (and its state).
     placeholderData: keepPreviousData,
   });
+}
+
+/**
+ * Where the signed-in participant stands with the survey, asked afresh each
+ * time a page needs it (no cache beyond the page): the answer changes with
+ * every start and submission, on this device or another.
+ */
+export function useParticipantStatus(slug: string | undefined, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: keys.status(slug ?? ""),
+    queryFn: () => api.get<ParticipantStatus>(`/surveys/${slug}/status/`),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** The server's answer when it keeps the participant's place; otherwise none (the browser's id stands). */
+export function accountStatus(status: { data?: ParticipantStatus }): ParticipantStatus | undefined {
+  return status.data?.account === true ? status.data : undefined;
 }
 
 export function useTheme(code: string | undefined) {
