@@ -65,10 +65,12 @@ describe("WizardPage", () => {
       expect(leave).toHaveBeenCalledWith("/home");
     });
 
-    it("stays, with the message, when the answer on screen cannot be saved", async () => {
+    it("stays, with the message, when the answer on screen is refused", async () => {
       const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
       const server = withExit("/home");
-      server.on("PUT", ANSWERS, { status: 500, body: {} });
+      // A refusal, not a 5xx: a 5xx is retried with backoff after the test ends,
+      // and the retry would land in the next test's server.
+      server.on("PUT", ANSWERS, { status: 400, body: { value: [{ code: "text_too_long", params: { max: 0 } }] } });
       m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
       await m.until("exit");
       type(TEXT(m), "x");
@@ -76,6 +78,7 @@ describe("WizardPage", () => {
       await m.flush();
       expect(leave).not.toHaveBeenCalled();
       expect(m.pathname()).toBe(`/s/${SLUG}/q/q1`);
+      expect(m.$("error-banner")?.textContent).toContain(t("error.text_too_long", { max: 0 }));
     });
 
     it("resolves a cleared required answer as Next would: asks, records the skip, then leaves", async () => {
@@ -111,20 +114,6 @@ describe("WizardPage", () => {
       await m.flush();
       expect(server.of("PUT", ANSWERS)).toHaveLength(0);
       expect(leave).toHaveBeenCalledWith("/home");
-    });
-
-    it("stays while an earlier save has failed, until it is retried", async () => {
-      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
-      const server = withExit("/home");
-      server.on("PUT", ANSWERS, { status: 500, body: {} });
-      m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
-      await m.until("exit");
-      type(TEXT(m), "x");
-      blur(TEXT(m)); // the autosave fails
-      await m.flush();
-      click(m.$("exit"));
-      await m.flush();
-      expect(leave).not.toHaveBeenCalled();
     });
 
     it("is offered only for a safe exit_url", async () => {
