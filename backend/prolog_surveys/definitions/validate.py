@@ -44,7 +44,7 @@ CONFIG_BY_TYPE: dict[str, set[str]] = {
     "matrix": {"scale", "rows_from", "rows"},
     "text": {"max_length", "multiline"},
     "number": {"min_value", "max_value", "integer"},
-    "date": {"min_date", "max_date"},
+    "date": {"min_date", "max_date", "precision"},
     "email": {
         "store_separately",
         "link_response",
@@ -121,6 +121,14 @@ def source_option_keys(source: str) -> frozenset[str] | None:
 
     provider = iso3166.SOURCE_KEYS.get(source)
     return provider() if provider else None
+
+
+def _never_holds(condition: dict[str, Any], unreachable: set[str]) -> bool:
+    """A condition that reads only questions never shown. A fact may be
+    anything the host supplies, so a condition on one, or a group with a fact
+    branch, may always hold."""
+    branches = condition["any"] if "any" in condition else [condition]
+    return all("question" in b and b["question"] in unreachable for b in branches)
 
 
 def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone") -> list[Issue]:
@@ -211,6 +219,22 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
 
     # --- participation ----------------------------------------------------
     participation = definition.get("participation") or {}
+    if participation.get("revisable"):
+        # Updating answers starts from the participant's own last submission,
+        # which only an account can find again; and a check-in answered afresh
+        # each time has nothing to update.
+        if participation.get("anonymous") or participation.get("resume", "account") != "account":
+            err(
+                "revisable_needs_account",
+                "$.participation.revisable",
+                "revisable needs participants who sign in (anonymous false, resume account)",
+            )
+        if participation.get("repeatable"):
+            err(
+                "revisable_repeatable",
+                "$.participation.revisable",
+                "a survey is revisable or repeatable, not both",
+            )
     if repeat := participation.get("repeat"):
         rp = "$.participation.repeat"
         start, end = parse_dates(repeat, ("start_date", "end_date"), rp, "repeat_date_invalid")
@@ -446,6 +470,36 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             lo, hi = parse_dates(cfg, ("min_date", "max_date"), f"{qp}.config", "date_invalid")
             if lo and hi and lo > hi:
                 err("date_range", f"{qp}.config", "min_date exceeds max_date")
+            # A date question's options are answers instead of a date; there is
+            # nowhere to type an "other" beside them.
+            for oi, o in enumerate(q.get("options", [])):
+                if o.get("free_text"):
+                    err(
+                        "date_free_text",
+                        f"{qp}.options[{oi}].free_text",
+                        "a date question's options cannot take free text",
+                    )
+        elif t not in ("single", "dropdown", "multi", "ranking", "info") and q.get("options"):
+            warn("options_unused", f"{qp}.options", f"'{t}' questions do not use options")
+
+    # --- facts (DEF-14) ---------------------------------------------------
+    facts: dict[str, set[str]] = {}
+    for fi, fact in enumerate(definition.get("facts") or []):
+        if fact["key"] in facts:
+            err("fact_duplicate", f"$.facts[{fi}].key", f"fact '{fact['key']}' is declared twice")
+        facts[fact["key"]] = set(fact["values"])
+    if facts and (definition.get("participation") or {}).get("anonymous"):
+        # A fact describes a known person; an anonymous response has none to describe.
+        err("facts_anonymous", "$.facts", "an anonymous survey cannot declare facts")
+
+    def check_fact(path: str, cond: dict[str, Any]) -> None:
+        values = facts.get(cond["fact"])
+        if values is None:
+            err("fact_unknown", path, f"references undeclared fact '{cond['fact']}'")
+            return
+        for v in [cond["value"]] if "value" in cond else cond.get("values", []):
+            if v not in values:
+                err("condition_value", path, f"'{v}' is not a value of fact '{cond['fact']}'")
 
     # --- DAG rule (DEF-10) ------------------------------------------------
     def check_edge(
@@ -484,7 +538,10 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             if t == "info":
                 err("condition_op", path, "info questions are never answered")
             return
-        if t in ("text", "number", "date", "email", "info", "matrix"):
+        # A date question's own options ("not sure") can be tested like a
+        # single choice; the date itself only as answered.
+        dated_options = t == "date" and bool(target.option_keys)
+        if t in ("text", "number", "date", "email", "info", "matrix") and not dated_options:
             err("condition_op", path, f"only 'answered' can test a '{t}' question")
             return
         if op in ("contains", "not_contains") and t not in MULTI_VALUED:
@@ -521,16 +578,30 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             if v not in target.option_keys and not has_source:
                 err("condition_value", path, f"'{v}' is not an option of '{target.key}'")
 
+    def simple_conditions(path: str, conds: list[dict[str, Any]]):
+        """Each simple condition with its path, an ``any`` group's included."""
+        for ci, cond in enumerate(conds):
+            cp = f"{path}.visible_if[{ci}]"
+            if "any" in cond:
+                for ai, sub in enumerate(cond["any"]):
+                    yield f"{cp}.any[{ai}]", sub
+            else:
+                yield cp, cond
+
     for si, section in enumerate(definition["sections"]):
         sp = f"$.sections[{si}]"
-        for ci, cond in enumerate(section.get("visible_if", [])):
-            cp = f"{sp}.visible_if[{ci}]"
-            check_condition(cp, cond, check_edge(cp, None, cond["question"], section_index=si))
+        for cp, cond in simple_conditions(sp, section.get("visible_if", [])):
+            if "fact" in cond:
+                check_fact(cp, cond)
+            else:
+                check_condition(cp, cond, check_edge(cp, None, cond["question"], section_index=si))
     for info in questions.values():
         qp = info.path
-        for ci, cond in enumerate(info.question.get("visible_if", [])):
-            cp = f"{qp}.visible_if[{ci}]"
-            check_condition(cp, cond, check_edge(cp, info, cond["question"]))
+        for cp, cond in simple_conditions(qp, info.question.get("visible_if", [])):
+            if "fact" in cond:
+                check_fact(cp, cond)
+            else:
+                check_condition(cp, cond, check_edge(cp, info, cond["question"]))
         cfg = info.question.get("config") or {}
         for setting in ("rows_from", "options_from"):
             source = cfg.get(setting)
@@ -551,9 +622,14 @@ def validate_semantics(definition: dict[str, Any], *, profile: str = "standalone
             conds = list(info.question.get("visible_if", []))
             conds += definition["sections"][info.section_index].get("visible_if", [])
             by_target: dict[str, list[dict[str, Any]]] = {}
+            # An ``any`` group narrows nothing on its own (one of its branches
+            # may hold), so only simple conditions take part in the clash
+            # check; the group is dead only when every branch reads a question
+            # that can never be shown.
             for c in conds:
-                by_target.setdefault(c["question"], []).append(c)
-            dead = any(c["question"] in unreachable for c in conds)
+                if "any" not in c and "question" in c:
+                    by_target.setdefault(c["question"], []).append(c)
+            dead = any(_never_holds(c, unreachable) for c in conds)
             for target_key, cs in by_target.items():
                 if questions[target_key].type not in SINGLE_VALUED:
                     continue

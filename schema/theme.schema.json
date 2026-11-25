@@ -119,6 +119,12 @@
         "enabled": { "description": "false = instant transitions regardless of user preference. Reduced-motion preference is always honoured.", "type": "boolean" }
       }
     },
+    "exit_url": {
+      "description": "Where the runner's 'Save and exit' link (on every question) and the completion page's link go: the deployment's own home page. A path on the same site (/..., not //...) or an http(s) URL, with no whitespace, control character or backslash anywhere (a browser drops a tab or newline from a URL, which could otherwise lead off the site). Absent = no such link, as before.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^(/(?!/)|https?://)[^\\u0000-\\u0020\\u007f\\\\]*(?![\\s\\S])"
+    },
     "strings": {
       "description": "Optional overrides of runner UI chrome strings, keyed by i18next key then language (e.g. {\"intro.start\": {\"en\": \"Start the survey\"}}). Survey content is never overridden here.",
       "type": "object",

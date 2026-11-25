@@ -13,12 +13,15 @@ import json
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from prolog_surveys import conf
 from prolog_surveys.definitions.loader import load_definition
+from prolog_surveys.definitions.schema import read_json
+from prolog_surveys.engine.answers import option_keys_of
 from prolog_surveys.models import SurveyCaptureConsent, SurveyResponse
 from prolog_surveys.tests import fake_identity
-from prolog_surveys.tests.conftest import example_definition
+from prolog_surveys.tests.conftest import EXAMPLES_DIR, example_definition
 
 pytestmark = pytest.mark.skipif(not conf.is_integrated(), reason="integrated profile only")
 
@@ -608,3 +611,125 @@ def test_identity_capture_is_not_repeated_for_a_linked_response(
 
     assert r.status_code == 204
     assert len(fake_identity.CALLS) == calls, "the host is not asked twice for one response"
+
+
+# --- participation.revisable: updating answers (RUN-4) ----------------------
+
+
+def _history(version="1.0", **participation):
+    doc = read_json(EXAMPLES_DIR / "sample-history.json")
+    doc["version"] = version
+    doc["participation"] = {
+        "anonymous": False,
+        "resume": "account",
+        "revisable": True,
+        **participation,
+    }
+    return doc
+
+
+def _submitted(version, participant, answers):
+    response = SurveyResponse.objects.create(
+        survey_version=version, participant=participant, language="en"
+    )
+    for key, value in answers.items():
+        response.answers.create(question_key=key, value=value, option_keys=option_keys_of(value))
+    response.status = "submitted"
+    response.submitted_at = timezone.now()
+    response.save()
+    return response
+
+
+def _start(api_client, slug="sample-history"):
+    return api_client.post("/api/run/responses/", {"slug": slug, "language": "en"}, format="json")
+
+
+@pytest.mark.django_db
+def test_starting_a_revisable_survey_again_starts_from_the_last_submitted_answers(api_client):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    earlier = {
+        "taking": {"option": "stopped"},
+        "started": {"date": "2019-06"},
+        "ended": {"date": "2020-11"},
+        "diagnosed_year": {"date": "2018"},
+    }
+    _submitted(version, alice, {"taking": {"option": "never"}})
+    source = _submitted(version, alice, earlier)
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)  # from any device: nothing in the request says "update"
+
+    assert r.status_code == 201
+    revision = SurveyResponse.objects.get(pk=r.json()["id"])
+    assert revision.revises == source and revision.status == "in_progress"
+    assert revision.answer_map() == earlier
+    assert r.json()["answers"] == earlier
+    # It opens at the first question, for the participant to go through.
+    assert r.json()["last_question_key"] == "taking"
+    # The submitted response is untouched.
+    assert source.answer_map() == earlier
+    assert SurveyResponse.objects.get(pk=source.pk).status == "submitted"
+    # Starting again resumes the update, as any in-progress response.
+    assert _start(api_client).json()["id"] == str(revision.pk)
+
+
+@pytest.mark.django_db
+def test_a_blank_response_started_elsewhere_becomes_the_update(api_client):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    source = _submitted(version, alice, {"taking": {"option": "never"}})
+    blank = SurveyResponse.objects.create(survey_version=version, participant=alice, language="en")
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 200 and r.json()["id"] == str(blank.pk)
+    assert r.json()["answers"] == {"taking": {"option": "never"}}
+    assert SurveyResponse.objects.get(pk=blank.pk).revises == source
+
+
+@pytest.mark.django_db
+def test_an_answer_the_current_version_no_longer_takes_is_asked_afresh(api_client):
+    first = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    _submitted(
+        first,
+        alice,
+        {
+            "taking": {"option": "stopped"},
+            "started": {"date": "2019-06"},
+            "diagnosed_year": {"date": "2018"},
+        },
+    )
+    doc = _history("2.0")
+    started = doc["sections"][0]["questions"][1]
+    started["config"]["precision"] = ["year"]  # a month is no longer an answer
+    load_definition(doc, activate=True)
+    api_client.force_authenticate(alice)
+
+    r = _start(api_client)
+
+    assert r.status_code == 201
+    assert SurveyResponse.objects.get(pk=r.json()["id"]).answer_map() == {
+        "taking": {"option": "stopped"},
+        "diagnosed_year": {"date": "2018"},
+    }
+
+
+@pytest.mark.django_db
+def test_nothing_is_copied_without_a_submission_of_ones_own_or_a_revisable_version(api_client):
+    version = load_definition(_history(), activate=True).version
+    alice = get_user_model().objects.create_user("alice", "", "x")
+    bob = get_user_model().objects.create_user("bob", "", "x")
+    _submitted(version, alice, {"taking": {"option": "never"}})
+
+    api_client.force_authenticate(bob)
+    r = _start(api_client)
+    assert r.status_code == 201 and r.json()["answers"] == {}  # nothing of Bob's
+
+    load_definition(_history("2.0", revisable=False), activate=True)
+    api_client.force_authenticate(alice)
+    r = _start(api_client)
+    assert r.status_code == 201 and r.json()["answers"] == {}
+    assert SurveyResponse.objects.filter(revises__isnull=False).count() == 0

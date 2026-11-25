@@ -65,7 +65,19 @@ def _scalar(answer: dict[str, Any]) -> str | None:
 
 
 def evaluate_condition(condition: dict[str, Any], answers: Answers) -> bool:
-    """All operators are false when the referenced question is unanswered."""
+    """All operators are false when the referenced question is unanswered.
+
+    An ``any`` group holds when at least one of its conditions does. A
+    ``const`` is a fact condition already resolved for the response
+    (engine/facts.py); a fact condition never resolved tests an unknown fact,
+    and is false.
+    """
+    if "any" in condition:
+        return any(evaluate_condition(c, answers) for c in condition["any"])
+    if "const" in condition:
+        return bool(condition["const"])
+    if "fact" in condition:
+        return False
     answer = answers.get(condition["question"])
     if not is_answered(answer):
         return False
@@ -80,7 +92,9 @@ def evaluate_condition(condition: dict[str, Any], answers: Answers) -> bool:
         return (condition["value"] in items) == (op == "contains")
     scalar = _scalar(answer)
     if scalar is None:
-        return False
+        # A date given where the question also offers alternatives ("not
+        # sure") is answered, and is none of them.
+        return op == "neq" and "date" in answer
     if op == "eq":
         return scalar == condition["value"]
     if op == "neq":
@@ -92,6 +106,15 @@ def evaluate_condition(condition: dict[str, Any], answers: Answers) -> bool:
 
 def conditions_hold(conditions: list[dict[str, Any]], answers: Answers) -> bool:
     return all(evaluate_condition(c, answers) for c in conditions)
+
+
+def condition_questions(condition: dict[str, Any]) -> list[str]:
+    """The questions a condition reads: one, or each of an ``any`` group's. A
+    fact, or a resolved one (``const``), reads none: it is settled from the
+    start."""
+    if "any" in condition:
+        return [c["question"] for c in condition["any"] if "question" in c]
+    return [condition["question"]] if "question" in condition else []
 
 
 def visible_questions(
@@ -206,7 +229,9 @@ def pending_keys(
             source = dynamic_source(q)
             if source:
                 false = [{"question": source}]
-        if any(settled(c["question"]) for c in false):
+        # A false condition is decided once every question it reads is settled:
+        # an ``any`` group may still open while one of its questions is ahead.
+        if any(all(settled(k) for k in condition_questions(c)) for c in false):
             closed.add(q["key"])
         elif q["type"] in ANSWERABLE:
             pending.append(q["key"])

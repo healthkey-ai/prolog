@@ -17,6 +17,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from .engine.facts import resolve_facts
 from .engine.localize import localize, resolve_language
 
 PARTICIPANT_MODEL = getattr(settings, "PROLOG_PARTICIPANT_MODEL", None)
@@ -275,6 +276,21 @@ class SurveyResponse(models.Model):
         related_name="response",
         help_text="The invitation occurrence this response answers (RUN-5).",
     )
+    facts = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="The host's facts about the participant when the response started (RUN-23): "
+        "only those the definition declares, with a declared value.",
+    )
+    revises = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="revisions",
+        help_text="The submitted response this one started from (participation.revisable): "
+        "its answers were copied in, and that response is unchanged (RUN-4).",
+    )
 
     class Meta:
         ordering = ["-started_at"]
@@ -301,7 +317,17 @@ class SurveyResponse(models.Model):
 
     @property
     def definition(self) -> dict:
-        return self.survey_version.cached_definition
+        """The version's definition with this response's facts resolved
+        (engine/facts.py): what the participant is asked, and what the
+        server checks. The version's own definition, when it declares none."""
+        base = self.survey_version.cached_definition
+        if not base.get("facts"):
+            return base
+        cached = self.__dict__.get("_resolved_definition")
+        if cached is None or cached[0] is not base or cached[1] != self.facts:
+            cached = (base, dict(self.facts or {}), resolve_facts(base, self.facts))
+            self.__dict__["_resolved_definition"] = cached
+        return cached[2]
 
     def answer_map(self) -> dict[str, dict]:
         return {a.question_key: a.value for a in self.answers.all()}

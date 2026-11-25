@@ -644,6 +644,39 @@ def test_withdraw_consent_on_a_linked_contact(api_client, db, definition, capsys
     assert not SurveyResponse.objects.filter(pk=rid).exists()
 
 
+def test_erasing_a_response_erases_the_updates_that_copied_it(api_client, db, definition, capsys):
+    """An update (participation.revisable) holds the answers it started from,
+    so a person asking to be forgotten loses those too, and what they revised."""
+    from django.core.management import call_command
+
+    load_definition(_linked(definition), activate=True)
+    rid = api_client.post(
+        "/api/run/responses/", {"slug": "sample-wellbeing", "language": "en"}, format="json"
+    ).json()["id"]
+    api_client.post(
+        f"/api/run/responses/{rid}/contact/", {"email": "linked@example.org"}, format="json"
+    )
+    linked = SurveyResponse.objects.get(pk=rid)
+    version = linked.survey_version
+    # The integrated profile binds every response to a participant (RUN-2).
+    same = {"participant_id": linked.participant_id} if hasattr(linked, "participant_id") else {}
+    earlier = SurveyResponse.objects.create(survey_version=version, language="en", **same)
+    linked.revises = earlier
+    linked.save(update_fields=["revises"])
+    later = SurveyResponse.objects.create(
+        survey_version=version, language="en", revises=linked, **same
+    )
+    SurveyResponse.objects.create(survey_version=version, language="en", revises=later, **same)
+    unrelated = SurveyResponse.objects.create(survey_version=version, language="en", **same)
+
+    call_command(
+        "withdraw_consent", "sample-wellbeing", "--email", "linked@example.org", "--erase-response"
+    )
+
+    assert "erased 4 response(s)" in capsys.readouterr().out
+    assert list(SurveyResponse.objects.values_list("pk", flat=True)) == [unrelated.pk]
+
+
 def test_contact_404_without_store_separately(api_client, db, definition):
     for s in definition["sections"]:
         s["questions"] = [q for q in s["questions"] if q["type"] != "email"]

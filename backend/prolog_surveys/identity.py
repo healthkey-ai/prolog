@@ -9,12 +9,15 @@ participant ids a human needs to reconcile them.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from django.utils.module_loading import import_string
 
 from . import conf
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,26 @@ def mint_participant() -> Any | None:
         return None
     minted = import_string(path)()
     return getattr(minted, "pk", minted)
+
+
+def host_facts(participant: Any, definition: dict[str, Any]) -> dict[str, str]:
+    """The host's facts about ``participant`` for a survey that declares
+    facts (DEF-14, RUN-23): only those declared, with a declared value. A
+    provider that fails is logged and the response starts with every fact
+    unknown; it never stops the participant from starting."""
+    path = conf.get("PROLOG_FACTS_PROVIDER")
+    if not path or not definition.get("facts"):
+        return {}
+    from .engine.facts import known_facts
+
+    try:
+        supplied = import_string(path)(participant, definition)
+    except Exception:  # noqa: BLE001 - the host's code; the survey still starts
+        logger.exception(
+            "PROLOG_FACTS_PROVIDER failed for survey %s; starting with no facts", definition["slug"]
+        )
+        return {}
+    return known_facts(definition, supplied if isinstance(supplied, dict) else {})
 
 
 def resolve_participant(request) -> Any | None:

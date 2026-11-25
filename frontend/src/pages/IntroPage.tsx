@@ -63,10 +63,18 @@ export function IntroPage() {
   // "Start a new response" / "Start again": show the start form (with the
   // consent notice) instead of the resume card; the old id is only replaced
   // once the new response exists.
-  const [fresh, setFresh] = useState(false);
+  const [fresh, setFresh] = useState(() => Boolean((location.state as { update?: boolean } | null)?.update));
   // Discarding an unfinished response is destructive, so it is confirmed in an
   // alert dialog (focus-trapped, themed) rather than a browser confirm box.
   const [confirmingStartAgain, setConfirmingStartAgain] = useState(false);
+  // "Update my answers" (participation.revisable). The server starts an update
+  // from the participant's last submitted answers whenever they start the
+  // survey again (RUN-4); the runner only has to start it, from the active
+  // version (the stored response's may be older: another consent, or no longer
+  // revisable). From the completion page it arrives as navigation state.
+  const [updating, setUpdating] = useState(() => Boolean((location.state as { update?: boolean } | null)?.update));
+  const startRef = useRef<(() => Promise<void>) | null>(null);
+  const autoStarted = useRef(false);
   // A stored response answers a different administration than the link's (a
   // repeat administration, RUN-5): it is not the one to resume, so this visit
   // starts the response for its own administration instead.
@@ -137,6 +145,25 @@ export function IntroPage() {
     if (definition.data)
       setNoResume(definition.data.participation?.resume === "none");
   }, [definition.data]);
+  // A repeatable instrument (a regular check-in) whose stored response is
+  // finished: this visit is the next one, so it starts afresh rather than
+  // offering the finished response as "already completed".
+  const [lastCompleted, setLastCompleted] = useState<string | null>(null);
+  useEffect(() => {
+    if (fresh || existing.data?.status !== "submitted") return;
+    if (!definition.data?.participation?.repeatable) return;
+    setLastCompleted(existing.data.submitted_at);
+    setFresh(true);
+  }, [fresh, existing.data, definition.data]);
+  // An update with no consent to agree to starts at once, on the active
+  // version's definition; one with a consent notice shows it first.
+  useEffect(() => {
+    const active = definition.data;
+    if (!updating || !fresh || autoStarted.current || !active || definition.isPlaceholderData) return;
+    if (active.consent && (active.consent.required ?? true)) return;
+    autoStarted.current = true;
+    void startRef.current?.();
+  }, [updating, fresh, definition.data, definition.isPlaceholderData]);
 
   if (definition.isLoading)
     return <p className="p-8 text-ink-soft">{t("app.loading")}</p>;
@@ -161,6 +188,8 @@ export function IntroPage() {
   // "Start again" can only discard when the server would create a fresh response:
   // an invitation link and an account survey both resume the same response instead.
   const canStartAgain = !invite && def.participation?.resume !== "account";
+  // A profile kept up to date: a finished response is updated, never restarted blank.
+  const revisable = Boolean(def.participation?.revisable) && !invite && !existing.data?.administration;
   // A stored response still loading must not show the start form: Start would
   // replace the stored id without the "start again" confirmation.
   if (resumable && existingId && existing.isPending)
@@ -199,8 +228,15 @@ export function IntroPage() {
     }
     storeResponseId(slug, response.id, resumable);
     forget(`consent:${slug}`);
+    // An update opens where the server put it: its first question.
     const key = firstOpenKey(def, response.answers, response.last_question_key);
     navigate(`/s/${slug}/q/${key}`);
+  };
+  startRef.current = start;
+
+  const update = () => {
+    setUpdating(true);
+    setFresh(true);
   };
 
   const resume = () => {
@@ -412,19 +448,33 @@ export function IntroPage() {
             >
               <h2 className="text-lg">{t("intro.welcomeBack")}</h2>
               <p className="mt-1 text-ink-soft [@media(max-height:800px)]:leading-snug">
-                {existing.data!.status === "submitted"
-                  ? t("intro.submitted")
-                  : t("intro.resumeHint")}
+                {existing.data!.status !== "submitted"
+                  ? t("intro.resumeHint")
+                  : revisable
+                    ? t("intro.revisable")
+                    : t("intro.submitted")}
               </p>
               <div className="mt-4 flex flex-wrap gap-3 [@media(max-height:800px)]:mt-3">
-                <Button
-                  variant="primary"
-                  size="runner"
-                  onClick={resume}
-                  data-testid="resume"
-                >
-                  {t("intro.continue")}
-                </Button>
+                {existing.data!.status === "submitted" && revisable ? (
+                  <Button
+                    variant="primary"
+                    size="runner"
+                    onClick={update}
+                    disabled={create.isPending}
+                    data-testid="update"
+                  >
+                    {t("intro.update")}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="runner"
+                    onClick={resume}
+                    data-testid="resume"
+                  >
+                    {t("intro.continue")}
+                  </Button>
+                )}
                 {existing.data!.status !== "submitted" ? (
                   canStartAgain && (
                     <Button
@@ -436,7 +486,7 @@ export function IntroPage() {
                       {t("intro.startAgain")}
                     </Button>
                   )
-                ) : invite ? null : ( // an invitation is answered once; the server would return the same response
+                ) : invite || revisable ? null : ( // an invitation is answered once; a revisable survey is updated, not restarted
                   <Button
                     variant="text"
                     size="runner"
@@ -534,16 +584,21 @@ export function IntroPage() {
                   )}
                 </div>
               )}
+              {lastCompleted && (
+                <p className={soft} data-testid="last-completed">
+                  {t("intro.lastCompleted", { date: new Date(lastCompleted).toLocaleDateString(def.language, { day: "numeric", month: "long", year: "numeric" }) })}
+                </p>
+              )}
               <div>
                 <Button
                   variant={immersive ? "onPrimary" : "primary"}
                   size="runner"
-                  onClick={start}
+                  onClick={() => void start()}
                   disabled={create.isPending || definition.isPlaceholderData}
                   className="px-8"
                   data-testid="start"
                 >
-                  {t("intro.start")}
+                  {updating ? t("intro.update") : t("intro.start")}
                 </Button>
               </div>
             </>

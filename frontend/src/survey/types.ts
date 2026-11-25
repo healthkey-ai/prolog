@@ -61,6 +61,8 @@ export interface QuestionConfig {
   integer?: boolean;
   min_date?: string;
   max_date?: string;
+  /** date: the precisions accepted (default ["day"]); with "year" the month may be left out. */
+  precision?: DatePrecision[];
   store_separately?: boolean;
   /** The address is kept beside the response — findable both ways — with no account. */
   link_response?: boolean;
@@ -82,11 +84,40 @@ export interface CaptureConsent {
 
 export type ConditionOp = "eq" | "neq" | "in" | "contains" | "not_contains" | "answered";
 
-export interface Condition {
+export interface SimpleCondition {
   question: string;
   op: ConditionOp;
   value?: string;
   values?: string[];
+}
+
+/** A condition on a fact the definition declares (DEF-14), not on a question. */
+export interface FactCondition {
+  fact: string;
+  op: "eq" | "neq" | "in";
+  value?: string;
+  values?: string[];
+}
+
+/** A fact condition the server has already settled for this response (facts.ts). */
+export interface ConstCondition {
+  const: boolean;
+}
+
+export type BranchCondition = SimpleCondition | FactCondition | ConstCondition;
+
+/** Holds when any of its conditions does (an OR inside visible_if's AND). */
+export interface AnyCondition {
+  any: BranchCondition[];
+}
+
+export type Condition = BranchCondition | AnyCondition;
+
+/** A fact the host supplies about the participant, and the values it may take (DEF-14). */
+export interface Fact {
+  key: string;
+  values: string[];
+  note?: string;
 }
 
 export interface Question {
@@ -127,6 +158,9 @@ export interface Presentation {
 export interface Participation {
   anonymous?: boolean;
   resume?: "browser_token" | "account" | "none";
+  /** Answered again and again: a submitted response is followed by a new one, not shown as completed. */
+  repeatable?: boolean;
+  revisable?: boolean;
 }
 
 export interface Consent {
@@ -149,6 +183,8 @@ export interface Definition {
   participation?: Participation;
   presentation?: Presentation;
   consent?: Consent;
+  /** Only in a definition read from a file: the runner's copy never carries them. */
+  facts?: Fact[];
   sections: Section[];
 }
 
@@ -160,7 +196,9 @@ export type RankingValue = { order: string[]; other_text?: string };
 export type MatrixValue = { ratings: Record<string, Rating> };
 export type TextValue = { text: string };
 export type NumberValue = { number: number };
-export type DateValue = { date: string };
+export type DatePrecision = "day" | "month" | "year";
+/** A date (YYYY-MM-DD, YYYY-MM or YYYY, as config.precision allows), or one of the question's own options instead. */
+export type DateValue = { date: string } | OptionValue;
 /** `consents` lists the keys ticked with the address — the marker is all the response holds. */
 export type EmailValue = { provided: boolean; consents?: string[] };
 

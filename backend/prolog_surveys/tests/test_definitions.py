@@ -20,6 +20,7 @@ from prolog_surveys.definitions.loader import (
     validate_definition,
 )
 from prolog_surveys.definitions.normalize import checksum, normalize, source_checksum
+from prolog_surveys.definitions.schema import read_json
 from prolog_surveys.definitions.validate import has_errors, validate_semantics, walk_i18n
 from prolog_surveys.engine.localize import I18N_FIELDS, localize
 from prolog_surveys.models import LifecycleStatus, SurveyQuestion, SurveyVersion
@@ -840,3 +841,103 @@ def test_an_archived_version_stays_frozen(db, example):
 
     with pytest.raises(loader.DefinitionError, match="bump the version"):
         loader.load_definition(_reloaded(example))
+
+
+@pytest.fixture
+def history():
+    return read_json(EXAMPLE_PATH.parent / "sample-history.json")
+
+
+def test_history_example_is_valid(history):
+    assert not has_errors(validate_semantics(history))
+
+
+@pytest.mark.parametrize(
+    "mutate, expected",
+    [
+        # each condition inside an any group is a DAG edge
+        (
+            lambda d: question(d, "started")["visible_if"].append(
+                {
+                    "any": [
+                        {"question": "taking", "op": "answered"},
+                        {"question": "review", "op": "answered"},
+                    ]
+                }
+            ),
+            "dag_forward",
+        ),
+        (
+            lambda d: question(d, "review")["visible_if"][0]["any"].append(
+                {"question": "taking", "op": "eq", "value": "sometimes"}
+            ),
+            "condition_value",
+        ),
+        # a date question's options can be tested, but only by their keys
+        (
+            lambda d: question(d, "review")["visible_if"][0]["any"].append(
+                {"question": "started", "op": "eq", "value": "ongoing"}
+            ),
+            "condition_value",
+        ),
+        # without options a date can only be tested as answered
+        (
+            lambda d: question(d, "last_test").update(
+                visible_if=[{"question": "diagnosed_year", "op": "eq", "value": "2000"}]
+            ),
+            "condition_op",
+        ),
+        (
+            lambda d: question(d, "started")["options"][0].update(free_text=True),
+            "date_free_text",
+        ),
+    ],
+)
+def test_any_groups_and_date_options(history, mutate, expected):
+    mutate(history)
+    assert expected in codes(validate_semantics(history))
+
+
+def test_an_any_group_does_not_make_its_question_unreachable(history):
+    # Two different values of one question would clash as an AND; as an any
+    # group either may hold, so nothing is unreachable.
+    question(history, "review")["visible_if"] = [
+        {
+            "any": [
+                {"question": "taking", "op": "eq", "value": "yes_now"},
+                {"question": "taking", "op": "eq", "value": "stopped"},
+            ]
+        }
+    ]
+    assert "unreachable" not in codes(validate_semantics(history), level="warning")
+
+
+def test_precision_is_a_date_setting(history):
+    question(history, "taking")["config"] = {"precision": ["year"]}
+    assert "config_mismatch" in codes(validate_semantics(history), level="warning")
+
+
+# --- participation.revisable ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("participation", "expected"),
+    [
+        ({"anonymous": False, "resume": "account", "revisable": True}, set()),
+        ({"anonymous": True, "revisable": True}, {"revisable_needs_account"}),
+        ({"anonymous": False, "resume": "none", "revisable": True}, {"revisable_needs_account"}),
+        (
+            {"anonymous": False, "resume": "account", "revisable": True, "repeatable": True},
+            {"revisable_repeatable"},
+        ),
+    ],
+)
+def test_a_revisable_survey_needs_signed_in_participants_and_is_not_a_check_in(
+    example, participation, expected
+):
+    example["participation"] = participation
+    found = set(codes(validate_definition(example))) & {
+        "revisable_needs_account",
+        "revisable_repeatable",
+    }
+    assert found == expected

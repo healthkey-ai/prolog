@@ -20,7 +20,15 @@ from .visibility import (
     sourced_option_keys,
 )
 
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# A date at each precision a definition may accept (config.precision): the
+# whole date, the month, or the year alone. Mirrored in
+# frontend/src/survey/answers.ts.
+DATE_PATTERNS = {
+    "day": re.compile(r"^\d{4}-\d{2}-\d{2}$"),
+    "month": re.compile(r"^\d{4}-\d{2}$"),
+    "year": re.compile(r"^\d{4}$"),
+}
+DEFAULT_PRECISION = ("day",)
 MAX_OTHER_TEXT = 500
 # Absolute cap on a text answer (code points), whatever the definition says:
 # the answer endpoint is unauthenticated, so without it one client could
@@ -72,7 +80,8 @@ MESSAGES: dict[str, str] = {
     "number_not_integer": "a whole number is required",
     "number_too_small": "number must be at least {min}",
     "number_too_large": "number must be at most {max}",
-    "date_format": "date must be YYYY-MM-DD",
+    "date_format": "date must be YYYY-MM-DD, YYYY-MM or YYYY",
+    "date_precision": "this date is asked for as {allowed}",
     "date_invalid": "invalid date",
     "date_too_early": "date must be on or after {min}",
     "date_too_late": "date must be on or before {max}",
@@ -338,17 +347,35 @@ def validate_answer(
         return {"number": int(number) if cfg.get("integer") else number}
 
     if t == "date":
+        # An answer other than a date ("not sure", "still ongoing"), when the
+        # definition offers one.
+        if "option" in raw:
+            option = raw.get("option")
+            if not isinstance(option, str) or not option:
+                _fail("option_required")
+            if option not in _option_keys(question):
+                _fail("option_unknown", option=option)
+            return {"option": option}
         value = raw.get("date")
-        if not isinstance(value, str) or not DATE_RE.match(value):
+        precision = date_precision(value)
+        if precision is None:
             _fail("date_format")
+        allowed = cfg.get("precision") or DEFAULT_PRECISION
+        if precision not in allowed:
+            _fail("date_precision", allowed=list(allowed))
         try:
-            dt.date.fromisoformat(value)
+            # The first day of the period: a month or a year is valid when its
+            # first day is (month 13 and year 0 are not).
+            dt.date.fromisoformat((value + "-01-01")[:10])
         except ValueError:
             _fail("date_invalid")
+        # A partial date is a period, and is within bounds when the period
+        # meets them: "2019-06" is not too early for a minimum of 2019-06-15.
+        # ISO strings compare correctly at the date's own length.
         lo, hi = cfg.get("min_date"), cfg.get("max_date")
-        if lo and value < lo:
+        if lo and value < lo[: len(value)]:
             _fail("date_too_early", min=lo)
-        if hi and value > hi:
+        if hi and value > hi[: len(value)]:
             _fail("date_too_late", max=hi)
         return {"date": value}
 
@@ -362,6 +389,16 @@ def validate_answer(
 
     _fail("unsupported_type", type=t)
     return {}  # pragma: no cover
+
+
+def date_precision(value: Any) -> str | None:
+    """The precision a date answer is given at, or None when it is not a date."""
+    if not isinstance(value, str):
+        return None
+    for precision, pattern in DATE_PATTERNS.items():
+        if pattern.match(value):
+            return precision
+    return None
 
 
 def option_keys_of(value: dict[str, Any]) -> list[str]:

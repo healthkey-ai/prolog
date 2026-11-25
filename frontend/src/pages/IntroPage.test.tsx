@@ -63,6 +63,48 @@ describe("IntroPage", () => {
     expect(m.$("create-error")?.textContent).toContain(t("app.error"));
   });
 
+  it("offers a revisable survey's finished response as 'Update my answers', and starts it on the active version", async () => {
+    const submitted = response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" });
+    const server = runnerServer(definition({ participation: { revisable: true } }), submitted);
+    const answers = { q1: { text: "a" }, q2: { text: "b" }, q3: { option: "a" } };
+    // The server makes the new response the update and says where it opens.
+    server.on("POST", "/responses/", { status: 201, body: response({ id: "rev-1", answers, last_question_key: "q1" }) });
+    m = mount(`/s/${SLUG}`);
+    await m.flush();
+    expect(m.text()).toContain(t("intro.revisable"));
+    expect(m.$("resume")).toBeNull();
+    expect(m.$("start-new")).toBeNull();
+    click(m.$("update"));
+    await m.flush(6);
+    const [call] = server.of("POST", "/responses/");
+    expect(call.body).toMatchObject({ slug: SLUG });
+    expect(call.body).not.toHaveProperty("revise");
+    expect(m.pathname()).toBe(`/s/${SLUG}/q/q1`);
+  });
+
+  it("asks for a consent the active version requires before starting the update", async () => {
+    const consent = { version: "2", text: "We store your answers." };
+    const server = runnerServer(
+      definition({ participation: { revisable: true }, consent }),
+      response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" }),
+    );
+    server.on("POST", "/responses/", { status: 201, body: response({ id: "rev-1", answers: {}, last_question_key: "q1" }) });
+    m = mount(`/s/${SLUG}`);
+    await m.flush();
+    click(m.$("update"));
+    await m.flush(6);
+    expect(server.of("POST", "/responses/")).toHaveLength(0);
+    expect(m.$("start")?.textContent).toBe(t("intro.update"));
+  });
+
+  it("offers no update for a survey that is not revisable", async () => {
+    runnerServer(definition(), response({ status: "submitted" }));
+    m = mount(`/s/${SLUG}`);
+    await m.flush();
+    expect(m.$("update")).toBeNull();
+    expect(m.$("start-new")).not.toBeNull();
+  });
+
   it("links the privacy notice only for an http(s) URL", async () => {
     const consent = { version: "1", text: "We store your answers.", privacy_url: "javascript:alert(1)" };
     runnerServer(definition({ consent }));

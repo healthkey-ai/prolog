@@ -56,6 +56,7 @@ lives in code.
 | `participation` | object | no | Who may respond and how they resume — §5. |
 | `presentation` | object | no | Wizard layout and skip policy — §6. |
 | `consent` | object | no | Versioned consent attestation shown before the first question — §7. |
+| `facts` | array | no | Facts about the participant the host supplies, for `visible_if` to test — §4, "Facts". Not on an anonymous survey. |
 | `notes` | string | no | Internal notes; stripped from everything the runner receives. |
 | `sections` | array (≥ 1) | yes | The instrument — §2. |
 
@@ -130,7 +131,7 @@ involved") gains nothing from a screen that says it twice.
 | `matrix` | One card per row, a segmented scale per row, legend once | `{"ratings": {"row": 3, …}}` — or `"na"` for a row that does not apply, where the scale offers it |
 | `text` | Input or textarea (`multiline`) with a remaining-characters counter | `{"text": "…"}` |
 | `number` | Numeric input | `{"number": 42}` |
-| `date` | Date input | `{"date": "YYYY-MM-DD"}` |
+| `date` | Date picker for a whole date; separate day, month and year fields when `config.precision` lets a part be left out; the question's own `options` as radio cards below | `{"date": "YYYY-MM-DD"}`, `{"date": "YYYY-MM"}` or `{"date": "YYYY"}` (as `precision` allows), or `{"option": "k"}` for one of its options |
 | `email` | Email input with the `help` notice, **Save** and **No thanks** | `{"provided": true\|false}` — the address itself is never an answer (§8) |
 | any | Explicit skip (soft policy or optional question) | `{"skipped": true}` |
 
@@ -154,6 +155,13 @@ selected/ranked, and it is limited to 500 characters.
 | `free_text` | Selecting (or ranking) this option reveals an inline text input stored as `other_text`. |
 | `exclusive` | `multi` only: selecting it clears every other option, and selecting another option clears it (e.g. "I am not sure"). Warned on other types. |
 
+On a `date` question, `options` are **answers instead of a date**: "I am not
+sure", "I am still receiving it". Choosing one clears the date fields and
+typing a date clears the choice; the stored answer is `{"option": "k"}`, and
+conditions can test it with `eq`, `neq` and `in` (§4). They cannot take
+`free_text` (refused at load). Options on `text`, `number`, `scale` and
+`email` questions are warned about and ignored.
+
 ### 3.3 `config` by type
 
 | Type | Keys | Notes |
@@ -170,6 +178,7 @@ selected/ranked, and it is limited to 500 characters.
 | `text` | `max_length` (int ≥ 1), `multiline` (bool; default `max_length > 200`) | Counter shows remaining characters. The limit is measured on the stored value: leading/trailing ASCII whitespace (space, tab, CR, LF) is stripped by both engines; other Unicode whitespace (e.g. U+00A0, U+FEFF) is kept and counted. Every text answer is capped at **10,000 characters** by the engines regardless of `max_length` (a larger value is clamped and warned about). |
 | `number` | `min_value`, `max_value` (numbers), `integer` (bool) | Non-finite values are rejected. |
 | `date` | `min_date`, `max_date` (`YYYY-MM-DD`) | Inclusive bounds. Both must be real calendar dates (the schema only checks the digit pattern) with `min_date` ≤ `max_date`. |
+| `date` | `precision`: a list of `"day"`, `"month"`, `"year"` (default `["day"]`) | **Partial dates.** The precisions an answer may be given at: `["month", "year"]` asks for the month and the year and lets the respondent leave the month out ("the year alone if that is all you remember"); `["year"]` asks for the year only; `["day", "month", "year"]` takes any of the three. Any other value than `["day"]` replaces the date picker with separate fields, the optional ones labelled "(if you know it)". An answer at a precision not listed is rejected (`date_precision`). A partial date is a period, and is within `min_date`/`max_date` when the period meets them: `2019-06` passes a `min_date` of `2019-06-15`. |
 | `email` | `store_separately: true`, `link_response: true` **or** `link_identity: true` | **Exactly one is required**: the schema rejects any two together and the validator rejects none (`email_capture` — without a capture mode no endpoint could accept an address, so the step could only ever record a decline). §8. |
 
 Keys not used by the type are reported as warnings.
@@ -194,6 +203,8 @@ questions show an **Optional** tag under the question number.
 ## 4. Branching: `visible_if` and the DAG rule
 
 A question or section is shown only when **all** its conditions hold (AND).
+An `any` group inside the list holds when **at least one** of its conditions
+does (OR):
 
 ```jsonc
 "visible_if": [
@@ -204,8 +215,8 @@ A question or section is shown only when **all** its conditions hold (AND).
 
 | `op` | Applies to | True when |
 | --- | --- | --- |
-| `eq` / `neq` | `single`, `dropdown`, `scale` | the answer equals / does not equal `value` (scale values as strings: `"4"`) |
-| `in` | `single`, `dropdown`, `scale` | the answer is one of `values` |
+| `eq` / `neq` | `single`, `dropdown`, `scale`; a `date` with `options` | the answer equals / does not equal `value` (scale values as strings: `"4"`). On a date question a date given is answered and is none of its options, so `neq` holds for it and `eq` does not |
+| `in` | `single`, `dropdown`, `scale`; a `date` with `options` | the answer is one of `values` |
 | `contains` | `multi`, `ranking` | `value` is among the selected / ranked keys |
 | `not_contains` | `multi`, `ranking` | the question is answered and `value` is **not** among the selected / ranked keys |
 | `answered` | any answerable type | an answer exists that is not a skip (and not empty) |
@@ -219,6 +230,61 @@ usual shape is an exclusive "none of these" option: `{"op": "not_contains",
 item and to nobody who chose *None*. `value`/`values` must be option keys of the referenced question
 (or integers within the scale range); dropdowns with an `options_source`
 accept any value.
+
+### `any` groups
+
+```jsonc
+"visible_if": [
+  { "any": [
+    { "question": "still_taking", "op": "eq", "value": "yes" },
+    { "question": "end_date", "op": "eq", "value": "not_sure" }
+  ] }
+]
+```
+
+A follow-up that two different answers should open ("still receiving it", or
+"not sure when it ended") needs an `any` group; without one the only way is a
+copy of the follow-up per route. An `any` group holds two or more simple
+conditions — groups do not nest — and sits beside the other conditions of
+the list, which must all hold as before. Each condition inside it is an edge
+under the DAG rule like any other. For progress, a question behind a false
+`any` group still counts as *to come* while any of its questions is
+unanswered and ahead, and as passed once every one of them is settled.
+
+### Facts (DEF-14)
+
+```jsonc
+"facts": [
+  { "key": "last_result", "values": ["awaited", "normal", "abnormal"],
+    "note": "The result of the participant's last test, as the host records it." }
+],
+...
+"visible_if": [{ "fact": "last_result", "op": "eq", "value": "awaited" }]
+```
+
+Some questions depend on something the host already knows about the
+participant, not on an answer in this response: a follow-up that a repeated
+check-in should ask only while an earlier result is still awaited. Declare the
+fact at the top level with every value it may take, then test it with `eq`,
+`neq` or `in`, on a question, a section, or a branch of an `any` group.
+
+- **The host supplies it** through `PROLOG_FACTS_PROVIDER`
+  ([integration.md](../integration.md)) when a signed-in participant starts a
+  response, and the response keeps the value for its life. An invitation link,
+  or a respondent who is not signed in, gets no facts.
+- **Unknown is false.** A fact the host does not supply, or supplies with a
+  value not declared here, is unknown: every condition on it is false, as every
+  condition on an unanswered question is. A question closed by a fact counts as
+  passed, not "to come".
+- **Not a DAG edge.** A fact is known before the first question, so a
+  condition on it may sit anywhere.
+- **The runner never sees the facts.** The server sends it each fact condition
+  already settled, and checks every answer against the same resolved
+  definition. `note` is for the people who maintain the survey.
+- A survey that declares facts cannot be anonymous: a fact describes a known
+  person.
+
+`examples/sample-recheck.json` uses each form.
 
 ### The DAG rule (DEF-10)
 
@@ -253,6 +319,8 @@ reachable question; changing an answer re-runs the cascade forward.
 "participation": {
   "anonymous": true,            // default false
   "resume": "browser_token",    // browser_token | account | none
+  "repeatable": true,           // default false: a regular check-in, answered again and again
+  "revisable": false,           // default false: a profile the participant keeps up to date
   "repeat": { "every": 4, "unit": "weeks", "start_date": "2026-09-01", "end_date": "2027-03-01", "use_current_version": false }
 }
 ```
@@ -261,6 +329,8 @@ reachable question; changing an answer re-runs the cascade forward.
 | --- | --- |
 | `anonymous` | `true`: no account; the response id held by the browser is the only credential (treated as a secret). `false`: participants need an authenticated account with a resolvable participant (integrated profile) **or** a personal invitation link. |
 | `resume` | `browser_token` (default for anonymous): the response id is kept in browser storage; the intro offers **Continue / Start again**. `account`: `POST /responses/` returns the participant's in-progress response. `none`: no resume on a later visit — the id is kept in `sessionStorage`, so a reload or a return to `/s/<slug>/q/…` **within the same tab** reopens the in-progress response, but the intro never offers **Continue / Start again** (Start always creates a new response) and the id is gone once the tab closes, so a later visitor on a shared device never sees it. |
+| `repeatable` | `true` for an instrument a respondent answers again and again — a regular check-in. When the response the browser holds is already submitted, the intro starts a **new** response (saying when the last one was completed) instead of showing it as completed with **Start a new response** beside it. An unfinished response is still offered to **Continue**, as for any instrument. Scheduling the next one is the host's (a deployment's reminders); `repeat` is the separate, invitation-driven schedule. Default `false`. |
+| `revisable` | `true` for answers a participant keeps up to date — a profile. Once they have submitted, the intro and the completion page offer **Update my answers**, which starts a **new** response holding their last submitted answers (RUN-4: the submitted one never changes; the new one records which response it `revises`). Each earlier answer is checked against the current version as if given now: one the version no longer takes, or whose question it no longer shows, is asked afresh, and an email capture is never copied. The update opens at the first question, or at the first one that needs an answer again; the overview jumps anywhere. It is the server's choice, not the button's: on a revisable survey, a signed-in participant who has submitted starts from their last answers whenever they start again, on any device, in the active version (an empty in-progress response becomes the update), so **Start a new response** is not offered. Erasing a response (`withdraw_consent … --erase-response`) erases every update linked to it, either way. Each update counts as a response and a completion in the report, and in the export the `revises` column marks it, so the latest per participant is the one no other row revises. Needs participants who sign in (`anonymous: false`, `resume: "account"`) and cannot be `repeatable` (validator errors `revisable_needs_account`, `revisable_repeatable`). Default `false`. |
 | `repeat` | Repeat administration for invited participants: every `every` `weeks`/`months` from `start_date` (month-end dates clamp), until `end_date`; `use_current_version: true` lets each administration use the then-active version instead of the scheduled one. Off by default. `start_date`/`end_date` must be real calendar dates with `end_date` ≥ `start_date` (validator errors). On an `anonymous` survey a `repeat` block is inert — the scheduler never administers anonymous surveys — and the validator warns. Nothing is scheduled or sent while the survey is outside its effective window (`effective_from`/`effective_to` on the survey record). |
 
 ---
@@ -425,13 +495,14 @@ the **active** version; loading a draft cannot retarget a live survey.
   identifier lengths (`slug` ≤ 120, `version` ≤ 32, `theme` ≤ 64, keys ≤ 128,
   `consent.version` ≤ 64 — the database columns behind them).
 - **Semantics** (`validate_definition`): unique keys; the DAG rule; condition
-  operators/values fit the referenced question type; `rows_from` and
+  operators/values fit the referenced question type (inside `any` groups too); `rows_from` and
   `options_from` target a
   `multi`; `max_selections` ≤ options; `min` ≤ `max`; `optional_items` are
   options; scale `min < max` and label counts; one `email` question, and
   it declares exactly one capture mode (`store_separately`, `link_response`
   or `link_identity`); `link_identity` only in the integrated profile;
-  consent keys unique and `consents_min` within the number offered; `min_date`/`max_date` and
+  consent keys unique and `consents_min` within the number offered; a `date` question's options take no
+  `free_text`; `min_date`/`max_date` and
   `repeat.start_date`/`end_date` are real calendar dates in order; `title`
   in the default language ≤ 255 characters; every non-default language has
   a `translation_status`; every i18n object has the default language;
@@ -439,7 +510,7 @@ the **active** version; loading a draft cannot retarget a live survey.
   survey.
 - **Answers** (per PUT): value shape per type, option keys, limits,
   exclusives, `other_text` rules, scale bounds, ranking completeness, matrix
-  rows equal to the current row set, text/number/date bounds, the skip
+  rows equal to the current row set, text/number/date bounds and date precision, the skip
   policy, and visibility (an answer to a hidden question is rejected). A
   rejection is `400 {"value": [{"code", "params", "message"}]}`: the
   `code` (e.g. `rows_incomplete`, `value_out_of_range`) and typed `params`

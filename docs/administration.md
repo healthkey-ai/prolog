@@ -209,6 +209,8 @@ give an address**, and its copy has to say so. With `store_separately`,
 nobody — including you — can join an address back to a set of answers, which
 also means you cannot honour a later "delete my answers" request from that
 address; with `link_response` you can (`withdraw_consent … --erase-response`).
+On a `revisable` survey that also erases every update linked to that response,
+and the one it updated: each holds a copy of the same answers.
 
 Skipping the email question always submits the response exactly as it stands.
 An account is never a condition of answering.
@@ -301,6 +303,18 @@ respondents. The survey list carries the same two counts as
 
 These are aggregates — the page never shows a response, only how many there
 are. For anything finer, [export](#getting-the-answers-out).
+
+**Small numbers.** A deployment whose privacy policy promises no figure for a
+small group sets `PROLOG_STATS_MIN_COUNT` (RUN-24). Here, in the survey list
+and on the report page, a count from 1 to that less one then reads "fewer than
+N". So that a hidden count cannot be worked out by subtraction, a second count
+goes with it wherever it would otherwise be the only one hidden in a group
+whose total is shown: a version's beside the total, completions beside
+partials, a day, a language, a question. A rate or an average over a hidden
+count reads "—". Zero is shown, as it is nobody. The exports are unchanged,
+and so are the operational counts an administrator acts on: how many responses
+discarding or archiving a version affects, and the contact lists, which are
+rows rather than figures.
 
 ### What the admin deliberately does not do
 
@@ -465,6 +479,11 @@ join them, something has gone wrong.
 By default only submitted responses are exported; `--include-in-progress`
 includes unfinished ones, which is usually what you want for a "how far did
 people get" question and not what you want for analysis.
+
+On a `revisable` survey each update is its own row, and its `revises` column
+holds the response it updated. A participant's current answers are the row no
+other row revises; the report likewise counts every update as a response and
+a completion.
 
 Multi-selects and matrix rows are exploded into columns, so a row is one
 response. An email question that offers consents adds a `1`/`0` column per

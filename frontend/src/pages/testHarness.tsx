@@ -174,6 +174,10 @@ export function themedRoutes(): ReactElement {
       path: "/s/:slug/q/:key",
       element: createElement(ThemeProvider, null, createElement(WizardPage)),
     }),
+    createElement(Route, {
+      path: "/s/:slug/complete",
+      element: createElement(ThemeProvider, null, createElement(CompletePage)),
+    }),
   );
 }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import secrets
@@ -27,12 +28,14 @@ from .. import conf, exports, legal, results, stats
 from ..engine.answers import AnswerError, issue, option_keys_of, validate_answer
 from ..engine.cascade import apply_cascade, retained_when_hidden
 from ..engine.completion import missing_keys, progress
+from ..engine.facts import resolve_facts
 from ..engine.localize import language_from_accept_header, pick, resolve_language
 from ..engine.visibility import VisibleQuestion, question_by_key, visible_questions
 from ..identity import (
     IdentityRequest,
     IdentityServiceError,
     get_identity_service,
+    host_facts,
     idempotency_key,
     mint_participant,
     resolve_participant,
@@ -165,8 +168,10 @@ def _language(request, definition: dict, fallback: str | None = None) -> str:
     return resolve_language(definition, preferred)
 
 
-def _etag(version, lang: str, theme_code: str) -> str:
-    return f'"{version.checksum[:16]}-{lang}-{theme_code}"'
+def _etag(version, lang: str, theme_code: str, facts: dict | None = None) -> str:
+    # A response's facts change what its definition serves (DEF-14).
+    tail = f"-{conf.salted_hash(json.dumps(facts, sort_keys=True))[:12]}" if facts else ""
+    return f'"{version.checksum[:16]}-{lang}-{theme_code}{tail}"'
 
 
 def _response_for_definition(request, slug: str) -> SurveyResponse | None:
@@ -274,12 +279,19 @@ class SurveyDefinitionView(RunnerView):
             lang = _language(request, definition)
         theme = theme_registry.resolve(survey.theme_code)
         theme_code = theme.code if theme else "default"
-        etag = _etag(version, lang, theme_code)
+        etag = _etag(version, lang, theme_code, response.facts if response is not None else None)
         not_modified = get_conditional_response(request, etag=etag)
         if not_modified is not None:
             not_modified["ETag"] = etag
             return not_modified
         payload = dict(version.localized(lang))  # shared cache entry: copy before adding keys
+        if response is not None:
+            # What this participant is asked: each fact condition settled by the
+            # facts their response started with (DEF-14).
+            payload = resolve_facts(payload, response.facts)
+        # The facts themselves are the host's business: their notes are for the
+        # people who maintain the survey, never for the runner.
+        payload.pop("facts", None)
         payload["theme_code"] = theme_code
         payload["translation_status"] = definition.get("translation_status", {})
         # Whether the runner says "a machine wrote these words". Only when the
@@ -389,6 +401,16 @@ class ResponseCreateView(RunnerView):
         participant = (
             None if definition["participation"]["anonymous"] else resolve_participant(request)
         )
+        # A revisable survey (a profile kept up to date): a signed-in participant
+        # who has submitted it starts again from their last answers, on any
+        # device, in the active version (RUN-4). Never through an invitation.
+        revises = (
+            _last_submitted(survey, participant)
+            if participant is not None
+            and administration is None
+            and definition["participation"].get("revisable")
+            else None
+        )
         if administration is not None:
             # An invitation link resumes its own administration's response and
             # nothing else: a logged-in participant's older in-progress response
@@ -411,6 +433,14 @@ class ResponseCreateView(RunnerView):
                 .first()
             )
             if existing is not None:
+                if (
+                    revises is not None
+                    and existing.revises_id is None
+                    and not existing.answers.exists()
+                ):
+                    # Started blank before (another device, or before the survey
+                    # was revisable): it becomes the update, not an empty form.
+                    _start_revision(existing, revises)
                 return Response(_response_payload(existing), status=status.HTTP_200_OK)
 
         consent_cfg = definition.get("consent")
@@ -434,6 +464,11 @@ class ResponseCreateView(RunnerView):
                 fields["participant_id"] = invited
         elif participant is not None:
             fields["participant_id"] = participant
+            # A signed-in participant's own response: the host's facts about
+            # them, taken now and kept (RUN-23). Never through an invitation
+            # link (whoever holds it would see what the facts open) nor for a
+            # minted respondent, who has none.
+            fields["facts"] = host_facts(participant, definition)
         minted = None
         if "participant_id" not in fields:
             # RUN-2: a response belongs to a participant even when nobody is
@@ -443,7 +478,11 @@ class ResponseCreateView(RunnerView):
             minted = mint_participant()
             if minted is not None:
                 fields["participant_id"] = minted
+        if revises is not None:
+            fields["revises"] = revises
         response = SurveyResponse.objects.create(**fields)
+        if revises is not None:
+            _start_revision(response, revises)
         if minted is not None:
             # So the host can tell a respondent from a patient in its own tables.
             MintedParticipant.objects.create(participant_id=minted)
@@ -456,6 +495,69 @@ class ResponseCreateView(RunnerView):
                 language=lang,
             )
         return Response(_response_payload(response), status=status.HTTP_201_CREATED)
+
+
+def _last_submitted(survey, participant) -> SurveyResponse | None:
+    """The participant's last submitted response to this survey, in any version."""
+    return (
+        SurveyResponse.objects.filter(
+            survey_version__survey=survey,
+            participant_id=participant,
+            status=ResponseStatus.SUBMITTED,
+        )
+        .order_by("-submitted_at")
+        .first()
+    )
+
+
+def _start_revision(response: SurveyResponse, source: SurveyResponse) -> None:
+    """Make ``response`` an update of ``source``: its still-valid answers copied
+    in, and it opens at its first question for the participant to go through."""
+    kept = _copy_answers(source, response)
+    first = visible_questions(response.definition, kept)
+    response.revises = source
+    response.last_question_key = first[0].key if first else ""
+    response.save(update_fields=["revises", "last_question_key", "updated_at"])
+
+
+def _source_options(question: dict) -> set[str] | None:
+    """A dropdown's options when they come from a list rather than the definition."""
+    if question["type"] == "dropdown" and question["config"].get("options_source"):
+        return set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
+    return None
+
+
+def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> dict[str, dict]:
+    """The earlier answers that still hold in this response's version: each is
+    checked as the runner would check it now, and an answer its question no
+    longer shows is dropped, as when it is changed. An email capture is the
+    participant's to give again, never copied."""
+    definition = response.definition
+    questions = question_by_key(definition)
+    previous = source.answer_map()
+    answers: dict[str, dict] = {}
+    for key, question in questions.items():  # presentation order: earlier answers first
+        if key not in previous or question["type"] == "email":
+            continue
+        try:
+            answers[key] = validate_answer(
+                question,
+                previous[key],
+                answers,
+                presentation=definition["presentation"],
+                source_options=_source_options(question),
+                questions=questions,
+            )
+        except AnswerError:
+            continue  # the question changed: asked afresh
+    kept = apply_cascade(definition, answers, questions=questions).answers
+    SurveyAnswer.objects.bulk_create(
+        SurveyAnswer(
+            response=response, question_key=key, value=value, option_keys=option_keys_of(value)
+        )
+        for key, value in kept.items()
+    )
+    return kept
 
 
 class AnswerRejected(APIException):
@@ -592,16 +694,13 @@ class AnswerView(ResponseMixin, RunnerView):
                     questions=questions,
                 )
             )
-        source_options = None
-        if question["type"] == "dropdown" and question["config"].get("options_source"):
-            source_options = set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
         try:
             value = validate_answer(
                 question,
                 ser.validated_data["value"],
                 answers,
                 presentation=definition["presentation"],
-                source_options=source_options,
+                source_options=_source_options(question),
                 questions=questions,
             )
         except AnswerError as exc:
@@ -951,37 +1050,8 @@ def _report_payload(request, survey, version) -> dict:
         "may_read_responses": viewer.may_read_responses,
         "may_read_contacts": viewer.may_read_contacts,
     }
-    rows = stats.basic_stats(survey)
-    contacts = stats.contact_counts(survey)
-    payload["stats"] = {
-        "versions": [
-            {
-                "label": r.label,
-                "version": r.version,
-                "respondents": r.respondents,
-                "completions": r.completions,
-                "contacts": contacts.get(
-                    r.version, sum(contacts.values()) if r.version is None else 0
-                ),
-                "partials": r.partials,
-                "completion_rate": r.completion_rate,
-                "average_response_time": stats.format_duration(r.average_response_time),
-            }
-            for r in rows
-        ],
-        "by_day": [
-            {"day": d.day, "started": d.started, "completed": d.completed}
-            for d in stats.by_day(survey)
-        ],
-        "by_language": [
-            {"language": r.language, "respondents": r.respondents, "completions": r.completions}
-            for r in stats.by_language(survey)
-        ],
-        "drop_off": [
-            {"question_key": r.question_key, "label": r.label, "count": r.count}
-            for r in stats.drop_off(survey)
-        ],
-    }
+    # Counts under PROLOG_STATS_MIN_COUNT come as null (RUN-24).
+    payload["stats"] = stats.report(survey)
     return payload
 
 

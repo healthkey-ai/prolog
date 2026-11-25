@@ -5,7 +5,8 @@ import { join, resolve } from "node:path";
 
 /**
  * Load and activate the example instrument (default theme) plus a copy bound
- * to the e2e fixture theme, so the runner has surveys to serve. Migrations run
+ * to the e2e fixture theme, and the partial-date example, so the runner has
+ * surveys to serve. Migrations run
  * in the backend webServer command (playwright.config.ts) before this.
  */
 export default function globalSetup() {
@@ -21,7 +22,7 @@ export default function globalSetup() {
   // Idempotent on a reused local database: an active version refuses a changed
   // source, so the two sample surveys (and their test responses) are recreated
   // from source on every run. Nothing else in the database is touched.
-  const slugs = "['sample-wellbeing', 'sample-themed']";
+  const slugs = "['sample-wellbeing', 'sample-themed', 'sample-history', 'sample-followup']";
   const reset = [
     "from prolog_surveys import models as m",
     `m.SurveyResponse.objects.filter(survey_version__survey__slug__in=${slugs}).delete()`,
@@ -33,5 +34,7 @@ export default function globalSetup() {
     `m.Survey.objects.filter(slug__in=${slugs}).delete()`,
   ].join("; ");
   execSync(`uv run python manage.py shell -c "${reset}"`, { cwd: backend, stdio: "inherit" });
-  execSync(`uv run python manage.py load_definition "${example}" "${themedPath}" --activate`, { cwd: backend, stdio: "inherit" });
+  const history = resolve(import.meta.dirname, "..", "..", "examples", "sample-history.json");
+  const followup = resolve(import.meta.dirname, "..", "..", "examples", "sample-followup.json");
+  execSync(`uv run python manage.py load_definition "${example}" "${themedPath}" "${history}" "${followup}" --activate`, { cwd: backend, stdio: "inherit" });
 }

@@ -26,6 +26,8 @@ INSTALLED_APPS += ["rest_framework", "corsheaders", "prolog_surveys"]
 PROLOG_PROFILE = "integrated"
 PROLOG_PARTICIPANT_MODEL = "omop_core.Person"          # any "app_label.Model"
 PROLOG_PARTICIPANT_RESOLVER = "myhost.prolog.resolve_participant"  # (request) -> pk | None
+PROLOG_FACTS_PROVIDER = "myhost.prolog.facts"                      # (participant pk, definition) -> {fact: value}
+PROLOG_STATS_MIN_COUNT = 20                            # report/admin counts under this show as "fewer than 20" (RUN-24); 0 = all
 PROLOG_IDENTITY_SERVICE = "myhost.prolog.IdentityService"          # class or factory
 PROLOG_DEFINITION_DIRS = ["/srv/surveys"]
 PROLOG_THEME_DIRS = ["/srv/prolog/themes", "/srv/themes"]
@@ -102,6 +104,29 @@ participant's in-progress response for the active version instead of
 creating another; reads and writes are refused for anyone else (403).
 Without a resolver, PROlog uses `request.user.pk` when the participant
 model *is* `AUTH_USER_MODEL`.
+
+## Facts provider (DEF-14, RUN-23)
+
+A definition may declare facts about the participant for `visible_if` to test
+([survey-definition.md](definitions/survey-definition.md), §4). The host
+supplies them:
+
+```python
+def facts(participant_id, definition):
+    """The facts this survey declares, from the host's own records."""
+    declared = {f["key"] for f in definition.get("facts", [])}
+    known = {"last_result": latest_result_state(participant_id)}  # e.g. "awaited"
+    return {k: v for k, v in known.items() if k in declared}
+```
+
+It is called once, when a signed-in participant starts their own response to
+a survey that declares facts; never for an invitation link or a minted
+respondent. Return strings among each fact's declared values: anything else is
+dropped, and a fact left out is unknown (every condition on it is false). The
+values are stored on the response (`SurveyResponse.facts`) and kept for its
+life. An exception is logged and the response starts with no facts, so a
+failing provider never stops a participant. The runner is served the
+definition with each fact condition settled, and never the facts.
 
 ## Identity service (CON-4)
 

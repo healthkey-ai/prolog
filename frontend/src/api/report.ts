@@ -5,19 +5,25 @@ export interface ReportVersionRow {
   label: string;
   /** The version these numbers are for; null on the whole-survey row. */
   version: string | null;
-  respondents: number;
-  completions: number;
-  partials: number;
-  contacts: number;
+  /** null: under the deployment's floor (`min_count`), or one a hidden count could be worked out from (RUN-24). */
+  respondents: Count;
+  completions: Count;
+  partials: Count;
+  contacts: Count;
   completion_rate: number | null;
   average_response_time: string;
 }
 
+/** A count, or null when it is not shown (RUN-24). */
+export type Count = number | null;
+
 export interface ReportStats {
+  /** Counts under this are not shown; 0 shows every count. */
+  min_count: number;
   versions: ReportVersionRow[];
-  by_day: { day: string; started: number; completed: number }[];
-  by_language: { language: string; respondents: number; completions: number }[];
-  drop_off: { question_key: string; label: string; count: number }[];
+  by_day: { day: string; started: Count; completed: Count }[];
+  by_language: { language: string; respondents: Count; completions: Count }[];
+  drop_off: { question_key: string; label: string; count: Count }[];
 }
 
 export interface Report {
