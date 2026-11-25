@@ -160,6 +160,7 @@ export interface Participation {
   resume?: "browser_token" | "account" | "none";
   /** Answered again and again: a submitted response is followed by a new one, not shown as completed. */
   repeatable?: boolean;
+  revisable?: boolean;
 }
 
 export interface Consent {

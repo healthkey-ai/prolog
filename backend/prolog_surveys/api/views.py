@@ -401,6 +401,16 @@ class ResponseCreateView(RunnerView):
         participant = (
             None if definition["participation"]["anonymous"] else resolve_participant(request)
         )
+        # A revisable survey (a profile kept up to date): a signed-in participant
+        # who has submitted it starts again from their last answers, on any
+        # device, in the active version (RUN-4). Never through an invitation.
+        revises = (
+            _last_submitted(survey, participant)
+            if participant is not None
+            and administration is None
+            and definition["participation"].get("revisable")
+            else None
+        )
         if administration is not None:
             # An invitation link resumes its own administration's response and
             # nothing else: a logged-in participant's older in-progress response
@@ -423,6 +433,14 @@ class ResponseCreateView(RunnerView):
                 .first()
             )
             if existing is not None:
+                if (
+                    revises is not None
+                    and existing.revises_id is None
+                    and not existing.answers.exists()
+                ):
+                    # Started blank before (another device, or before the survey
+                    # was revisable): it becomes the update, not an empty form.
+                    _start_revision(existing, revises)
                 return Response(_response_payload(existing), status=status.HTTP_200_OK)
 
         consent_cfg = definition.get("consent")
@@ -460,7 +478,11 @@ class ResponseCreateView(RunnerView):
             minted = mint_participant()
             if minted is not None:
                 fields["participant_id"] = minted
+        if revises is not None:
+            fields["revises"] = revises
         response = SurveyResponse.objects.create(**fields)
+        if revises is not None:
+            _start_revision(response, revises)
         if minted is not None:
             # So the host can tell a respondent from a patient in its own tables.
             MintedParticipant.objects.create(participant_id=minted)
@@ -473,6 +495,69 @@ class ResponseCreateView(RunnerView):
                 language=lang,
             )
         return Response(_response_payload(response), status=status.HTTP_201_CREATED)
+
+
+def _last_submitted(survey, participant) -> SurveyResponse | None:
+    """The participant's last submitted response to this survey, in any version."""
+    return (
+        SurveyResponse.objects.filter(
+            survey_version__survey=survey,
+            participant_id=participant,
+            status=ResponseStatus.SUBMITTED,
+        )
+        .order_by("-submitted_at")
+        .first()
+    )
+
+
+def _start_revision(response: SurveyResponse, source: SurveyResponse) -> None:
+    """Make ``response`` an update of ``source``: its still-valid answers copied
+    in, and it opens at its first question for the participant to go through."""
+    kept = _copy_answers(source, response)
+    first = visible_questions(response.definition, kept)
+    response.revises = source
+    response.last_question_key = first[0].key if first else ""
+    response.save(update_fields=["revises", "last_question_key", "updated_at"])
+
+
+def _source_options(question: dict) -> set[str] | None:
+    """A dropdown's options when they come from a list rather than the definition."""
+    if question["type"] == "dropdown" and question["config"].get("options_source"):
+        return set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
+    return None
+
+
+def _copy_answers(source: SurveyResponse, response: SurveyResponse) -> dict[str, dict]:
+    """The earlier answers that still hold in this response's version: each is
+    checked as the runner would check it now, and an answer its question no
+    longer shows is dropped, as when it is changed. An email capture is the
+    participant's to give again, never copied."""
+    definition = response.definition
+    questions = question_by_key(definition)
+    previous = source.answer_map()
+    answers: dict[str, dict] = {}
+    for key, question in questions.items():  # presentation order: earlier answers first
+        if key not in previous or question["type"] == "email":
+            continue
+        try:
+            answers[key] = validate_answer(
+                question,
+                previous[key],
+                answers,
+                presentation=definition["presentation"],
+                source_options=_source_options(question),
+                questions=questions,
+            )
+        except AnswerError:
+            continue  # the question changed: asked afresh
+    kept = apply_cascade(definition, answers, questions=questions).answers
+    SurveyAnswer.objects.bulk_create(
+        SurveyAnswer(
+            response=response, question_key=key, value=value, option_keys=option_keys_of(value)
+        )
+        for key, value in kept.items()
+    )
+    return kept
 
 
 class AnswerRejected(APIException):
@@ -609,16 +694,13 @@ class AnswerView(ResponseMixin, RunnerView):
                     questions=questions,
                 )
             )
-        source_options = None
-        if question["type"] == "dropdown" and question["config"].get("options_source"):
-            source_options = set(iso3166.SOURCE_KEYS[question["config"]["options_source"]]())
         try:
             value = validate_answer(
                 question,
                 ser.validated_data["value"],
                 answers,
                 presentation=definition["presentation"],
-                source_options=source_options,
+                source_options=_source_options(question),
                 questions=questions,
             )
         except AnswerError as exc:

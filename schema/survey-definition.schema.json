@@ -102,6 +102,11 @@
           "type": "boolean",
           "default": false
         },
+        "revisable": {
+          "description": "true = the participant keeps their answers up to date (a profile): once they have submitted, the runner offers to update their answers, which starts a new response holding their last submitted answers for them to change and submit again. The submitted response itself never changes (RUN-4). Needs participants who sign in (anonymous false, resume account), and cannot be repeatable. Default false.",
+          "type": "boolean",
+          "default": false
+        },
         "repeat": {
           "description": "Optional repeat administration for invited (non-anonymous) participants.",
           "type": "object",

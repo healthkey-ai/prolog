@@ -107,7 +107,12 @@ export function useOptionsSources(sources: readonly string[], lang: string): Rec
 export function useCreateResponse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { slug: string; language: string; consent?: { version: string; agreed: boolean }; invitation?: string }) =>
+    mutationFn: (body: {
+      slug: string;
+      language: string;
+      consent?: { version: string; agreed: boolean };
+      invitation?: string;
+    }) =>
       api.post<ResponseSummary>("/responses/", body),
     onSuccess: (data) => qc.setQueryData(keys.response(data.id), data),
   });

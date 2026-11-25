@@ -204,5 +204,8 @@
   "password.mismatch": "Those two do not match.",
   "password.save": "Change it",
   "password.changed": "Your password has been changed.",
-  "password.close": "Close"
+  "password.close": "Close",
+  "intro.revisable": "You have completed this. You can update your answers: you start from the ones you gave last time.",
+  "intro.update": "Update my answers",
+  "complete.revisable": "You can update your answers at any time: you start from the ones you gave."
 }

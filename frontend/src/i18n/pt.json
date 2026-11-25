@@ -204,5 +204,8 @@
   "password.mismatch": "As duas não coincidem.",
   "password.save": "Alterar",
   "password.changed": "A sua palavra-passe foi alterada.",
-  "password.close": "Fechar"
+  "password.close": "Fechar",
+  "intro.revisable": "Já concluiu isto. Pode atualizar as suas respostas: começa com as que deu da última vez.",
+  "intro.update": "Atualizar as minhas respostas",
+  "complete.revisable": "Pode atualizar as suas respostas em qualquer altura: começa com as que deu."
 }

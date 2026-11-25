@@ -201,7 +201,7 @@ changed answer.
 | RUN-1 | The runner shows only `active` versions within their effective dates that the participant may access. Anonymous surveys (`participation.anonymous = true`) need no account; the response id is the sole credential and is treated as a secret. Anonymous here means the participant is not identified — the response is still bound to a person record (RUN-2), one carrying nothing that could name them. |
 | RUN-2 | Starting a survey creates a response bound to the active version, the chosen language, and a participant record. For a signed-in participant that is their own `Person`; otherwise PROlog asks the host's participant service for a new `Person` with no identifying attributes and binds the response to it. A response is never created without one (DEP-2). |
 | RUN-3 | Resume: for `browser_token`, the response id is kept in browser storage and the intro page offers **Continue** / **Start again** (start again is confirmed and abandons the previous response); for `account`, the participant's in-progress response is resumed on sign-in. |
-| RUN-4 | Submission records server timestamps, marks the response immutable, and returns it read-only thereafter. Correction is a revision/new response, never an overwrite. |
+| RUN-4 | Submission records server timestamps, marks the response immutable, and returns it read-only thereafter. Correction is a revision/new response, never an overwrite: a `participation.revisable` survey offers **Update my answers**: starting it again gives a signed-in participant a new response holding their last submitted answers that are still valid in the active version, linked to it by `revises`. |
 | RUN-5 | Repeat administration (`participation.repeat`) is available to invited, non-anonymous participants only: at each due date a new invitation is sent and a distinct response is created for the scheduled or then-active version. Off by default. |
 
 ### Presentation and navigation
@@ -341,7 +341,7 @@ clinical representations of answers are produced only by governed mapping.
 | `Survey` | Stable identity (`slug`), lifecycle metadata, theme code, anonymous-participation policy, effective dates. |
 | `SurveyVersion` | Versioned snapshot: `version`, `status`, `definition` JSON (DEF-8), `schema_version`, `activated_at` (when it was last served), `published_at` (when its content was frozen — before that it can be re-loaded and its responses are test data). |
 | `SurveyQuestion`, `SurveyOption` | Materialised on publish from the definition (keys, types, order) to give mappings and analytics stable foreign keys. Read-only projections; the JSON stays authoritative. |
-| `SurveyResponse` | Attempt/submission: version FK, language, status, `started_at`, `submitted_at`, `last_question_key`, **participant FK (DEP-2) — always set**, `identity_linked_at` (null until an account exists). No IP, no PII. |
+| `SurveyResponse` | Attempt/submission: version FK, language, status, `started_at`, `submitted_at`, `last_question_key`, **participant FK (DEP-2) — always set**, `identity_linked_at` (null until an account exists), `revises` (the submitted response an update of a `revisable` survey started from, RUN-4). No IP, no PII. |
 | `SurveyAnswer` | Typed raw answer per (response, question key): `value` JSON as in Q-1…Q-12, selected option keys, `updated_at`. |
 | `SurveyConsent` | Consent attestation: response, consent version, text hash, timestamp. |
 | `SurveyContact` | Contact capture (CON-3) only — the exception path: survey version, email, consent text shown, timestamp. **No response FK.** Identity capture (CON-4) writes nothing here; the address goes to the host's identity service and is never persisted by PROlog. |
@@ -364,7 +364,7 @@ surveys: session/JWT):
 | `GET /api/run/surveys/{slug}/?lang=` | Active version's definition for the runner, localized, with theme code, ETag-cached. Internal `notes` stripped. |
 | `GET /api/run/themes/{code}/` and `/assets/{path}` | Theme document and assets (THM-2). |
 | `GET /api/run/options/{source}/?lang=` | Built-in option lists (ISO 3166). |
-| `POST /api/run/responses/` `{slug, language, consent?}` | Create response, obtaining or creating the participant `Person` it binds to (RUN-2) → `{id, version, …}`. The person id is never returned to an unauthenticated runner. |
+| `POST /api/run/responses/` `{slug, language, consent?}` | Create response, obtaining or creating the participant `Person` it binds to (RUN-2) → `{id, version, …}`. The person id is never returned to an unauthenticated runner. On a `revisable` survey a signed-in participant who has submitted starts from their last submitted answers (RUN-4). |
 | `GET /api/run/responses/{id}/` | Status, language, all answers, visible-question list. |
 | `PUT /api/run/responses/{id}/answers/{key}/` | Upsert one answer (autosave). Validates (RUN-15), cascades (RUN-16), returns `{answer, invalidated}`. |
 | `POST /api/run/responses/{id}/submit/` | Complete (RUN-18). |
