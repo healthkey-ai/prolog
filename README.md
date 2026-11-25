@@ -61,3 +61,7 @@ protected: changes land only via pull requests.
 There is no SQLite fallback. Standalone deployments use their own PostgreSQL
 database; integrated deployments use PRomop's database and apply migrations
 from the PRomop project.
+
+## License
+
+Apache License 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE).
