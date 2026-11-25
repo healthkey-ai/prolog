@@ -4,6 +4,11 @@ from . import themes, views
 
 urlpatterns = [
     path("surveys/<slug:slug>/", views.SurveyDefinitionView.as_view(), name="run-survey"),
+    path(
+        "surveys/<slug:slug>/status/",
+        views.ParticipantStatusView.as_view(),
+        name="run-survey-status",
+    ),
     path("options/<slug:source>/", views.OptionsSourceView.as_view(), name="run-options"),
     path("legal/<slug:page>/", views.LegalPageView.as_view(), name="run-legal"),
     path("themes/<slug:code>/", themes.ThemeView.as_view(), name="run-theme"),

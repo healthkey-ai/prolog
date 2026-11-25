@@ -323,6 +323,57 @@ class SurveyDefinitionView(RunnerView):
         )
 
 
+class ParticipantStatusView(RunnerView):
+    """Where the signed-in participant stands with an account survey (RUN-3, RUN-4).
+
+    The runner asks this before it trusts the response id its browser kept: on
+    an account survey the server knows the participant's place on every
+    device, and a kept id can be another device's leftover, a response on a
+    version that is no longer active, or nothing at all. The answer is what
+    starting the survey would do (``ResponseCreateView``): ``in_progress`` is
+    the response a start resumes, ``last_submitted`` the one an update starts
+    from, and ``revisable`` the active version's. Anywhere else (anonymous,
+    browser resume, signed out) ``account`` is false and the browser's id
+    stays the runner's only pointer.
+    """
+
+    throttle_classes = [ClientKeyThrottle]
+
+    def get(self, request, slug: str):
+        survey, version = _active_version(slug)
+        participation = version.cached_definition["participation"]
+        # The same gate a start passes (``_check_access``): signed in, with a
+        # participant; the host's resolver is asked only where it decides.
+        participant = (
+            resolve_participant(request)
+            if not participation["anonymous"]
+            and participation.get("resume") == "account"
+            and request.user.is_authenticated
+            else None
+        )
+        account = participant is not None
+        revisable = account and bool(participation.get("revisable"))
+        in_progress = last_submitted = None
+        if account:
+            last_submitted = _last_submitted(survey, participant)
+            in_progress = _in_progress(version, participant)
+            if in_progress is not None and _takes_over(
+                in_progress, last_submitted if revisable else None
+            ):
+                # Starting turns this blank response into the update: until
+                # then the participant's place is their last submission.
+                in_progress = None
+        return Response(
+            {
+                "account": account,
+                "in_progress": str(in_progress.pk) if in_progress else None,
+                "last_submitted": str(last_submitted.pk) if last_submitted else None,
+                "revisable": revisable,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+
 # BCP 47-ish language tag: language, optional script or region subtag.
 _LANG_TAG = re.compile(r"^([A-Za-z]{2,3})(?:-([A-Za-z]{2,4}))?$")
 
@@ -433,21 +484,9 @@ class ResponseCreateView(RunnerView):
             # Serialise concurrent starts by the same participant so the
             # read-then-create below cannot produce two in-progress responses.
             SurveyVersion.objects.select_for_update().only("pk").get(pk=version.pk)
-            existing = (
-                SurveyResponse.objects.filter(
-                    survey_version=version,
-                    status=ResponseStatus.IN_PROGRESS,
-                    participant_id=participant,
-                )
-                .order_by("-started_at")
-                .first()
-            )
+            existing = _in_progress(version, participant)
             if existing is not None:
-                if (
-                    revises is not None
-                    and existing.revises_id is None
-                    and not existing.answers.exists()
-                ):
+                if _takes_over(existing, revises):
                     # Started blank before (another device, or before the survey
                     # was revisable): it becomes the update, not an empty form.
                     _start_revision(existing, revises, starting)
@@ -518,6 +557,26 @@ def _last_submitted(survey, participant) -> SurveyResponse | None:
         .order_by("-submitted_at")
         .first()
     )
+
+
+def _in_progress(version, participant) -> SurveyResponse | None:
+    """The response an account start resumes (RUN-3): the participant's latest
+    in-progress one on the active version."""
+    return (
+        SurveyResponse.objects.filter(
+            survey_version=version,
+            status=ResponseStatus.IN_PROGRESS,
+            participant_id=participant,
+        )
+        .order_by("-started_at")
+        .first()
+    )
+
+
+def _takes_over(existing: SurveyResponse, revises: SurveyResponse | None) -> bool:
+    """A blank in-progress response that a start turns into the update of
+    ``revises`` rather than resuming as an empty form."""
+    return revises is not None and existing.revises_id is None and not existing.answers.exists()
 
 
 def _revision_starting_answers(participant, definition, facts, source: SurveyResponse) -> dict:
