@@ -207,5 +207,7 @@
   "password.close": "Close",
   "intro.revisable": "You have completed this. You can update your answers: you start from the ones you gave last time.",
   "intro.update": "Update my answers",
-  "complete.revisable": "You can update your answers at any time: you start from the ones you gave."
+  "complete.revisable": "You can update your answers at any time: you start from the ones you gave.",
+  "nav.exit": "Save and exit",
+  "complete.exit": "Back to home"
 }

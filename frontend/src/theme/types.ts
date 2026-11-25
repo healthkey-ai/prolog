@@ -53,6 +53,8 @@ export interface Theme {
   };
   assets?: { logo?: string; logo_on_primary?: string; favicon?: string; decor?: string[] };
   motion?: { enabled?: boolean };
+  /** The deployment's home page: where "Save and exit" and the completion page lead. */
+  exit_url?: string;
   strings?: Record<string, Record<string, string>>;
   warnings?: string[];
 }

@@ -8,7 +8,7 @@ import { firstOpenKey } from "@/survey/navigation";
 import { Button } from "@/components/ui/button";
 import { Decor } from "@/components/Decor";
 import { Eyebrow } from "@/components/Eyebrow";
-import { useThemeLayout, useThemeLogo } from "@/theme/useTheme";
+import { useThemeExit, useThemeLayout, useThemeLogo } from "@/theme/useTheme";
 import { usePageTitle } from "./usePageTitle";
 
 export function CompletePage() {
@@ -27,6 +27,7 @@ export function CompletePage() {
   const logo = useThemeLogo(layout.immersiveIntro, "intro");
   const immersive = layout.immersiveIntro;
   const submitted = response.data?.status === "submitted";
+  const exit = useThemeExit();
 
   // This page asserts "submitted and read-only", so it only stands for a
   // submitted response. Browser Back after "Start a new response", a bookmark,
@@ -64,11 +65,21 @@ export function CompletePage() {
         <p className={`text-sm ${immersive ? "text-on-primary/70" : "text-ink-soft"}`}>
           {t(revisable ? "complete.revisable" : "complete.readonly")}
         </p>
-        {revisable && (
+        {(exit || revisable) && (
           <div className="flex flex-wrap gap-3">
-            <Button variant={immersive ? "onPrimary" : "primary"} size="runner" onClick={update} data-testid="update">
-              {t("intro.update")}
-            </Button>
+            {exit && (
+              <Button asChild variant={immersive ? "onPrimary" : "primary"} size="runner">
+                <a href={exit} data-testid="exit">
+                  {t("complete.exit")}
+                </a>
+              </Button>
+            )}
+            {revisable && (
+              // Beside "Back to home" it is the second choice, not a second primary.
+              <Button variant={immersive ? "onPrimary" : exit ? "surface" : "primary"} size="runner" onClick={update} data-testid="update">
+                {t("intro.update")}
+              </Button>
+            )}
           </div>
         )}
       </main>

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { forgetAll } from "@/survey/scratch";
-import { RESPONSE_ID, SLUG, blur, click, deferred, definition, findOnLanguage, installDom, mount, response, runnerServer, t, type, type Mounted } from "./testHarness";
+import { browser } from "@/lib/leave";
+import { RESPONSE_ID, SLUG, blur, click, deferred, definition, findOnLanguage, installDom, mount, response, runnerServer, t, themedRoutes, type, type Mounted } from "./testHarness";
 
 const ANSWERS = `/responses/${RESPONSE_ID}/answers/`;
 const TEXT = (m: Mounted) => m.$<HTMLInputElement>("text-input")!;
@@ -15,6 +16,7 @@ describe("WizardPage", () => {
     m?.unmount();
     m = null;
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     vi.useRealTimers();
     localStorage.clear();
     forgetAll();
@@ -41,6 +43,110 @@ describe("WizardPage", () => {
     await m.flush();
     expect(m.$("definition-error")?.textContent).toContain(t("app.notFound"));
     expect(m.$("definition-retry")).toBeNull();
+  });
+
+  describe("Save and exit (theme exit_url)", () => {
+    const withExit = (exit_url?: string) => {
+      const server = runnerServer();
+      server.on("GET", "/themes/default/", { body: { code: "default", colors: { light: {} }, ...(exit_url ? { exit_url } : {}) } });
+      return server;
+    };
+
+    it("saves the answer on screen, then opens the deployment's home page", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const server = withExit("/home");
+      server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value));
+      m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
+      await m.until("exit");
+      type(TEXT(m), "typed but not Next");
+      click(m.$("exit"));
+      await m.flush();
+      expect(server.of("PUT", ANSWERS).map((c) => c.body)).toEqual([{ value: { text: "typed but not Next" } }]);
+      expect(leave).toHaveBeenCalledWith("/home");
+    });
+
+    it("stays, with the message, when the answer on screen cannot be saved", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const server = withExit("/home");
+      server.on("PUT", ANSWERS, { status: 500, body: {} });
+      m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
+      await m.until("exit");
+      type(TEXT(m), "x");
+      click(m.$("exit"));
+      await m.flush();
+      expect(leave).not.toHaveBeenCalled();
+      expect(m.pathname()).toBe(`/s/${SLUG}/q/q1`);
+    });
+
+    it("resolves a cleared required answer as Next would: asks, records the skip, then leaves", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const server = withExit("/home");
+      server.on("GET", `/responses/${RESPONSE_ID}/`, { body: response({ answers: { q1: { text: "one" }, q2: { text: "two" } }, last_question_key: "q2" }) });
+      server.on("PUT", ANSWERS, (call) => saved((call.body as { value: unknown }).value, "q2"));
+      m = mount(`/s/${SLUG}/q/q2`, themedRoutes());
+      await m.until("exit");
+      type(TEXT(m), "");
+      blur(TEXT(m));
+      click(m.$("exit"));
+      await m.flush();
+      expect(leave).not.toHaveBeenCalled();
+      expect(m.container.querySelector("[role=alertdialog]")).not.toBeNull();
+      click(m.$("skip-confirm"));
+      await m.flush();
+      expect(server.of("PUT", ANSWERS).map((c) => c.body)).toEqual([{ value: { skipped: true } }]);
+      expect(leave).toHaveBeenCalledWith("/home");
+    });
+
+    it("saves nothing the participant did not change, such as a ranking's displayed order", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const ranking = { key: "r1", type: "ranking", text: "Put these in order", required: true, options: [{ key: "a", label: "A" }, { key: "b", label: "B" }] };
+      const server = runnerServer(
+        definition({ sections: [{ key: "s1", title: "Only", questions: [ranking] }] } as never),
+        response({ answers: {}, last_question_key: "r1" }),
+      );
+      server.on("GET", "/themes/default/", { body: { code: "default", colors: { light: {} }, exit_url: "/home" } });
+      m = mount(`/s/${SLUG}/q/r1`, themedRoutes());
+      await m.until("exit");
+      click(m.$("exit"));
+      await m.flush();
+      expect(server.of("PUT", ANSWERS)).toHaveLength(0);
+      expect(leave).toHaveBeenCalledWith("/home");
+    });
+
+    it("stays while an earlier save has failed, until it is retried", async () => {
+      const leave = vi.spyOn(browser, "leave").mockImplementation(() => undefined);
+      const server = withExit("/home");
+      server.on("PUT", ANSWERS, { status: 500, body: {} });
+      m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
+      await m.until("exit");
+      type(TEXT(m), "x");
+      blur(TEXT(m)); // the autosave fails
+      await m.flush();
+      click(m.$("exit"));
+      await m.flush();
+      expect(leave).not.toHaveBeenCalled();
+    });
+
+    it("is offered only for a safe exit_url", async () => {
+      for (const unsafe of [undefined, "//elsewhere.example", "javascript:alert(1)"]) {
+        withExit(unsafe);
+        m = mount(`/s/${SLUG}/q/q1`, themedRoutes());
+        await m.until("question-q1");
+        await m.flush(4);
+        expect(m.$("exit")).toBeNull();
+        m.unmount();
+        m = null;
+      }
+    });
+
+    it("links the completion page to the home page", async () => {
+      const server = runnerServer(definition(), response({ status: "submitted", submitted_at: "2026-01-02T00:00:00Z" }));
+      server.on("GET", "/themes/default/", { body: { code: "default", colors: { light: {} }, exit_url: "https://example.org/home" } });
+      m = mount(`/s/${SLUG}/complete`, themedRoutes());
+      const link = await m.until<HTMLAnchorElement>("exit");
+      expect(link.getAttribute("href")).toBe("https://example.org/home");
+      expect(link.textContent).toBe(t("complete.exit"));
+    });
   });
 
   it("titles the document with the survey and the step", async () => {

@@ -207,5 +207,7 @@
   "password.close": "Fermer",
   "intro.revisable": "Vous avez déjà terminé. Vous pouvez mettre à jour vos réponses : vous repartez de celles que vous avez données la dernière fois.",
   "intro.update": "Mettre à jour mes réponses",
-  "complete.revisable": "Vous pouvez mettre à jour vos réponses à tout moment : vous repartez de celles que vous avez données."
+  "complete.revisable": "Vous pouvez mettre à jour vos réponses à tout moment : vous repartez de celles que vous avez données.",
+  "nav.exit": "Enregistrer et quitter",
+  "complete.exit": "Retour à l’accueil"
 }
