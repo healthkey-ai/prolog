@@ -342,8 +342,16 @@ class ParticipantStatusView(RunnerView):
     def get(self, request, slug: str):
         survey, version = _active_version(slug)
         participation = version.cached_definition["participation"]
-        participant = None if participation["anonymous"] else resolve_participant(request)
-        account = participant is not None and participation.get("resume") == "account"
+        # The same gate a start passes (``_check_access``): signed in, with a
+        # participant; the host's resolver is asked only where it decides.
+        participant = (
+            resolve_participant(request)
+            if not participation["anonymous"]
+            and participation.get("resume") == "account"
+            and request.user.is_authenticated
+            else None
+        )
+        account = participant is not None
         revisable = account and bool(participation.get("revisable"))
         in_progress = last_submitted = None
         if account:
